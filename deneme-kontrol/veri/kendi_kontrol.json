@@ -1,0 +1,53 @@
+{
+ "aciklama": "Claude'un boru hattından bağımsız olarak, doğrudan sayfa görselleri üzerinden kendi çözdüğü örnek sorular (kalite güvence amaçlı çapraz kontrol).",
+ "kontroller": [
+  {
+   "qid": "T3-13",
+   "sayfa": 24,
+   "benim": "E",
+   "anahtar": "E",
+   "cozum": "f(x)=a(x+2)(x-4); f(0)=-8a=8 → a=-1. Tepe x=(-2+4)/2=1, f(1)=-1·3·(-3)=9. C=(1,9) → 1+9=10 → E.",
+   "sonuc": "UYUMLU"
+  },
+  {
+   "qid": "T3-40",
+   "sayfa": 30,
+   "benim": "B",
+   "anahtar": "B",
+   "cozum": "3 karton A'da → A=360/3=120°. 18 karton C'de → C=360/18=20°. B=40°. AC=AC1 ve m(CAC1)=120° → m(ACC1)=30°. m(ACB)=C=20° → m(BCC1)=30-20=10° → B.",
+   "sonuc": "UYUMLU"
+  },
+  {
+   "qid": "T4-17",
+   "sayfa": 35,
+   "benim": "E",
+   "anahtar": "E",
+   "cozum": "X2+ dizilimi [Ar]3d2 → 20 elektron → X'te 22 elektron, Z=22 (Ti). I: Z=22 ✓. II: 4. periyot 4B ✓. III: d bloku geçiş metali ✓ → E.",
+   "sonuc": "UYUMLU"
+  },
+  {
+   "qid": "T4-27",
+   "sayfa": 37,
+   "benim": "C",
+   "anahtar": "C",
+   "cozum": "16 g CH4 = 1 mol; T=227+273=500 K; V=nRT/P=1·0,082·500/4,1=10 L → C.",
+   "sonuc": "UYUMLU"
+  },
+  {
+   "qid": "T4-21",
+   "sayfa": 36,
+   "benim": "C",
+   "anahtar": "C",
+   "cozum": "X en büyük yarıçap → periyotta en solda. Y en büyük İE. İE periyotta monoton artmaz: 2A>3A (Be>B) ve 5A>6A (N>O) istisnaları vardır. I (X-Z-Y) genel eğilimle mümkün; II (X-Y-Z) istisnalarla mümkün (ör. Li-Be-B veya Li-N-O); III (Z-Y-X) X'in hem en büyük yarıçapa hem en büyük atom numarasına sahip olmasını gerektirdiğinden imkânsız → I ve II = C.",
+   "sonuc": "UYUMLU — B geçişi iyonlaşma enerjisi istisnalarını atladığı için A demişti"
+  },
+  {
+   "qid": "T4-9",
+   "sayfa": 33,
+   "benim": "E",
+   "anahtar": "E",
+   "cozum": "İlk okumamda L'yi teknenin gerçek varış noktası sandım ve hata yaptım. Soru kökü 'L noktasına DOĞRU hareket ediyor' diyor: L, teknenin suya göre hız doğrultusunun (rota doğrultusunun) karşı kıyıyı kestiği noktadır; şekilde kesikli çizgi bu doğrultuyu gösterir. Buna göre: dik bileşen 50·sin53°=40 m/s → t=800/40=20 s (I doğru). KOL dik üçgeninde tan53°=800/OL → OL=800·(0,6/0,8)=600 m (II doğru; 30·20 ile de aynı). Akıntı sürüklenmesi 10·20=200 m (III doğru). Üçü de doğru → E. Metin ile şekil çelişmiyor.",
+   "sonuc": "UYUMLU — kendi ilk okumam hatalıydı, hakem fazı düzeltti"
+  }
+ ]
+}

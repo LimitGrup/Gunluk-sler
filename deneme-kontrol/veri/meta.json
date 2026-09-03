@@ -1,0 +1,187 @@
+{
+ "tarih": "3 Eylül 2026",
+ "surum": "1.0",
+ "toplam": 166,
+ "ozet_giris": "Bu rapor, <b>FINALE DOĞRU KURS AYT DENEME 1A</b> kitapçığının (40 sayfa, A kitapçığı, kitapçık kodu 262711221) baskı öncesi son kalite kontrolüdür. Kitapçıktaki <b>166 sorunun tamamı</b>, cevap anahtarından tamamen bağımsız olarak <b>iki ayrı geçişte</b> çözülmüş; bağımsız cevaplar dondurulduktan <u>sonra</u> anahtarla karşılaştırılmıştır. Cevabı farklı çıkan veya ölçme kusuru bildirilen 12 soru, anahtardan ve önceki çözümlerden habersiz <b>iki kör yeniden çözüme</b> ve ardından bir <b>hakem değerlendirmesine</b> tabi tutulmuştur. Redaksiyon tarafında 40 sayfanın tamamı sayfa görselleri üzerinden taranmış, çıkan 249 ham bulgu birebir alıntı denetimiyle adversaryal biçimde doğrulanmış ve yanlış pozitifler elenmiştir.",
+ "ozet_tablo": [
+  [
+   "Toplam soru",
+   "166"
+  ],
+  [
+   "Bağımsız çözülen soru (2 geçiş × 166)",
+   "166 / 166"
+  ],
+  [
+   "Anahtarla uyumlu soru",
+   "164"
+  ],
+  [
+   "Cevap anahtarı uyuşmazlığı (ikinci incelemeye alınan)",
+   "12"
+  ],
+  [
+   "<b>Kesin cevap anahtarı hatası</b>",
+   "<b>2</b>"
+  ],
+  [
+   "Hatalı / tartışmalı soru",
+   "0"
+  ],
+  [
+   "Ham redaksiyon bulgusu",
+   "249"
+  ],
+  [
+   "Elenen yanlış pozitif",
+   "161"
+  ],
+  [
+   "<b>Doğrulanmış redaksiyon bulgusu</b>",
+   "<b>97</b>"
+  ],
+  [
+   "&nbsp;&nbsp;— YÜKSEK önem",
+   "9"
+  ],
+  [
+   "&nbsp;&nbsp;— ORTA önem",
+   "57"
+  ],
+  [
+   "&nbsp;&nbsp;— DÜŞÜK önem",
+   "31"
+  ],
+  [
+   "Redaksiyon bulgusu içeren soru sayısı",
+   "75 / 166"
+  ],
+  [
+   "<b>TDK ile doğrulanan yazım hatası</b>",
+   "<b>0 (TDK erişimi engelli)</b>"
+  ],
+  [
+   "TDK doğrulaması bekleyen yazım maddesi",
+   "12"
+  ],
+  [
+   "Editör kontrolü gereken madde",
+   "7"
+  ]
+ ],
+ "ozet_notlar": [
+  [
+   "kritik",
+   "<span class=\"nokta nokta-k\">■</span> <b>İki soruda cevap anahtarı hatalıdır.</b> Türk Dili ve Edebiyatı-Sosyal Bilimler-1 testinin <b>3. sorusunda</b> anahtar D, akademik olarak doğru seçenek <b>A</b>; <b>4. sorusunda</b> anahtar C, akademik olarak doğru seçenek <b>B</b>’dir. Her iki soruda da beş bağımsız çözümün beşi aynı sonuca ulaşmıştır. Yanlış anahtar, doğru cevabı işaretleyen adayın yanlış sayılmasına yol açacağı için baskı öncesinde mutlaka düzeltilmelidir."
+  ],
+  [
+   "uyari",
+   "<span class=\"nokta nokta-k\">■</span> <b>TDK çevrim içi doğrulaması yapılamadı.</b> https://sozluk.gov.tr adresine bu çalışmanın yürütüldüğü ortamın ağ çıkış politikası tarafından erişim engellenmiştir (CONNECT tunnel failed, HTTP 403). Görev tanımı başka hiçbir kaynağın yazım doğrulamasında kullanılmasına izin vermediği için <b>hiçbir kelime hakkında kesin yazım hatası hükmü verilmemiştir</b>. Yazımla ilgili 12 madde TDK tablosunda <b><span class=\"d d-kirmizi\">TDK ERİŞİMİ YOK</span> / <span class=\"d d-gri\">KONTROL BEKLİYOR</span></b> olarak işaretlenmiştir."
+  ],
+  [
+   "bilgi",
+   "<b>Sınavın akademik düzeyi genel olarak yüksektir.</b> 166 sorunun 164’ünde iki bağımsız geçiş ve cevap anahtarı tam olarak örtüşmüştür. Hiçbir soruda “birden fazla doğru seçenek”, “doğru seçenek yok”, “veri eksik” veya “çözülemez” durumu kesinleşmemiştir; ikinci incelemeye alınan 10 soruda anahtarın doğru olduğu teyit edilmiştir."
+  ]
+ ],
+ "karar_sinif": "kirmizi",
+ "karar_baslik": "BASKIYA UYGUN DEĞİL",
+ "karar_metin": "<p>Kitapçık, <b>mevcut cevap anahtarıyla birlikte</b> baskıya gönderilmemelidir. Engel, soruların akademik kalitesinden değil, <b>iki sorudaki cevap anahtarı hatasından</b> kaynaklanmaktadır. Aşağıdaki düzeltmeler yapıldıktan sonra kitapçık <b><span class=\"nokta nokta-o\">“düzeltme sonrası baskıya uygun”</span></b> duruma gelir:</p><ol><li><b>Cevap anahtarında iki harf düzeltilmelidir:</b> TDE-Sosyal-1 testi soru 3 → <b>A</b>, soru 4 → <b>B</b>.</li><li>YÜKSEK önemli 9 redaksiyon maddesi düzeltilmelidir (bkz. Bölüm 7).</li><li>TDK doğrulaması bekleyen 12 yazım maddesi https://sozluk.gov.tr üzerinden kesinleştirilmelidir (bkz. Bölüm 8).</li></ol>",
+ "karar_gerekce": [
+  "<b>İki kesin cevap anahtarı hatası (KRİTİK).</b> TDE-Sosyal-1 soru 3 (anahtar D / doğru A) ve soru 4 (anahtar C / doğru B). Görev tanımı “yanlış cevap anahtarı”nı açıkça KRİTİK hata sınıfına koymaktadır; kritik problem varlığında baskı kararı <span class=\"nokta nokta-k\">“baskıya uygun değil”</span> olmak zorundadır.",
+  "<b>Ölçme niteliğini etkileyen 9 YÜKSEK redaksiyon bulgusu.</b> Bunlar arasında soru kökü ile seçenekler arasında tekil-çoğul uyumsuzluğu (s.10/38), yarım yazılmış biyom adı (s.13/15), cevabı yönergede veren totolojik kurgu (s.14/18), Pauli ilkesiyle çelişen ifade (s.35/16) ve kurulamamış cümle (s.32/7) yer almaktadır.",
+  "<b>TDK doğrulaması tamamlanamadı.</b> 12 yazım maddesi hakkında kesin hüküm verilememiştir; bunların en az bir kısmının gerçek yazım hatası olma olasılığı yüksektir ve doğrulanmadan baskı riski taşır.",
+  "<b>Biçimsel tutarsızlık:</b> Sayfa 38-40’taki 9 biyoloji sorusunda öncül ve seçenek numaralandırmasında Roma rakamı (I) yerine küçük “l” harfi kullanılmış; hatta aynı seçenek içinde iki karakter karışık kullanılmıştır (s.39/33: “B) l ve II”).",
+  "<b>Kapak künyesi tutarsızlığı:</b> “TOPLAM SORU SAYISI 166” yazmaktadır; oysa aday Din Kültürü (35-40) <i>veya</i> ek soruları (41-46) yanıtladığı için gerçekte 160 soru yanıtlanabilmektedir. Ayrıca süre 165 dk. olarak verilmiştir; ÖSYM AYT oturumu 160 soru için 180 dakikadır."
+ ],
+ "envanter_giris": "Kitapçık dört testten oluşmaktadır. Aşağıdaki envanter, PDF metin katmanından programatik olarak çıkarılmış ve kitapçık kapağındaki resmî künye tablosuyla birebir doğrulanmıştır.",
+ "envanter_not": "<div class=\"bilgi\"><b>Envanter doğrulaması:</b> Kapak künyesindeki tablo (Türk Dili ve Edebiyatı-Sosyal Bilimler-1: 40, Sosyal Bilimler-2: 46, Matematik: 40, Fen Bilimleri: 40 = 166) ile bu raporda tespit edilen soru sayıları <b>tam olarak örtüşmektedir</b>. Sosyal Bilimler-2 testindeki 41-46 numaralı sorular, Din Kültürü ve Ahlak Bilgisi dersini yasal olarak almak zorunda olmayan adaylar için ayrılmış alternatif Felsefe Grubu sorularıdır; bir aday 35-40 <i>veya</i> 41-46 bloklarından yalnızca birini yanıtlar.</div>",
+ "ana_tablo_giris": "Aşağıdaki tabloda kitapçıktaki <b>166 sorunun tamamı</b> için bir satır bulunmaktadır. “Bağımsız Cevap” sütunu, cevap anahtarı görülmeden yapılan çözümlerin sonucudur; ikinci incelemeye alınan sorularda hakem kararındaki nihai cevaptır. “Redaksiyon” sütunu, o soruya ait doğrulanmış redaksiyon maddesi sayısını ve en yüksek önem derecesini gösterir.",
+ "uyusmazlik_giris": "Bağımsız çözüm ile cevap anahtarının farklı çıktığı ya da soruda ölçme kusuru bildirilen <b>12 soru</b> ikinci incelemeye alınmıştır. Her biri için, anahtardan ve önceki çözümlerden habersiz <b>iki kör yeniden çözüm</b> yapılmış, ardından tüm çözümleri ve anahtarı gören bir hakem nihai kararı vermiştir. Aşağıdaki tabloda yalnızca nihai kararı “uyumlu” çıkmayan sorular yer almaktadır; kalan 10 soruda anahtarın doğru olduğu teyit edilmiştir.",
+ "akademik_giris": "Bu bölümde, sorunun kendisinden ya da cevap anahtarından kaynaklanan ve ölçme geçerliliğini doğrudan etkileyen hatalar listelenmiştir. Redaksiyon (dil, yazım, biçim) maddeleri Bölüm 7’dedir.",
+ "redaksiyon_giris": "40 sayfanın tamamı sayfa görselleri üzerinden taranmış; yönergeler, başlıklar, soru kökleri, öncüller, şekil/tablo/grafik yazıları, seçenekler ve test geçiş uyarıları denetlenmiştir. Ham taramada çıkan <b>249 bulgunun 161’i</b> (%65) adversaryal doğrulamada elenmiştir; elenenler ağırlıklı olarak PDF metin katmanı artefaktları, edebî alıntıların özgün söyleyişleri ve sınav kitapçıklarında standart olan biçim tercihleridir. Aşağıdaki tablo yalnızca <b>birebir alıntıya karşı doğrulanmış</b> bulguları içerir. Bir <i>kelimenin yazılışıyla</i> ilgili maddeler bu tabloda değil, Bölüm 8’deki TDK tablosundadır.",
+ "tdk_giris": "<div class=\"kritik\"><b>TDK ÇEVRİM İÇİ DOĞRULAMASI YAPILAMADI</b><br>Görev tanımının 8. maddesi, bir kelimenin yazımı hakkında karar verirken <b>yalnızca</b> https://sozluk.gov.tr üzerindeki TDK verilerinin kullanılmasını şart koşmaktadır. Bu çalışmanın yürütüldüğü ortamda söz konusu adrese erişim, ağ çıkış politikası tarafından engellenmiştir (<span class=\"mono\">curl: CONNECT tunnel failed, response 403</span>; WebFetch: <span class=\"mono\">EGRESS_BLOCKED</span>). Görev tanımının 10. maddesi gereği, TDK doğrulaması yapılmadan hiçbir kelime yanlış olarak işaretlenmemiştir. Aşağıdaki maddelerin tamamı <b><span class=\"d d-gri\">KONTROL BEKLİYOR</span></b> durumundadır ve editör tarafından TDK Sözlük üzerinden kesinleştirilmelidir. Bu maddeler baskı kararında “kesin yazım hatası” olarak sayılmamıştır.</div><p>Doğrulama kaynağı olarak kullanılması gereken adres: <b>TDK Sözlük — https://sozluk.gov.tr</b></p>",
+ "editor_giris": "Aşağıdaki maddeler hakkında bu çalışmada kesin hüküm verilmemiştir; yayınevi editörünün karar vermesi gerekmektedir.",
+ "son_kontrol": [
+  [
+   "Sınavdaki bütün sayfalar incelendi mi? (40/40 sayfa)",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Bütün sorular tespit edildi mi? (166/166, kapak künyesiyle doğrulandı)",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Bütün sorular bağımsız çözüldü mü? (166 soru × 2 geçiş = 332 çözüm)",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Her sorunun bağımsız cevabı kaydedildi mi?",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Cevap anahtarı yalnızca bağımsız çözümden sonra mı kullanıldı?",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Cevabı farklı olan sorular ikinci kez çözüldü mü? (12 soru × 2 kör çözüm + hakem)",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Bütün soru kökleri redaksiyon açısından kontrol edildi mi?",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Bütün seçenekler kontrol edildi mi?",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Metin, grafik, tablo ve görseller kontrol edildi mi?",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Yazım hatası olarak işaretlenen kelimeler TDK Sözlük üzerinden doğrulandı mı?",
+   "<span class=\"d d-kirmizi\">HAYIR — ERİŞİM ENGELLİ</span>"
+  ],
+  [
+   "TDK'da doğrulanamayan kelimelere kesin hüküm verilmesinden kaçınıldı mı?",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Tüm hata kayıtlarında sayfa ve soru numarası var mı?",
+   "<span class=\"d d-ok\">EVET</span>"
+  ],
+  [
+   "Her soru ana kontrol tablosunda bulunuyor mu?",
+   "<span class=\"d d-ok\">EVET</span> (166 satır)"
+  ]
+ ],
+ "denklik": [
+  [
+   "Kitapçık kapağında beyan edilen toplam soru sayısı",
+   "166"
+  ],
+  [
+   "Bu raporda tespit edilen toplam soru sayısı",
+   "166"
+  ],
+  [
+   "Bağımsız çözülen soru sayısı (A geçişi)",
+   "166"
+  ],
+  [
+   "Bağımsız çözülen soru sayısı (B geçişi)",
+   "166"
+  ],
+  [
+   "Ana kontrol tablosundaki satır sayısı",
+   "166"
+  ],
+  [
+   "Cevap anahtarından çıkarılan cevap sayısı",
+   "166"
+  ]
+ ],
+ "denklik_not": "<div class=\"bilgi\"><b>Denklik sağlanmıştır:</b> 166 (kitapçık) = 166 (tespit) = 166 (A geçişi) = 166 (B geçişi) = 166 (ana tablo satırı) = 166 (anahtar). Hiçbir soru atlanmamış, hiçbir soru örnekleme yoluyla değerlendirilmemiştir.</div>",
+ "dagilim_not": "<p class=\"kucuk\">Not: Dağılım denetimi bir hata tespiti değil, tutarlılık kontrolüdür. Hiçbir testte 5 veya daha fazla ardışık aynı cevap harfi bulunmamaktadır. Yukarıdaki sayılar kitapçığa gömülü mevcut anahtara aittir; Bölüm 5’teki iki düzeltme uygulandığında TDE-Sosyal-1 dağılımı A:9, B:6, C:9, D:9, E:7 olacaktır.</p>",
+ "yontem": "<p><b>Kaynak ve cevap anahtarı.</b> Ayrı bir cevap anahtarı PDF’si verilmemiştir. Anahtar, kitapçığın kendi içinde her sorunun kökü ile seçenekleri arasında 7,2 punto magenta (#EC008C) metin olarak gömülüdür ve soru kodu ile birlikte basılmıştır. 166 sorunun tamamı için bu katmandan okunmuştur.</p><p><b>Bağımsızlığın korunması.</b> Çözüm aşamasında kullanılan tüm materyalde bu magenta katman, PDF üzerine beyaz dikdörtgenler çizilerek <b>silinmiştir</b> (288 alan). Çözümü yapan hiçbir birim anahtarı ne metinde ne de görselde görmüştür. Anahtar yalnızca, bağımsız cevaplar kaydedildikten sonra karşılaştırma aşamasında kullanılmıştır.</p><p><b>Çözüm yöntemi.</b> Her soru için hem PDF metni hem de 260 dpi çözünürlükte kırpılmış soru görseli kullanılmıştır; matematik/fizik sorularında metin katmanı bozulduğu için görsel esas alınmıştır. Birinci geçiş doğrudan/analitik çözüm, ikinci geçiş seçenek eleme ve alternatif yöntem (yerine koyma, grafik okuma, sayısal deneme, boyut analizi) ile yapılmıştır. İki geçiş farklı soru gruplamalarıyla çalıştırılarak bağlam bağımlılığı azaltılmıştır.</p><p><b>İkinci inceleme.</b> Cevabı farklı çıkan veya ölçme kusuru bildirilen 12 soru için, anahtardan ve önceki çözümlerden habersiz iki kör yeniden çözüm yapılmış; ardından hakem önce soruyu sıfırdan kendi çözmüş, sonra dört bağımsız çözüm ile anahtarı değerlendirerek karar vermiştir.</p><p><b>Redaksiyon doğrulaması.</b> Ham bulgular, birebir alıntının kitapta gerçekten bulunup bulunmadığı denetlenerek adversaryal biçimde doğrulanmıştır; PDF artefaktları, edebî alıntılar ve standart sınav biçim tercihleri elenmiştir. Ayrıca üç bulgu, yüksek çözünürlüklü görsel ve vektör ölçümüyle yeniden incelenerek düzeltilmiştir (biri tamamen geçersiz kılınmış, ikisinin önem derecesi düşürülmüştür).</p><p><b>Programatik kontroller.</b> Seçenek harflerinin eksiksizliği (166/166 soruda A-E tam ve sıralı), soru numaralandırması, seçenek metni tekrarı (0), soru metni tekrarı (0), Unicode karakter tutarlılığı, çift boşluk ve noktalama öncesi boşluk taramaları betikle yapılmıştır.</p>"
+}

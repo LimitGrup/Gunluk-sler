@@ -1,0 +1,56 @@
+{
+  "kaynak": "Claude tarafından PDF metin katmanı üzerinde çalıştırılan deterministik betikler (checks.py, roman.py, roman2.py, figs.py)",
+  "bulgular": [
+    {
+      "id": "DET-01",
+      "baslik": "Öncül numaralandırmasında küçük 'l' harfi kullanımı (Roma rakamı I yerine)",
+      "sayfalar": [38, 39, 40],
+      "sorular": "Fen Bilimleri (Biyoloji) 30, 31, 32, 33, 34, 35, 36, 37, 38",
+      "kanit": "Unicode kod noktası incelemesi: bu sorularda öncül ve/veya seçeneklerde U+006C (küçük Latin l) kullanılmış; kitapçığın diğer 32 sorusunda ise U+0049 (büyük I) kullanılmıştır.",
+      "ic_tutarsizlik": {
+        "T4-30": "Öncüller I/II/III (büyük I) — seçenekler l/ll/lll (küçük l)",
+        "T4-32": "Öncüller l/ll/lll (küçük l) — seçenekler I/II/III (büyük I)",
+        "T4-33": "Öncüller küçük l; A) 'Yalnız II' büyük I; B) 'l ve II' AYNI SEÇENEK İÇİNDE karışık; C/D/E küçük l",
+        "T4-35": "Öncüller küçük l, dördüncü öncül 'IV' büyük I ile: 'l - ll - lll - IV'",
+        "T4-37": "Öncüller 'l., ll., lll., lV.' — dördüncü öncül lV (küçük l + V); seçeneklerde 'IV' büyük I ile"
+      },
+      "onem": "ORTA",
+      "kategori": "BICIM",
+      "oneri": "Sayfa 38-40'taki tüm öncül ve seçenek numaralandırmaları büyük Roma rakamı (I, II, III, IV) karakterlerine dönüştürülmelidir."
+    },
+    {
+      "id": "DET-02",
+      "baslik": "Kapakta belirtilen toplam soru sayısı ile adayın yanıtlayabileceği soru sayısı farklı",
+      "sayfalar": [1, 11],
+      "sorular": "Kapak / Sosyal Bilimler-2 yönergesi",
+      "kanit": "Kapak tablosu: 'TOPLAM SORU SAYISI 166'. Sosyal Bilimler-2 yönergesi: DKAB (35-40) VEYA DKAB almayanlar için Felsefe Grubu (41-46). Aday bu iki bloktan yalnızca birini yanıtlar; dolayısıyla yanıtlanabilir soru sayısı 160'tır.",
+      "onem": "ORTA",
+      "kategori": "BICIM",
+      "oneri": "Kapakta 'TOPLAM SORU SAYISI 160 (Sosyal Bilimler-2 testinde 46 sorudan 40'ı yanıtlanır)' benzeri bir açıklama eklenmesi."
+    },
+    {
+      "id": "DET-03",
+      "baslik": "Kapakta yazan sınav süresi ÖSYM AYT süresinden farklı",
+      "sayfalar": [1],
+      "sorular": "Kapak",
+      "kanit": "Kapak: 'SINAV SÜRESİ (DAKİKA) 165 dk.'. ÖSYM AYT oturumu 160 soru için 180 dakikadır.",
+      "onem": "DUSUK",
+      "kategori": "BICIM",
+      "oneri": "Gerçek sınav koşullarını simüle etmek amaçlanıyorsa 180 dk. olarak güncellenmeli; kısaltma bilinçliyse editör onayı alınmalı."
+    }
+  ],
+  "dogrulanan_yanlis_pozitifler": [
+    "Seçenek harfi taraması: T3-11, T3-35, T3-36, T3-38, T4-6 sorularında A-E dışı harf görülmesi, şekil üzerindeki nokta/yön etiketlerinden (A, B, C, D, E köşe adları; GD, KB yön kısaltmaları) kaynaklanmaktadır. 166 sorunun tamamında A-E seçenek harfleri eksiksiz ve sıralıdır.",
+    "Metin katmanındaki '®' karakteri: sayfa 40 soru 40'ta baskıda '→' (ok) olarak görünmektedir; sembol fontu kaynaklı çıkarım artefaktıdır, baskı hatası değildir.",
+    "Metin katmanındaki '`' karakteri: ASEMBOL adlı sembol fontundan gelen madde imi/satır ayracıdır; baskıda sorun oluşturmamaktadır.",
+    "'£', 'é', 'ÿ', 'Á', 'Â', 'Î' karakterleri: matematik/fizik sembol fontlarının (≤, açı, üçgen, vektör) metin katmanındaki karşılıklarıdır.",
+    "Seçenek metni tekrarı: 166 sorunun hiçbirinde aynı soru içinde birebir tekrar eden seçenek yoktur.",
+    "Soru metni tekrarı: testler arasında birebir tekrar eden soru yoktur.",
+    "Çift boşluk / noktalama öncesi boşluk: metin katmanında tespit edilmemiştir.",
+    "Ardışık aynı cevap harfi: hiçbir testte 5 veya daha fazla ardışık aynı harf yoktur."
+  ],
+  "tdk_erisim": {
+    "durum": "ERISIM YOK",
+    "detay": "https://sozluk.gov.tr adresine bu oturumun ağ çıkış politikası (egress proxy) tarafından erişim engellenmiştir. curl: CONNECT tunnel failed, response 403. WebFetch: EGRESS_BLOCKED. Alternatif kaynak kullanımı prompt tarafından yasaklandığı için hiçbir kelime hakkında kesin yazım hükmü verilmemiştir."
+  }
+}

@@ -1,0 +1,74 @@
+@page {
+  size: A4 portrait; margin: 18mm 14mm 16mm 14mm;
+  @top-center { content: "FINALE DOĞRU KURS — AYT DENEME 1A · Baskı Öncesi Akademik Çözüm ve Redaksiyon Kontrol Raporu";
+                font-family: "DejaVu Sans"; font-size: 6.6pt; color: #7a7a7a; }
+  @bottom-center { content: "Sayfa " counter(page) " / " counter(pages);
+                   font-family: "DejaVu Sans"; font-size: 7.5pt; color: #555; }
+}
+@page landscape { size: A4 landscape; margin: 14mm 12mm; }
+@page :first { @top-center { content: none } @bottom-center { content: none } }
+.landscape { page: landscape; }
+
+html { font-family: "DejaVu Sans", "Liberation Sans", sans-serif; font-size: 8.6pt; color: #1c1c1c; }
+body { margin: 0; }
+h1 { font-size: 17pt; margin: 0 0 4mm 0; color: #10243f; }
+h2 { font-size: 12.5pt; margin: 9mm 0 2.5mm 0; color: #10243f;
+     border-bottom: 1.6pt solid #10243f; padding-bottom: 1.4mm; break-after: avoid; }
+h3 { font-size: 10pt; margin: 5mm 0 1.8mm 0; color: #24425f; break-after: avoid; }
+h4 { font-size: 9pt; margin: 3.5mm 0 1.2mm 0; color: #333; break-after: avoid; }
+p  { margin: 0 0 2mm 0; line-height: 1.45; text-align: justify; }
+ul, ol { margin: 0 0 2.5mm 0; padding-left: 5.5mm; } li { margin-bottom: 1.1mm; line-height: 1.42; }
+.section { break-before: page; }
+
+table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm 0; font-size: 7.3pt; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th { background: #10243f; color: #fff; font-weight: bold; text-align: left;
+     padding: 1.5mm 1.2mm; border: 0.4pt solid #10243f; font-size: 7.1pt; }
+td { padding: 1.3mm 1.2mm; border: 0.4pt solid #c3ccd6; vertical-align: top; line-height: 1.32; }
+tbody tr:nth-child(even) td { background: #f3f6f9; }
+td.c, th.c { text-align: center; } td.n { text-align: right; }
+td.mono { font-family: "DejaVu Sans Mono", monospace; font-size: 6.8pt; }
+
+.kapak { text-align: center; padding-top: 45mm; break-after: page; }
+.kapak .kicker { font-size: 9pt; letter-spacing: 3pt; color: #6a7b8c; text-transform: uppercase; }
+.kapak h1 { font-size: 26pt; margin: 6mm 0 2mm 0; line-height: 1.18; }
+.kapak .sub { font-size: 13pt; color: #24425f; margin-bottom: 12mm; }
+.kapak .meta { display: inline-block; text-align: left; border: 0.8pt solid #c3ccd6;
+               padding: 6mm 9mm; font-size: 9pt; line-height: 1.85; background: #f7f9fb; }
+.kapak .meta b { display: inline-block; min-width: 46mm; color: #10243f; }
+
+.karar { border: 2pt solid; padding: 4.5mm 5mm; margin: 3mm 0 4mm 0; break-inside: avoid; }
+.karar .baslik { font-size: 13pt; font-weight: bold; margin-bottom: 2mm; }
+.karar.sari { border-color: #b8860b; background: #fdf8e8; } .karar.sari .baslik { color: #8a6100; }
+.karar.kirmizi { border-color: #a11; background: #fdecec; } .karar.kirmizi .baslik { color: #8a0f0f; }
+.karar.yesil { border-color: #1a7a3c; background: #edf8f0; } .karar.yesil .baslik { color: #12602e; }
+
+.uyari { border-left: 3pt solid #b8860b; background: #fdf8e8; padding: 3mm 4mm; margin: 3mm 0; break-inside: avoid; }
+.bilgi { border-left: 3pt solid #24425f; background: #f2f5f8; padding: 3mm 4mm; margin: 3mm 0; break-inside: avoid; }
+.kritik { border-left: 3pt solid #a11; background: #fdecec; padding: 3mm 4mm; margin: 3mm 0; break-inside: avoid; }
+
+.rozet { display: inline-block; padding: 0.4mm 1.4mm; border-radius: 1mm; font-size: 6.6pt;
+         font-weight: bold; white-space: nowrap; }
+.r-kritik { background: #a11; color: #fff; } .r-yuksek { background: #d2691e; color: #fff; }
+.r-orta { background: #b8860b; color: #fff; } .r-dusuk { background: #5c7a99; color: #fff; }
+.r-ok { background: #1a7a3c; color: #fff; } .r-bekle { background: #6b7280; color: #fff; }
+
+.ozet-kutu { display: table; width: 100%; margin: 3mm 0; }
+.istatistik td { font-size: 8.6pt; padding: 2mm; }
+.istatistik td.n { font-weight: bold; font-size: 10pt; color: #10243f; }
+.kucuk { font-size: 7pt; color: #555; }
+.alinti { font-style: italic; }
+
+/* Durum rozetleri (emoji yerine — DejaVu'da emoji glifi yok) */
+.d { display:inline-block; padding:0.3mm 1.2mm; border-radius:0.8mm; font-size:6.5pt;
+     font-weight:bold; white-space:nowrap; line-height:1.3; }
+.d-ok      { background:#e4f3e9; color:#12602e; border:0.4pt solid #1a7a3c; }
+.d-kirmizi { background:#fbe3e3; color:#8a0f0f; border:0.4pt solid #a11; }
+.d-turuncu { background:#fdeadb; color:#8a4a00; border:0.4pt solid #d2691e; }
+.d-sari    { background:#fdf6e0; color:#7a5600; border:0.4pt solid #b8860b; }
+.d-gri     { background:#eceff2; color:#3f4b57; border:0.4pt solid #6b7280; }
+.d-yesil   { background:#e4f3e9; color:#12602e; border:0.4pt solid #1a7a3c; }
+.nokta { font-weight:bold; }
+.nokta-k { color:#a11; } .nokta-y { color:#d2691e; } .nokta-o { color:#b8860b; }
+.nokta-g { color:#1a7a3c; } .nokta-b { color:#6b7280; }

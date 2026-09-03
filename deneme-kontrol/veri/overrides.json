@@ -1,0 +1,22 @@
+{
+  "aciklama": "Claude'un, doğrulama ajanlarının çıktısı üzerinde yüksek çözünürlüklü görsel inceleme ve vektör ölçümüyle yaptığı nihai düzeltmeler.",
+  "kurallar": [
+    {
+      "eslesme": {"sayfa": 29, "soru": "36"},
+      "islem": "GECERSIZ",
+      "gerekce": "Yanlış pozitif. 900 dpi büyütme ile doğrulandı: A(ABD) ifadesinin üzerindeki simge TABANI KAPALI ÜÇGEN (△), aynı sayfadaki m(HAB)/m(BAC) ifadelerinde kullanılan AÇIK YAY (açı) simgesinden farklıdır. A(△ABD) alan gösterimi Türkçe matematik yayıncılığında standart ve doğru kullanımdır. Doğrulama ajanı iki simgeyi karıştırmıştır."
+    },
+    {
+      "eslesme": {"sayfa": 29, "soru": "35"},
+      "islem": "ONEM_DEGISTIR",
+      "yeni_onem": "ORTA",
+      "gerekce": "Bulgu geçerli: vektör ölçümüyle doğrulandı — sarı gönyenin köşesi (97,8; 280,0), masanın sol alt köşesi ise (97,8; 296,1); 'A' etiketi köşeye konmuş, oysa hem x açısının hem de m(BAC)=30° açısının tepe noktası gönyenin köşesidir. Ancak her iki nokta da masanın SOL KENARI üzerinde olduğundan AH ışını aynı doğrultudadır ve soru tek doğru cevaba ulaşır (∠GFE=80° → AC doğrultusu 40°, ∠BAC=30° → x=20°, anahtar B ile uyumlu). Ölçme geçerliliği bozulmadığı için önem YÜKSEK'ten ORTA'ya indirilmiştir."
+    },
+    {
+      "eslesme": {"sayfa": 21, "soru": "4"},
+      "islem": "ONEM_DEGISTIR",
+      "yeni_onem": "ORTA",
+      "gerekce": "Bulgu geçerli: grafiğin sağ ucunda (3,0) dolu nokta ile açık uç konvansiyonu kullanılmışken sol uç x≈-2,6'da işaretsiz kesilmiştir; bu hâliyle seçeneklerdeki a=-4 ve a=-6 değerleri tanım kümesi dışında kalır. Ancak E dışındaki hiçbir seçenek eşitsizliği sağlamadığından (A: her iki değer de negatif → çarpım pozitif; B ve D: f değeri 0 → çarpım 0; C: her iki değer de pozitif) doğru cevap değişmemektedir. Ölçme sonucu etkilenmediği için önem ORTA'ya indirilmiştir; sol uca ok ucu eklenmesi önerilir."
+    }
+  ]
+}
