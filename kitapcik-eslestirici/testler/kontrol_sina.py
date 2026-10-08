@@ -63,6 +63,8 @@ def main(app, klasor):
          "ortaokul_dogru_eslesme.json"),
         ("ortaokul_baski", "ORTAOKUL", "ortaokul_A.pdf", "ortaokul_B_baski.pdf",
          "ortaokul_dogru_eslesme.json"),
+        ("iki_baski", "ORTAOKUL", "ortaokul_A_baski.pdf", "ortaokul_B_baski.pdf",
+         "ortaokul_dogru_eslesme.json"),
         ("tyt", "TYT", "tyt_A.pdf", "tyt_B.pdf", "tyt_dogru_eslesme.json"),
         ("tyt_nokta", "TYT", "tyt_nokta_A.pdf", "tyt_nokta_B.pdf",
          "tyt_dogru_eslesme.json"),
@@ -72,6 +74,8 @@ def main(app, klasor):
         temiz_hata += sum(1 for s in sorunlar if s["onem"] == "HATA")
     _s, sorunlar = calistir(m, klasor, "hatali", "ORTAOKUL", "ortaokul_A.pdf",
                             "ortaokul_B_hatali.pdf")
+    _s, sorunlar = calistir(m, klasor, "hatali_iki_baski", "ORTAOKUL",
+                            "ortaokul_A_baski.pdf", "ortaokul_B_hatali_baski.pdf")
     print("\nBilinçli eklenen hatalar:")
     print((klasor / "hatalar.txt").read_text(encoding="utf-8"))
     print(f"Temiz çiftlerde toplam HATA: {temiz_hata}")

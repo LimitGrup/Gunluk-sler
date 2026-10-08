@@ -8,6 +8,7 @@ Kullanım:  python3 ornek_pdf_uret.py <çıktı_klasörü>
 Üretilenler:
   ortaokul_A.pdf, ortaokul_B.pdf          — temiz çift (B, A'nın karıştırılmışı)
   ortaokul_B_baski.pdf                    — B, magenta cevaplar olmadan (baskı)
+  ortaokul_A_baski.pdf                    — A, magenta cevaplar olmadan (baskı)
   ortaokul_B_hatali.pdf + hatalar.txt     — bilinçli hatalar eklenmiş B
   tyt_A.pdf, tyt_B.pdf                    — sabit TYT yapısı için çift
 """
@@ -354,6 +355,7 @@ def main(cikti):
     dizgile(a, "A", "26270704", cikti / "ortaokul_A.pdf")
     dizgile(b, "B", "26270705", cikti / "ortaokul_B.pdf")
     dizgile(b, "B", "26270705", cikti / "ortaokul_B_baski.pdf", cevapli=False)
+    dizgile(a, "A", "26270704", cikti / "ortaokul_A_baski.pdf", cevapli=False)
 
     # Doğru eşleşme (sınama için): A no -> B no
     ha, hb = numara_haritasi(a), numara_haritasi(b)
@@ -433,6 +435,8 @@ def main(cikti):
     notlar.append(f"Sosyal B-{n9}: B-{n9k} ile aynı soru tekrar basılmış "
                   f"(asıl soru yok)")
     dizgile(b, "B", "26270705", cikti / "ortaokul_B_hatali.pdf", oynama=oynama)
+    dizgile(b, "B", "26270705", cikti / "ortaokul_B_hatali_baski.pdf",
+            cevapli=False, oynama=oynama)
     (cikti / "hatalar.txt").write_text("\n".join(notlar) + "\n", encoding="utf-8")
 
     # --- TYT çifti -------------------------------------------------------------

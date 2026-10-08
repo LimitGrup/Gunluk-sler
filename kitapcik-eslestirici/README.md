@@ -69,5 +69,5 @@ eklenir: eksik soru, yanlış grup başlığı, mükerrer numara, kelime farkı,
 
 v2.19 sonuçları:
 
-- Temiz çiftlerde 0 hata, 0 uyarı; eşleşme doğruluğu %100.
-- Hatalı B'de 9 hatanın 9'u yakalanıyor.
+- Temiz çiftlerde (iki kitapçığın da cevapsız baskı olduğu çift dahil) 0 hata, 0 uyarı; eşleşme doğruluğu %100.
+- Hatalı B'de 9 hatanın 9'u yakalanıyor. İki kitapçık da cevapsız baskıyken cevap farkı dışındaki 8 hatanın 8'i yakalanıyor (cevap baskıda görünmediği için kıyaslanamaz).
