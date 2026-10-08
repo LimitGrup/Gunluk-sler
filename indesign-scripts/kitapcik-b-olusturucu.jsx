@@ -1,5 +1,5 @@
 // =============================================================
-//  KİTAPÇIK B OLUŞTURUCU  v4.19
+//  KİTAPÇIK B OLUŞTURUCU  v4.20
 //  (v4.15: özel havuzlar + ikinci şans + kendini teşhis eden bekçi
 //   + bağlı-görsel sertleştirme + ortaokul kapısına belge-içi yedek.
 //   v4.16: sade panel. v4.17: kompakt seçenekler geri + doğal havuz yazımı
@@ -12,7 +12,13 @@
 //   v4.19: ORTAK METİN — "8 ve 9.", "1, 2 ve 3.", "6. ve 7.", "5 ile 8.",
 //   "13. soruyu ... göre" yönergeleri tanınır (önceden yalnız "8-9.");
 //   metni taşıyan soru ve yönergesiz dış göndermeli soru yerinde kilitlenir;
-//   soruya ait serbest görsel/şekil/etiket çerçeveleri soruyla birlikte taşınır.)
+//   soruya ait serbest görsel/şekil/etiket çerçeveleri soruyla birlikte taşınır.
+//   v4.20: 10 gerçek A belgesiyle (5-11, TYT, AYT) doğrulandı — HİZA: sorular A'daki
+//   yerlerinde kalır, yalnız üstteki içerik uzarsa itilir (önce boşluk daralır);
+//   sıkıştırma başlık/giriş ile ilk soru arasını daraltmaz; sütun ayırıcı çizgi blokla
+//   (ve blok takasında karşı sayfaya) taşınır; dekor şekiller/başlık şeritleri ve
+//   çizgiler bekçide engel sayılır; kendi metnini çapalı taşıyan soru kilitlenmez;
+//   kapaktaki "A KİTAPÇIĞI" harfi B olur; "..._1A" dosyası "..._1B" adını alır.)
 //  Limit Yayınları — A kitapçığından otomatik B kitapçığı üretimi
 //  (Lise AYT/TYT + Ortaokul 5-8. sınıf denemeleri)
 // -------------------------------------------------------------
@@ -78,7 +84,7 @@
     // ---------------------------------------------------------
     // 1) ARAYÜZ
     // ---------------------------------------------------------
-    var dlg = new Window("dialog", "Kitapçık B Oluşturucu v4.19 — Limit Yayınları");
+    var dlg = new Window("dialog", "Kitapçık B Oluşturucu v4.20 — Limit Yayınları");
     dlg.orientation = "column";
     dlg.alignChildren = "fill";
     dlg.margins = 16;
@@ -227,7 +233,7 @@
             if (/(^|[^0-9A-Za-zÇĞİÖŞÜçğıöşü])B([^0-9A-Za-zÇĞİÖŞÜçğıöşü]|$)/.test(_mk)) { _hasB = true; }
         }
         var _nm = decodeURI(srcDoc.fullName.name);
-        var _nmB = /[-_\s]B(?=[.\-_\s]|$)/.test(_nm);
+        var _nmB = /[-_\s\d]B(?=[.\-_\s]|$)/.test(_nm);
         if ((_hasB && !_hasA) || _nmB) {
             if (!confirm("DİKKAT: Bu belge daha önce B'ye çevrilmiş görünüyor" +
                          (_nmB ? " (dosya adında B var)" : " (üst bant B)") +
@@ -236,10 +242,12 @@
     } catch (eBG) {}
 
     function makeBName(base) {
-        var pats = [/-A(?![0-9A-Za-zÇĞİÖŞÜçğıöşü])/, /_A(?![0-9A-Za-zÇĞİÖŞÜçğıöşü])/, /(^|\s)A(?![0-9A-Za-zÇĞİÖŞÜçğıöşü])/];
+        // v4.19: "...DENEME_1A" -> "...DENEME_1B" (4. desen)
+        var pats = [/-A(?![0-9A-Za-zÇĞİÖŞÜçğıöşü])/, /_A(?![0-9A-Za-zÇĞİÖŞÜçğıöşü])/, /(^|\s)A(?![0-9A-Za-zÇĞİÖŞÜçğıöşü])/,
+                    /(\d)A(?![0-9A-Za-zÇĞİÖŞÜçğıöşü])/];
         for (var i = 0; i < pats.length; i++) {
             if (pats[i].test(base)) {
-                if (i === 2) { return base.replace(pats[i], "$1B"); }
+                if (i >= 2) { return base.replace(pats[i], "$1B"); }
                 return base.replace(pats[i], (i === 0 ? "-B" : "_B"));
             }
         }
@@ -303,6 +311,17 @@
         var MIN_GAP = 4;
         var GAP_FLOOR = 8;
         var SCALES = chkCompress.value ? [1.0, 0.9, 0.8, 0.7, 0.6, 0.5] : [1.0];
+        // v4.19 YERLEŞİM MERDİVENİ: önce her soru A'daki yerinde kalır, yalnız üstündeki
+        // içerik uzarsa aşağı itilir ("sabitli"); sığmazsa eski akışlı yerleşim denenir.
+        // Böylece sütun başlangıçları, satır hizaları ve sütun ayırıcıları A'daki gibi kalır.
+        // Sabitli yerleşimde üstteki soru uzarsa önce aradaki boş alan daralır (en az
+        // ANCHOR_MIN_GAP; A'daki boşluk bundan darsa A'daki kadar); yetmezse soru itilir.
+        // (Ölçüm: 10 A belgesinde soru arası boşluk medyanı 117 pt, %5'lik dilim 42 pt.)
+        var ANCHOR_MIN_GAP = chkCompress.value ? 28 : 100000;
+        var LEVELS = [{ s: 1.0, a: true }];
+        (function () {
+            for (var qs = 0; qs < SCALES.length; qs++) { LEVELS.push({ s: SCALES[qs], a: false }); }
+        })();
         var FW_RATIO = 0.55;
 
         function isIntroText(s) {
@@ -693,6 +712,7 @@
                     if (ovC > bestOv) { bestOv = ovC; bestQ = kept[i]; }
                 }
                 if (bestQ === null || bestOv < 0.8 * cArea) { continue; }
+                compCands[k].assigned = true;
                 if (!bestQ.comps) { bestQ.comps = []; }
                 bestQ.comps.push({ it: compCands[k].it, b: [cb[0], cb[1], cb[2], cb[3]], cur: pi });
                 compN++;
@@ -711,6 +731,31 @@
                 rC.h = rC.y2 - rC.y1;
                 rC.shape = ((rC.x2 - rC.x1) > pW * FW_RATIO) ? "FW" : "COL";
                 rC.col = ((rC.x1 + rC.x2) / 2 < midX) ? 0 : 1;
+            }
+            // v4.19 GRAFİK ENGELLER: hiçbir soruya ait olmayan dikdörtgen/görsel/şekil
+            // (başlık şeridi, yan panel, dekor) taşınan soruların girmemesi gereken
+            // engellerdir. A'da zaten bir sorunun içinden geçen arka plan şekilleri hariç.
+            var obstacles = [], dividers = [];
+            for (k = 0; k < compCands.length; k++) {
+                // v4.19: dikey sütun ayırıcı çizgi (blok kayarsa üst ucu blokla birlikte kayar)
+                var cbD = compCands[k].b, cnD = "";
+                try { cnD = compCands[k].it.constructor.name; } catch (eDv) {}
+                if (!compCands[k].assigned && cnD === "GraphicLine" && (cbD[3] - cbD[1]) < 3 && (cbD[2] - cbD[0]) > 30) {
+                    dividers.push({ it: compCands[k].it, b: [cbD[0], cbD[1], cbD[2], cbD[3]] });
+                }
+            }
+            for (k = 0; k < compCands.length; k++) {
+                if (compCands[k].assigned) { continue; }
+                var ob = compCands[k].b;
+                if (ob[2] - ob[0] < 3 || ob[3] - ob[1] < 3) { continue; }   // çizgiler
+                var bgOb = false;
+                for (i = 0; i < kept.length; i++) {
+                    if (kept[i].kind !== "soru") { continue; }
+                    var dvO = Math.min(ob[2], kept[i].y2) - Math.max(ob[0], kept[i].y1);
+                    var dhO = Math.min(ob[3], kept[i].x2) - Math.max(ob[1], kept[i].x1);
+                    if (dvO > 3 && dhO > 3) { bgOb = true; break; }
+                }
+                if (!bgOb) { obstacles.push({ it: compCands[k].it, b: [ob[0], ob[1], ob[2], ob[3]] }); }
             }
             if (compN > 0) {
                 log("Bilgi: s." + pg.name + " — " + compN + " serbest görsel/şekil/etiket çerçevesi ait olduğu soruyla (" +
@@ -779,7 +824,7 @@
             for (k = 0; k < items.length; k++) { if (items[k].y2 > maxB) { maxB = items[k].y2; } }
 
             pageData.push({ blocks: blocks, items: items, HB: maxB + 0.5, introRanges: introRanges,
-                            linkRanges: linkRanges,
+                            linkRanges: linkRanges, obstacles: obstacles, dividers: dividers,
                             bundleWith: -1, name: String(pg.name), ignoredIds: ignoredIds });
         }
 
@@ -1137,9 +1182,14 @@
             if (rL.grup !== 0 || rL.pool > 0 || isLinkZone(rL.sec, rL.zone)) { continue; }
             var hdRaw = String(rL.head || "");
             var ownVisual = rL.hasVisual === true || (rL.comps && rL.comps.length > 0) || hdRaw.indexOf("\uFFFC") >= 0;
-            var hd = trimS(hdRaw.replace(/^[\s\u200B\uFEFF\uFFFC\u009E]+/, "")).substr(0, 160);
-            if (REF_START_RE.test(hd) || REF_ANY_RE.test(hd.substr(0, 100)) ||
-                (!ownVisual && REF_WEAK_RE.test(hd))) {
+            // Gövde, sorunun KENDİ çapalı içeriğiyle (metin kutusu/görsel) başlıyorsa gönderme
+            // o içeriğedir ("1.⏎[metin]⏎Bu metne göre ...") — soru metniyle birlikte taşınır.
+            var hd0 = hdRaw.replace(/^[\s\u200B\uFEFF\u009E]+/, "");
+            if (hd0.charAt(0) === "\uFFFC") { continue; }
+            var hd = trimS(hd0).substr(0, 160);
+            var mAny = REF_ANY_RE.exec(hd0.substr(0, 100)), fpos = hd0.indexOf("\uFFFC");
+            var anyHit = (mAny !== null) && (fpos < 0 || fpos > mAny.index);
+            if (REF_START_RE.test(hd) || anyHit || (!ownVisual && REF_WEAK_RE.test(hd))) {
                 rL.grup = 650000 + k;
                 cueLock.push(tagL);
             }
@@ -1207,9 +1257,17 @@
             return barrier;
         }
 
-        function tryLayoutScale(pd, assign, scale) {
+        function layoutAt(pd, assign, lv) { return tryLayoutScale(pd, assign, LEVELS[lv].s, LEVELS[lv].a); }
+        function tryLayoutScale(pd, assign, scale, anchored) {
             var plc = [];
             var cursor = null, prevBotOld = null;
+            // v4.19 ÜST HİZA: sıkıştırma yalnız SORULAR arasındaki boşluklara uygulanır;
+            // sabit bir bloktan (başlık, test girişi, yönerge, ortak metin) sonraki ilk
+            // soru A'daki uzaklığını korur (aksi hâlde sayfanın soru başlangıç hizası
+            // yukarı kayıyor, sorular üstteki başlık şeridine giriyordu).
+            var prevFixed = false;
+            var regs = [];
+            function ag(x) { return (x <= 0) ? x : ((x < ANCHOR_MIN_GAP) ? x : ANCHOR_MIN_GAP); }
             function gg(x) {
                 if (x <= 0) { return x; }
                 var v = x * scale;
@@ -1226,20 +1284,25 @@
                         if (ntF < cursor + minG - 0.01) { return null; }
                     }
                     cursor = blk.bot; prevBotOld = blk.bot;
+                    prevFixed = true;
                 } else if (blk.type === "FWQ") {
                     var contQ = assign[blk.it.slotKey];
-                    var ntQ = (cursor === null) ? blk.top : (cursor + gg(gap));
+                    var ntQ = (cursor === null) ? blk.top : (cursor + (prevFixed ? gap : (anchored ? ag(gap) : gg(gap))));
+                    if (anchored && ntQ < blk.top) { ntQ = blk.top; }
                     if (isMiddleSchool) {
                         var msFwBarrier = middleSchoolIntroBarrier(pd, blk.it);
                         if (msFwBarrier !== null && ntQ < msFwBarrier) { ntQ = msFwBarrier; }
                     }
                     plc.push({ slot: blk.it, cont: contQ, ny1: ntQ });
                     cursor = ntQ + contQ.h; prevBotOld = blk.bot;
+                    prevFixed = false;
                 } else {
-                    var shift = (cursor === null) ? 0 : ((cursor + gg(gap)) - blk.top);
-                    var regBot = null;
+                    var shift = (cursor === null) ? 0 : ((cursor + (prevFixed ? gap : (anchored ? ag(gap) : gg(gap)))) - blk.top);
+                    if (anchored && shift < 0) { shift = 0; }
+                    regs.push({ top: blk.top, bot: blk.bot, shift: shift });
+                    var regBot = null, regHasQ = false;
                     for (var c2 = 0; c2 < 2; c2++) {
-                        var pB = null, pBold = null;
+                        var pB = null, pBold = null, cPrevFixed = false;
                         for (var t2 = 0; t2 < blk.cols[c2].length; t2++) {
                             var it2 = blk.cols[c2][t2];
                             var g2 = (pBold === null) ? null : (it2.y1 - pBold);
@@ -1252,17 +1315,21 @@
                                 }
                                 pB = it2.y2 + shift; pBold = it2.y2;
                                 if (isMiddleSchool) { pB = it2.y2; }
+                                cPrevFixed = true;
                             } else {
                                 var cont2 = assign[it2.slotKey];
-                                var nt2 = (pB === null) ? (it2.y1 + shift) : (pB + gg(g2));
+                                var nt2 = (pB === null) ? (it2.y1 + shift) : (pB + (cPrevFixed ? g2 : (anchored ? ag(g2) : gg(g2))));
+                                cPrevFixed = false;
+                                regHasQ = true;
                                 if (isMiddleSchool) {
                                     if (pB === null) {
                                         var msBarrier = middleSchoolIntroBarrier(pd, it2);
                                         if (msBarrier !== null && nt2 < msBarrier) { nt2 = msBarrier; }
-                                    } else if (g2 !== null && g2 > MIDDLE_SCHOOL_GAP_CAP) {
+                                    } else if (!anchored && g2 !== null && g2 > MIDDLE_SCHOOL_GAP_CAP) {
                                         nt2 = pB + gg(MIDDLE_SCHOOL_GAP_CAP);
                                     }
                                 }
+                                if (anchored && nt2 < it2.y1 + shift) { nt2 = it2.y1 + shift; }
                                 plc.push({ slot: it2, cont: cont2, ny1: nt2 });
                                 pB = nt2 + cont2.h; pBold = it2.y2;
                             }
@@ -1271,9 +1338,11 @@
                     }
                     cursor = (regBot !== null) ? regBot : (blk.bot + shift);
                     prevBotOld = blk.bot;
+                    prevFixed = !regHasQ;
                 }
                 if (cursor !== null && cursor > pd.HB) { return null; }
             }
+            plc.regs = regs;
             return plc;
         }
 
@@ -1347,16 +1416,45 @@
             return true;
         }
 
+        // v4.19: yerleşim, sayfadaki grafik engellerin (başlık şeridi, dekor) içine girmemeli.
+        function obstacleSafe(pd, plc) {
+            if (!pd.obstacles || pd.obstacles.length === 0 || plc === null) { return true; }
+            for (var qo2 = 0; qo2 < plc.length; qo2++) {
+                var pq = plc[qo2];
+                var r0 = pq.ny1, r1 = pq.slot.x1, r2 = pq.ny1 + (pq.cont.y2 - pq.cont.y1), r3 = pq.slot.x1 + (pq.cont.x2 - pq.cont.x1);
+                for (var ob2 = 0; ob2 < pd.obstacles.length; ob2++) {
+                    var obb = pd.obstacles[ob2].b;
+                    var dvq = Math.min(r2, obb[2]) - Math.max(r0, obb[0]);
+                    var dhq = Math.min(r3, obb[3]) - Math.max(r1, obb[1]);
+                    if (dvq > 1 && dhq > 1) { return false; }
+                }
+            }
+            return true;
+        }
+
         function fitLevel(pd, assign) {
-            for (var si = 0; si < SCALES.length; si++) {
+            for (var si = 0; si < LEVELS.length; si++) {
                 if (isMiddleSchool) {
-                    var middleSchoolPlc = tryLayoutScale(pd, assign, SCALES[si]);
-                    if (middleSchoolPlc !== null && middleSchoolLayoutSafe(pd, middleSchoolPlc)) { return si; }
+                    var middleSchoolPlc = layoutAt(pd, assign, si);
+                    if (middleSchoolPlc !== null && middleSchoolLayoutSafe(pd, middleSchoolPlc) &&
+                        obstacleSafe(pd, middleSchoolPlc)) { return si; }
                     continue;
                 }
-                if (tryLayoutScale(pd, assign, SCALES[si]) !== null) { return si; }
+                var plcF = layoutAt(pd, assign, si);
+                if (plcF !== null && obstacleSafe(pd, plcF)) { return si; }
             }
             return -1;
+        }
+
+        // v4.15/v4.19: sıkıştırmasız güvenli yerleşim (ikinci şans ve sütun içi ikili mod)
+        function strictPlc(pdX, assignX) {
+            for (var sv = 0; sv < 2; sv++) {
+                var pX = tryLayoutScale(pdX, assignX, 1.0, sv === 0);
+                if (pX === null || !obstacleSafe(pdX, pX)) { continue; }
+                if (isMiddleSchool && !middleSchoolLayoutSafe(pdX, pX)) { continue; }
+                return pX;
+            }
+            return null;
         }
 
         function copyAssign(a) {
@@ -1411,11 +1509,7 @@
                     }
                     var trialC = copyAssign(assign);
                     for (k = 0; k < mQ; k++) { trialC[grp[k].slotKey] = contents[permC[k]]; }
-                    if (isMiddleSchool) {
-                        var middleSchoolColPlc = tryLayoutScale(pd, trialC, 1.0);
-                        if (middleSchoolColPlc === null || !middleSchoolLayoutSafe(pd, middleSchoolColPlc)) { continue; }
-                    }
-                    if (tryLayoutScale(pd, trialC, 1.0) !== null) {
+                    if (strictPlc(pd, trialC) !== null) {
                         for (k = 0; k < mQ; k++) { assign[grp[k].slotKey] = contents[permC[k]]; }
                     }
                     continue;
@@ -1428,7 +1522,7 @@
                     for (k = 0; k < mQ; k++) { perms[0].push(mQ - 1 - k); }
                 }
 
-                var best = null, bestD = -1, bestL = 99, bestS = -1;
+                var best = null, bestD = -1, bestL = 99, bestS = -1, bestP = 100000;
                 var feasStrict = [], feasComp = [];
                 for (var pp = 0; pp < perms.length; pp++) {
                     var pr2 = perms[pp];
@@ -1445,12 +1539,23 @@
                         if (disp > 0) { if (lvl === 0) { feasStrict.push(pr2); } else { feasComp.push(pr2); } }
                         continue;
                     }
+                    // v4.19: eşit karışım ve düzeyde, soruları A'daki yerinden en az kaydıran
+                    // permütasyon seçilir (satır hizası korunur).
+                    var pen = 0;
+                    if (disp > bestD || (disp === bestD && lvl <= bestL)) {
+                        var plcP = layoutAt(pd, trial, lvl);
+                        for (k = 0; k < plcP.length; k++) {
+                            var dyP = plcP[k].ny1 - plcP[k].slot.y1;
+                            if (dyP > 0.5 || dyP < -0.5) { pen++; }
+                        }
+                    }
                     var better = (disp > bestD) ||
                                  (disp === bestD && lvl < bestL) ||
-                                 (disp === bestD && lvl === bestL && sumd > bestS);
+                                 (disp === bestD && lvl === bestL && pen < bestP) ||
+                                 (disp === bestD && lvl === bestL && pen === bestP && sumd > bestS);
                     if (better) {
-                        best = pr2; bestD = disp; bestL = lvl; bestS = sumd;
-                        if (disp === mQ && lvl === 0) {
+                        best = pr2; bestD = disp; bestL = lvl; bestS = sumd; bestP = pen;
+                        if (disp === mQ && lvl === 0 && pen === 0) {
                             var isRev = true;
                             for (k = 0; k < mQ; k++) { if (pr2[k] !== mQ - 1 - k) { isRev = false; break; } }
                             if (isRev) { break; }
@@ -1555,7 +1660,7 @@
             // güncel atamalarla yerleşim (kendi sayfasında)
             var lvl = fitLevel(pageData[pdi], assigns[pdi]);
             if (lvl < 0) { return null; }
-            var plcB = tryLayoutScale(pageData[pdi], assigns[pdi], SCALES[lvl]);
+            var plcB = layoutAt(pageData[pdi], assigns[pdi], lvl);
             var aBot = top;
             for (var q2 = 0; q2 < plcB.length; q2++) {
                 var b3 = plcB[q2].ny1 + plcB[q2].cont.h;
@@ -1684,6 +1789,25 @@
                 for (k = 0; k < B1.tail.length; k++) {
                     planB.tailMoves.push({ it: B1.tail[k], ny1: newBotB + (B1.tail[k].y1 - B1.bot) });
                 }
+                // v4.19: soru bandındaki dikey sütun ayırıcıları kendi içerikleriyle birlikte
+                // karşı sayfaya geçer (aksi hâlde ayırıcı, gelen tam genişlik sorunun ortasından geçer).
+                var bandDividers = function (inf) {
+                    var out = [], dl2 = pageData[inf.pdi].dividers || [];
+                    for (var dd = 0; dd < dl2.length; dd++) {
+                        if (dl2[dd].b[0] >= inf.top - 8 && dl2[dd].b[0] < inf.bot) { out.push(dl2[dd]); }
+                    }
+                    return out;
+                };
+                planA.divIn = []; planB.divIn = [];
+                var dvB = bandDividers(B1), dvA = bandDividers(A1);
+                for (k = 0; k < dvB.length; k++) {
+                    var botB = (dvB[k].b[2] >= pageData[B1.pdi].HB - 3) ? pageData[A1.pdi].HB - 0.5 : dvB[k].b[2] + dyToA;
+                    planA.divIn.push({ d: dvB[k], from: B1.pdi, top: dvB[k].b[0] + dyToA, bot: botB });
+                }
+                for (k = 0; k < dvA.length; k++) {
+                    var botA = (dvA[k].b[2] >= pageData[A1.pdi].HB - 3) ? pageData[B1.pdi].HB - 0.5 : dvA[k].b[2] + dyToB;
+                    planB.divIn.push({ d: dvA[k], from: A1.pdi, top: dvA[k].b[0] + dyToB, bot: botA });
+                }
                 pagePlans[A1.pdi] = planA;
                 pagePlans[B1.pdi] = planB;
             } else {
@@ -1692,15 +1816,15 @@
                     log("KRİTİK: Sayfa " + pdP.name + " yerleşimi doğrulanamadı; sayfa değiştirilmedi.");
                     continue;
                 }
-                var placements = tryLayoutScale(pdP, assigns[pi], SCALES[lvlP]);
-                var planN = { list: [], isBundle: false, scale: SCALES[lvlP], slotOf: [] };
+                var placements = layoutAt(pdP, assigns[pi], lvlP);
+                var planN = { list: [], isBundle: false, scale: LEVELS[lvlP].s, slotOf: [], regs: placements.regs };
                 for (k = 0; k < placements.length; k++) {
                     planN.list.push({ cont: placements[k].cont, ny1: placements[k].ny1,
                                       nx1: placements[k].slot.x1, slot: placements[k].slot });
                 }
                 pagePlans[pi] = planN;
-                if (SCALES[lvlP] < 1.0) {
-                    log("Bilgi: s." + pdP.name + " boşluklar %" + Math.round(SCALES[lvlP] * 100) + " ölçeğinde sıkıştırıldı.");
+                if (LEVELS[lvlP].s < 1.0) {
+                    log("Bilgi: s." + pdP.name + " boşluklar %" + Math.round(LEVELS[lvlP].s * 100) + " ölçeğinde sıkıştırıldı.");
                 }
             }
         }
@@ -1723,6 +1847,32 @@
                 } catch (eCp) { okC = false; }
             }
             return okC;
+        }
+
+        // v4.19: iki sütunlu blok kaydıysa, bloğun üstünden başlayan dikey ayırıcının
+        // üst ucunu da aynı miktarda kaydır (alt ucu yerinde kalır).
+        function adjustDividers(pi4, plan4, regs4) {
+            plan4.divMoves = [];
+            var dvs = pageData[pi4].dividers || [];
+            if (!regs4 || dvs.length === 0) { return; }
+            for (var rq = 0; rq < regs4.length; rq++) {
+                var rg = regs4[rq];
+                if (rg.shift < 0.01 && rg.shift > -0.01) { continue; }
+                for (var dq = 0; dq < dvs.length; dq++) {
+                    var dv = dvs[dq];
+                    if (Math.abs(dv.b[0] - rg.top) > 8 || dv.b[0] >= rg.bot) { continue; }
+                    var nTop = dv.b[0] + rg.shift;
+                    if (nTop > dv.b[2] - 10) { continue; }
+                    try { dv.it.geometricBounds = [nTop, dv.b[1], dv.b[2], dv.b[3]]; plan4.divMoves.push(dv); } catch (eDv2) {}
+                }
+            }
+        }
+        function restoreDividers(plan5) {
+            if (!plan5 || !plan5.divMoves) { return; }
+            for (var dr = 0; dr < plan5.divMoves.length; dr++) {
+                try { plan5.divMoves[dr].it.geometricBounds = plan5.divMoves[dr].b.slice(0); } catch (eDv3) {}
+            }
+            plan5.divMoves = [];
         }
 
         // Yerleştir (mutlak konum; sayfa değişimi move ile)
@@ -1748,6 +1898,17 @@
                                               pe.ny1 + offT + h0, pe.nx1 + offL + w0];
                 pe.cont.compErr = !moveComps(pe.cont, pi, pe.ny1 - pe.cont.y1, pe.nx1 - pe.cont.x1);
                 movedCount++;
+            }
+            if (!plan.isBundle) { adjustDividers(pi, plan, plan.regs); }
+            if (plan.isBundle && plan.divIn) {
+                for (k = 0; k < plan.divIn.length; k++) {
+                    var di = plan.divIn[k];
+                    try {
+                        di.d.it.move(pages[pi]);
+                        di.d.it.geometricBounds = [di.top, di.d.b[1], di.bot, di.d.b[3]];
+                        di.moved = true;
+                    } catch (eDi) { di.err = true; }
+                }
             }
             if (plan.isBundle) {
                 for (k = 0; k < plan.tailMoves.length; k++) {
@@ -1835,6 +1996,49 @@
                                 contRects[a2][4] + " × " + fixRects[f2][4] + ") — sayfa A düzenine geri alındı.");
                             return false;
                         }
+                    }
+                }
+            }
+            // v4.19: içerik × çizgi — A'da bu sayfadaki hiçbir soruyu kesmeyen bir çizgi
+            // (sütun ayırıcı, bölüm çizgisi) taşınan bir sorunun içinden geçmemeli.
+            var compLineIds = {};
+            for (q2 = 0; q2 < plan2.list.length; q2++) {
+                var cpl = plan2.list[q2].cont.comps || [];
+                for (var cl = 0; cl < cpl.length; cl++) { try { compLineIds[cpl[cl].it.id] = true; } catch (eCl) {} }
+            }
+            var linesP = [];
+            try { linesP = pages[pi2].graphicLines; } catch (eLn) { linesP = []; }
+            for (var ln = 0; ln < linesP.length; ln++) {
+                var lid = -1, lgb;
+                try { lid = linesP[ln].id; lgb = linesP[ln].geometricBounds; } catch (eLn2) { continue; }
+                if (compLineIds[lid]) { continue; }
+                var vert = (lgb[3] - lgb[1]) < 3, horz = (lgb[2] - lgb[0]) < 3;
+                if (!vert && !horz) { continue; }
+                var crosses = function (e) {
+                    if (vert) { var lx = (lgb[1] + lgb[3]) / 2; return lx > e[1] + 3 && lx < e[3] - 3 && (Math.min(lgb[2], e[2]) - Math.max(lgb[0], e[0])) > 3; }
+                    var ly = (lgb[0] + lgb[2]) / 2; return ly > e[0] + 3 && ly < e[2] - 3 && (Math.min(lgb[3], e[3]) - Math.max(lgb[1], e[1])) > 3;
+                };
+                var crossedInA = false;
+                for (var oq = 0; oq < origQ0.length; oq++) { if (crosses(origQ0[oq])) { crossedInA = true; break; } }
+                if (crossedInA) { continue; }
+                for (var cq2 = 0; cq2 < contRects.length; cq2++) {
+                    if (crosses(contRects[cq2])) {
+                        log("KRİTİK: s." + pageData[pi2].name + " — " + contRects[cq2][4] +
+                            " sayfadaki bir çizginin (sütun ayırıcı vb.) üstüne düşüyor — sayfa A düzenine geri alındı.");
+                        return false;
+                    }
+                }
+            }
+            // v4.19: içerik × grafik engel (soruya ait olmayan dikdörtgen/görsel/şekil)
+            var obsP = pageData[pi2].obstacles || [];
+            for (var ca = 0; ca < contRects.length; ca++) {
+                for (var oo = 0; oo < obsP.length; oo++) {
+                    var ogb2;
+                    try { ogb2 = obsP[oo].it.geometricBounds; } catch (eOb) { ogb2 = obsP[oo].b; }
+                    if (dOv0(contRects[ca], ogb2)) {
+                        log("KRİTİK: s." + pageData[pi2].name + " — " + contRects[ca][4] +
+                            " sayfadaki görsel/şekil çerçevesine biniyor — sayfa A düzenine geri alındı.");
+                        return false;
                     }
                 }
             }
@@ -1933,6 +2137,15 @@
                 moveComps(c4, c4.page, 0, 0);   // v4.19: bağlı serbest çerçeveler de A yerine
                 c4.compErr = false;
             }
+            restoreDividers(plan3);
+            if (plan3.isBundle && plan3.divIn) {
+                for (var t8 = 0; t8 < plan3.divIn.length; t8++) {
+                    var di3 = plan3.divIn[t8];
+                    if (!di3.moved) { continue; }
+                    try { di3.d.it.move(pages[di3.from]); di3.d.it.geometricBounds = di3.d.b.slice(0); } catch (eDi3) {}
+                    di3.moved = false;
+                }
+            }
             if (plan3.isBundle) {
                 for (var t6 = 0; t6 < plan3.tailMoves.length; t6++) {
                     var it6 = plan3.tailMoves[t6].it;
@@ -1989,12 +2202,6 @@
         // v4.15 İKİNCİ ŞANS: geri alınan sayfalar A'da kalmasın — yalnız
         // sayfa-içi, sıkıştırmasız güvenli karışım denenir ve bekçiden
         // geçerse kabul edilir.
-        function strictPlc(pdX, assignX) {
-            var pX = tryLayoutScale(pdX, assignX, 1.0);
-            if (pX === null) { return null; }
-            if (isMiddleSchool && !middleSchoolLayoutSafe(pdX, pX)) { return null; }
-            return pX;
-        }
         var rescued = [];
         for (pi = 0; pi < pageData.length; pi++) {
             if (!failed[pi]) { continue; }
@@ -2044,7 +2251,7 @@
             if (!anyPerm) { continue; }
             var plcR = strictPlc(pdR, aR);
             if (plcR === null) { continue; }
-            var planR = { list: [], isBundle: false };
+            var planR = { list: [], isBundle: false, regs: plcR.regs };
             for (k = 0; k < plcR.length; k++) {
                 planR.list.push({ cont: plcR[k].cont, ny1: plcR[k].ny1,
                                   nx1: plcR[k].slot.x1, slot: plcR[k].slot });
@@ -2065,6 +2272,7 @@
                 peR.cont.compErr = !moveComps(peR.cont, pi, peR.ny1 - peR.cont.y1, peR.nx1 - peR.cont.x1);
             }
             pagePlans[pi] = planR;
+            adjustDividers(pi, planR, planR.regs);
             if (auditPage(pi)) {
                 var mvR = 0;
                 for (k = 0; k < planR.list.length; k++) {
@@ -2194,7 +2402,35 @@
                 }
             } catch (eMS) {}
             if (bandChg > 0) { log("Master üst bant: " + bandChg + " çerçevede A→B yapıldı."); }
-            if (chg === 0 && bandChg === 0) { log("Bilgi: A içeren bölüm işareti/master bant bulunamadı."); }
+            // v4.19: kapak, arka kapak, anahtar sayfası gibi SORUSUZ sayfalardaki kitapçık harfi
+            // ("A", "A KİTAPÇIĞI"). Soru sayfalarına dokunulmaz (şekillerdeki "A" etiketleri).
+            // Değişim yerinde yapılır; harfin biçimi korunur.
+            var coverChg = [];
+            var BOOK_RE = /K[İI]TAP[ÇC][IİĞ]|kitap[çc][ıiğ]/;
+            var LONE_A = /(^|[^0-9A-Za-zÇĞİÖŞÜçğıöşü])A([^0-9A-Za-zÇĞİÖŞÜçğıöşü]|$)/;
+            for (pi = 0; pi < pageData.length; pi++) {
+                var hasQp = false;
+                pageQuestionWalk(pageData[pi], function (r) { if (r.kind === "soru") { hasQp = true; } });
+                if (hasQp) { continue; }
+                var apC = [];
+                try { apC = pages[pi].allPageItems; } catch (eCv) { apC = []; }
+                for (i = 0; i < apC.length; i++) {
+                    if (apC[i].constructor.name !== "TextFrame") { continue; }
+                    var stC = null, cC = "";
+                    try { stC = apC[i].parentStory; cC = trimS(String(stC.texts[0].contents)); } catch (eCv2) { continue; }
+                    if (cC.length === 0 || cC.length > 40) { continue; }
+                    var bandA = /^A([\s\u00A0\u2000-\u200B\u202F\u205F\u3000]+A)*$/.test(cC);
+                    if (!bandA && !(BOOK_RE.test(cC) && LONE_A.test(cC))) { continue; }
+                    clearGrep();
+                    app.findGrepPreferences.findWhat = "(?<![\\w])A(?![\\w])";
+                    var fA = stC.findGrep();
+                    clearGrep();
+                    for (var fa = fA.length - 1; fa >= 0; fa--) { fA[fa].contents = "B"; }
+                    if (fA.length > 0) { coverChg.push("s." + pageData[pi].name + " \u201C" + cC + "\u201D"); }
+                }
+            }
+            if (coverChg.length > 0) { log("Sorusuz sayfada kitapçık harfi A→B: " + coverChg.join(", ")); }
+            if (chg === 0 && bandChg === 0 && coverChg.length === 0) { log("Bilgi: A içeren bölüm işareti/master bant bulunamadı."); }
         }
 
         // -----------------------------------------------------
@@ -2329,6 +2565,6 @@
               "\n\nB dosyası yarım kalmış olabilir; orijinal A dosyanız diskte değişmedi.");
         return;
     }
-    alert("Kitapçık B v4.19 — Tamamlandı ✔\n" + summaryHead + LOG.join("\n"));
+    alert("Kitapçık B v4.20 — Tamamlandı ✔\n" + summaryHead + LOG.join("\n"));
 
 })();
