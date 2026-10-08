@@ -172,7 +172,8 @@ class Dizgi:
             self.sayfa.draw_line((W / 2, self.y - 4), (W / 2, ALT), color=GRI,
                                  dashes="[2] 2", width=0.5)
 
-    def soru(self, no, govde, secenekler, cevap, sekil=None, numara_metni=None):
+    def soru(self, no, govde, secenekler, cevap, sekil=None, numara_metni=None,
+             cevap_acik=False):
         _x, gen = self.sutun_x()
         sat_g = self._sar(govde, gen - 20, kalin=False)
         iki_sutunlu_sik = self.tek and all(
@@ -188,7 +189,7 @@ class Dizgi:
         self.y += 12
         y_no = self.y
         self._yaz(x, y_no, numara_metni or f"{no}.", kalin=True)
-        if self.cevapli:
+        if self.cevapli or cevap_acik:
             self._yaz(x + 2, y_no + 14, cevap, boy=9, kalin=True, renk=MAGENTA)
         for i, s in enumerate(sat_g):
             if i:
@@ -307,7 +308,8 @@ def dizgile(testler, harf, kod, yol, cevapli=True, oynama=None,
                         continue
                     d.soru(no, o.get("govde", s["govde"]), o.get("sik", s["sik"]),
                            o.get("cevap", s["cevap"]), sekil=o.get("sekil", s["sekil"]),
-                           numara_metni=o.get("numara"))
+                           numara_metni=o.get("numara"),
+                           cevap_acik=o.get("cevap_acik", False))
     d.kaydet(yol)
 
 
@@ -434,9 +436,27 @@ def main(cikti):
                                "cevap": s9["cevap"], "sekil": s9["sekil"]}
     notlar.append(f"Sosyal B-{n9}: B-{n9k} ile aynı soru tekrar basılmış "
                   f"(asıl soru yok)")
+    # 10) Metin ile altındaki sorular uyumsuz: iki grubun metinleri yer değiştirmiş
+    birim_ilk, no_ = [], 0
+    for blk in b[0]["dersler"][0][1]:
+        if blk["parca"]:
+            birim_ilk.append((no_ + 1, blk))
+        no_ += len(blk["sorular"])
+    (n1, g1), (n2, g2) = birim_ilk[0], birim_ilk[1]
+    oynama[("parca", 0, n1)] = g2["parca"]
+    oynama[("parca", 0, n2)] = g1["parca"]
+    notlar.append(f"Türkçe B {n1}. ve {n2}. sorulardan başlayan grupların metinleri "
+                  f"yer değiştirmiş (metin–soru uyumsuz)")
     dizgile(b, "B", "26270705", cikti / "ortaokul_B_hatali.pdf", oynama=oynama)
+    # 11) Yalnızca baskı varyantında: bir soruda cevap harfi açık kalmış
+    n11 = b_no_bul(2, lambda n, s: n == 12)
+    oynama_baski = dict(oynama)
+    oynama_baski[("soru", 2, n11)] = {**oynama.get(("soru", 2, n11), {}),
+                                      "cevap_acik": True}
     dizgile(b, "B", "26270705", cikti / "ortaokul_B_hatali_baski.pdf",
-            cevapli=False, oynama=oynama)
+            cevapli=False, oynama=oynama_baski)
+    notlar.append(f"(yalnızca baskı varyantında) Matematik B-{n11}: cevap harfi "
+                  f"açık kalmış")
     (cikti / "hatalar.txt").write_text("\n".join(notlar) + "\n", encoding="utf-8")
 
     # --- TYT çifti -------------------------------------------------------------

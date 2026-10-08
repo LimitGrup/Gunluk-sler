@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.19)
+# Kitapçık Eşleştirici (v2.20)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -9,47 +9,68 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
 EŞLEŞTİR'in çalışma mantığı değiştirilmedi. Örnek kitapçıklarda Excel çıktısı v2.18 ile hücre hücre aynıdır (`testler/eslestir_sina.py`).
 
-## A–B KONTROL neye bakar?
+## A–B KONTROL: sorunsuz baskı kontrolü
+
+Cevap kapalı **baskı PDF'leri** için tasarlandı; cevap açık PDF'lerle de çalışır. Cevap açık
+PDF'lerde ek olarak A ve B'nin cevap harfleri de kıyaslanır.
 
 Her kitapçık önce **kendi içinde**, sonra **A ile B karşılıklı** denetlenir.
 
-1. **Numaralandırma (A ve B ayrı ayrı):** Her testte 1'den N'e eksiksiz gidiyor mu? Atlanan numara, mükerrer
-   numara ("8." iki kez) ya da sırasız numaralı şıklı soru varsa yerini ve büyük olasılıkla doğru
-   numarayı yazar. Bir sorunun içinde ikinci bir şık takımı varsa (numarası düşmüş soru) onu da bildirir.
-2. **Metne bağlı grup başlıkları (A ve B ayrı ayrı):** "14 ve 15. soruları…", "1-4. soruları…",
-   "12. ve 13. soruları…" gibi başlıklardaki numaralar, altındaki sorularla aynı mı?
-3. **A'daki her soru B'de var mı?** Eşleştirme her testin içinde, dersler arasında yapılır
-   (soru başka dersin aralığına kaymışsa yakalanır). Önce magenta soru kodu kullanılır; kod yoksa
-   gövde + şıkların tam metni karşılaştırılır (Macar algoritması, birebir atama).
-4. **Eşleşen her çift için:**
-   - Metin ve şıklar birebir aynı mı? Farkı kelime düzeyinde gösterir.
-   - Cevap harfi aynı mı? (renkli cevap ya da cevap anahtarı txt)
+1. **Açık kalan cevap:** Baskıda görünmemesi gereken renkli cevap harfi ya da soru kodu arar.
+   Harf soru numarasının altında, şıkların solundaki boşlukta ya da magenta renkte olabilir.
+   Şekil içindeki renkli etiketler (haritadaki kırmızı A, B, C gibi) cevap sayılmaz. Kitapçığın
+   tamamı cevaplıysa tek bir "bu kitapçıkta cevaplar açık" uyarısı verilir.
+2. **Numaralar branş branş düzgün mü (A ve B ayrı ayrı):** Her testte 1'den N'e eksiksiz gidiyor
+   mu? Atlanan numara, mükerrer numara ("8." iki kez) ya da sırasız numaralı şıklı soru varsa
+   yerini ve büyük olasılıkla doğru numarayı yazar. Bir sorunun içinde ikinci şık takımı varsa
+   (numarası düşmüş soru) onu da bildirir.
+3. **Metne bağlı grup başlıkları (A ve B ayrı ayrı):** "14 ve 15. soruları…", "1-4. soruları…",
+   "12. ve 13. soruları…" gibi başlıklardaki numaralar altındaki sorularla aynı mı?
+4. **A'daki her soru B'de var mı?** Soru metni ve şıklarıyla birlikte aranır. LGS düzeninde
+   sorunun kendi metni sorunun parçası sayılır. Eşleştirme her testin içinde, dersler arasında
+   yapılır; soru başka dersin aralığına kaymışsa yakalanır.
+5. **Eşleşen her çift için:**
+   - Metin ve şıklar birebir aynı mı? Fark kelime düzeyinde gösterilir.
    - Ders aynı mı?
-   - Görüntü aynı mı? (şekil, tablo, grafik farkı) Metinde görünmeyen şekil değişikliğini
-     yakalamak için soru bölgesi A ve B'de görüntü olarak üst üste bindirilir.
-5. **Metne bağlı gruplar A ↔ B:** A'daki grubun soruları B'de yine yan yana ve aynı başlık altında mı?
-   Parça metni ve görüntüsü aynı mı?
-6. **Aynı soru iki kez basılmış mı?** (bir kitapçıkta iki sorunun içeriği aynıysa)
-7. **Otomatik yapıda (Lise / Ortaokul):** A ve B'nin test yapısı (test adları, soru sayıları) aynı mı?
+   - Cevap harfi aynı mı? (cevap açık PDF'lerde)
+   - Şekil ve resimler aynı mı? Sorudaki resim ve çizimler "şekil kutuları"na toplanır, her şekil
+     kendi kutusunda görüntü olarak kıyaslanır. Satır aralığı ya da konum değişse de yalnızca
+     gerçekten değişen şekil yakalanır.
+6. **Metne bağlı gruplar A ↔ B:** A'daki grubun soruları B'de yine yan yana ve aynı başlık altında
+   mı? Metin aynı mı? B'de bir grubun metni başka grubun sorularının üstüne düşmüşse açıkça yazar:
+   "B'de metin ile altındaki sorular uyumsuz: B 5-8. soruların üstündeki metin, A'da 15-17.
+   soruların metni".
+7. **Aynı soru iki kez basılmış mı?**
+8. **Otomatik yapıda (Lise / Ortaokul):** A ve B'nin test yapısı (test adları, soru sayıları)
+   aynı mı?
+
+Sayfa düzeni soru numaralarına göre çözülür. Her numaradan bir bölge başlar: soru tam
+genişlikse sayfa boyu, değilse kendi sütunu. Böylece aynı sayfada tam genişlik soru (yan yana
+A B C D şıklarıyla) ve iki sütun bir arada olsa da her satır kendi sorusunda kalır.
 
 ### Rapor
 
 - **Özet:** Her kontrol için TEMİZ / HATA / KONTROL ET.
 - **Sorunlar:** Her sorun için önem, kitapçık, test, ders, soru, sayfa ve açıklama.
-- **Soru Eşleşmesi:** A no → B no, metin %, görsel %, cevaplar ve durum.
+- **Soru Eşleşmesi:** A no → B no, metin %, şekil/resim durumu, cevaplar ve durum.
 - **Metne Bağlı Gruplar:** A grubu → B karşılığı, parça benzerliği ve durum.
-- **İşaretli PDF:** Sorunlu sorular A ve B PDF'lerinin kopyasında çerçevelenir (kırmızı = hata,
-  turuncu = elle bakılacak uyarı) ve not olarak açıklama eklenir.
+- **İşaretli PDF:** Sorunlu yerler A ve B PDF'lerinin kopyasında çerçevelenir (kırmızı = hata,
+  turuncu = elle bakılacak) ve not olarak açıklama eklenir. Sorun yoksa bu PDF oluşmaz.
 
 ### Bilinen sınırlar
 
 - PDF'te **seçilebilir metin** olmalı. Yazılar eğriye çevrilmişse (outline) ya da taranmışsa önce
   OCR gerekir.
 - B baskı PDF'i **sayfa sayfa** olmalı; montajlı (imposition, 2 sayfa yan yana) PDF desteklenmez.
-- Baskı PDF'inde magenta cevaplar yoksa cevap kıyası yapılamaz. Bu durumda B cevap anahtarı
-  txt'si verilebilir. Metin ve görüntü kıyası cevaplardan bağımsız çalışır.
-- Görsel kıyas, A ve B'de düzeni farklı olan alanları (ör. A'da tam genişlik, B'de sütun içi parça)
-  karşılaştırmaz. Bu alanlarda yalnızca metin kıyası yapılır.
+- Bir şeklin parçaları arasındaki boşluk A ve B'de çok farklıysa "şekil sayısı farklı" uyarısı
+  çıkabilir. Bu uyarılar "elle bakın" düzeyindedir.
+
+### Gerçek kitapçıklarla deneme (8. sınıf Limit denemesi, sözel + sayısal, baskı PDF'leri)
+
+| Çift | Soru | Sonuç | Süre |
+|---|---|---|---|
+| Sözel 1A ↔ 1B | 50 | 50/50 birebir eşleşme, 0 hata, 0 uyarı | ~2 sn |
+| Sayısal 1A ↔ 1B | 40 | 40/40 birebir eşleşme, 0 hata, 0 uyarı | ~25 sn |
 
 ## Testler
 
@@ -63,11 +84,15 @@ python3 testler/kontrol_sina.py  "Kitapcik Eslestirici.app/Contents/Resources/ki
 ```
 
 Üretilen örnekler: iki sütunlu ve tek sütunlu (2x2 şıklı) sayfalar, metne bağlı gruplar, şekilli
-sorular, magenta cevaplı ve cevapsız (baskı) B. `ortaokul_B_hatali.pdf` içine 9 tür bilinçli hata
-eklenir: eksik soru, yanlış grup başlığı, mükerrer numara, kelime farkı, cevap farkı, şık farkı,
-şekil farkı, parça farkı ve iki kez basılmış soru.
+sorular, magenta cevaplı ve cevapsız (baskı) A ile B. `ortaokul_B_hatali.pdf` içine 10 tür bilinçli
+hata eklenir: eksik soru, yanlış grup başlığı, mükerrer numara, kelime farkı, cevap farkı, şık farkı,
+şekil farkı, parça farkı, iki kez basılmış soru, metni yer değiştirmiş iki grup. Baskı varyantında
+(`ortaokul_B_hatali_baski.pdf`) ayrıca bir soruda cevap harfi açık bırakılır.
 
 v2.19 sonuçları:
 
-- Temiz çiftlerde (iki kitapçığın da cevapsız baskı olduğu çift dahil) 0 hata, 0 uyarı; eşleşme doğruluğu %100.
-- Hatalı B'de 9 hatanın 9'u yakalanıyor. İki kitapçık da cevapsız baskıyken cevap farkı dışındaki 8 hatanın 8'i yakalanıyor (cevap baskıda görünmediği için kıyaslanamaz).
+- Temiz çiftlerde 0 hata; eşleşme doğruluğu %100. Cevap açık örneklerde yalnızca "bu kitapçıkta
+  cevaplar açık" bilgisi çıkar.
+- Hatalı B'de 10 hatanın 10'u yakalanıyor.
+- İki kitapçık da cevapsız baskıyken cevap farkı dışındaki 9 hatanın 9'u ve açık kalan cevap
+  yakalanıyor (cevap baskıda görünmediği için kıyaslanamaz).
