@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.20)
+# Kitapçık Eşleştirici (v2.21)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -7,7 +7,33 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.xlsx` + işaretli PDF'ler |
 
-EŞLEŞTİR'in çalışma mantığı değiştirilmedi. Örnek kitapçıklarda Excel çıktısı v2.18 ile hücre hücre aynıdır (`testler/eslestir_sina.py`).
+## EŞLEŞTİR'deki düzeltmeler (v2.21)
+
+EŞLEŞTİR'in eşleştirme mantığı aynen duruyor; üstüne iki düzeltme eklendi:
+
+- **Ders adları:** Lise/Ortaokul (otomatik yapı) seçeneğinde test ve ders adı artık testin ilk
+  sayfasındaki başlıktan okunuyor ("SÖZEL BÖLÜM - TÜRKÇE" → TÜRKÇE, "TÜRKÇE TESTİ" → TÜRKÇE).
+  Önceden başlık satır sırasında geride kaldığında ya da önceki testin "… TESTİ BİTTİ" yazısı
+  okunduğunda ad kayıyordu (ör. Türkçe soruları "Bölüm 1", İnkılap soruları "TÜRKÇE"). TYT/AYT'de
+  sabit adlar kullanıldığı için değişiklik yok.
+- **İçerik doğrulaması:** EŞLEŞTİR bittikten sonra her eşleşme A–B KONTROL'ün içerik
+  karşılaştırmasıyla doğrulanır. Yalnızca kesin yanlış eşler düzeltilir: A sorusunun metni B'deki
+  başka bir soruyla birebir (≥ %98) aynıyken EŞLEŞTİR'in seçtiği sorunun metni belirgin farklıysa
+  (< %90). Her düzeltme Kontrol sayfasına ve günlüğe "DÜZELTİLDİ: … A-9 → B-4 (ilk eşleştirme B-3
+  demişti …)" diye yazılır. Doğruluğu kanıtlanan eşlerin yersiz "DÜŞÜK BENZERLİK" uyarısı kalkar.
+  Doğrulama bir nedenle yapılamazsa EŞLEŞTİR sonucu aynen kalır.
+
+Gerçek kitapçıklarda sonuç:
+
+| Çift | EŞLEŞTİR v2.18 | v2.21 |
+|---|---|---|
+| 8. sınıf Sözel 1A ↔ 1B (50 soru) | 48/50 doğru (İngilizce 9–10 yer değiştirmiş) | 50/50 |
+| 8. sınıf Sayısal 1A ↔ 1B (40 soru) | 38/40 doğru (Matematik 17–18 yer değiştirmiş) | 40/40 |
+| TYT Deneme 1 A ↔ B (125 soru) | 125/125 | 125/125 |
+| AYT Deneme 1 A ↔ B (166 soru) | 166/166 | 166/166 |
+
+Örnek kitapçıklarda ana tablo (B numaraları) v2.18 ile aynıdır (`testler/eslestir_sina.py`).
+Değişen tek yer, doğrulanan eşlerin Kontrol sayfasındaki benzerlik yüzdesidir.
 
 ## A–B KONTROL: sorunsuz baskı kontrolü
 
@@ -71,6 +97,16 @@ A B C D şıklarıyla) ve iki sütun bir arada olsa da her satır kendi sorusund
 |---|---|---|---|
 | Sözel 1A ↔ 1B | 50 | 50/50 birebir eşleşme, 0 hata, 0 uyarı | ~2 sn |
 | Sayısal 1A ↔ 1B | 40 | 40/40 birebir eşleşme, 0 hata, 0 uyarı | ~25 sn |
+| TYT Deneme 1 A ↔ B | 125 | 125/125 birebir, 3 metin grubu aynı, 0 hata, 0 uyarı | ~35 sn |
+| AYT Deneme 1 A ↔ B | 166 | 166/166 birebir, 0 hata, 0 uyarı | ~5 sn |
+
+TYT'de B kitapçığı metne bağlı grubun sorularını ters sırayla diziyor (A 35-36 → B 38-37).
+Bu yayınevi düzeni hata sayılmaz; soruların yan yana ve aynı metnin altında olması denetlenir.
+"16-20. soruları Din Kültürü … cevaplayacaktır" gibi seçmeli ders yönergeleri metin grubu
+sayılmaz.
+
+TYT B'nin bir kopyasına iki hata eklendi (Sosyal'de bir soru numarası kaydırıldı, bir metin
+grubunun parçasından bir kelime silindi); ikisi de yakalandı.
 
 Sözel 1B'nin bir kopyasına üç hata eklendi: bir soru numarası değiştirildi, bir kelime silindi,
 bir soruya magenta cevap harfi kondu. Üçü de doğru soruda yakalandı ("6. soru bulunamadı" ile
