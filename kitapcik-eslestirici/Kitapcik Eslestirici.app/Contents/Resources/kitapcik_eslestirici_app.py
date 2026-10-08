@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.22"
+SURUM = "2.23"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -304,9 +304,12 @@ def yapi_cikar(a_pdf):
     doc = fitz.open(a_pdf)
     yukseklikler = [p.rect.height for p in doc]
     doc.close()
+    kullanilan = set()
     for t, (bas_satir, _adet) in zip(yapi, bloklar):
         ad = _sayfa_basligi(satirlar, satirlar[bas_satir]["sayfa"],
-                            yukseklikler[satirlar[bas_satir]["sayfa"]])
+                            yukseklikler[satirlar[bas_satir]["sayfa"]], kullanilan)
+        if ad:
+            kullanilan.add(ad)
         if ad and ad != t["test"]:
             eski, t["test"] = t["test"], ad
             for d in t["dersler"]:
@@ -315,9 +318,12 @@ def yapi_cikar(a_pdf):
     return yapi
 
 
-def _sayfa_basligi(satirlar, pno, sayfa_yuk):
+def _sayfa_basligi(satirlar, pno, sayfa_yuk, kullanilan=()):
     """Sayfanın üst kısmındaki test başlığı: "SÖZEL BÖLÜM - TÜRKÇE" → "TÜRKÇE",
-    "SOSYAL BİLİMLER TESTİ" → "SOSYAL BİLİMLER". Yoksa None."""
+    "SOSYAL BİLİMLER TESTİ" → "SOSYAL BİLİMLER". Yoksa None. Sayfada birden
+    çok başlık varsa (ör. kalıp sayfadan kalıp üstü örtülmüş eski başlık)
+    önceki testlerde kullanılmamış olan seçilir."""
+    adaylar = []
     for r in satirlar:
         if r["sayfa"] != pno or r["y1"] > 0.2 * sayfa_yuk:
             continue
@@ -325,8 +331,9 @@ def _sayfa_basligi(satirlar, pno, sayfa_yuk):
         e = (re.search(r"BÖLÜM\s*[-–—]\s*(.{2,60})$", m)
              or re.match(r"^(.{2,60}?)\s+TEST[İI]$", m))
         if e:
-            return e.group(1).strip()
-    return None
+            adaylar.append(e.group(1).strip())
+    yeni = [a for a in adaylar if a not in kullanilan]
+    return (yeni or adaylar or [None])[0]
 
 
 def beklenen_dizi(yapi):
@@ -1250,9 +1257,8 @@ def _mobilya_kumesi(kitapciklar):
             m = _mobilya_anahtari(r)
             if (_kenar_bolgesi(r, yuk[r["sayfa"]], gen[r["sayfa"]])
                     and not SORU_BASI_RE.match(r["metin"])):
-                kaba = re.sub(r"\d+", "#", m)
-                kenar.setdefault((kaba, round(r["y0"] / 3), round(r["x0"] / 6)),
-                                 set()).add(r["sayfa"])
+                for anahtar in _kenar_anahtarlari(r, m):
+                    kenar.setdefault(anahtar, set()).add(r["sayfa"])
             sabit.setdefault((m, round(r["x0"] / 3), round(r["y0"] / 3)),
                              set()).add(r["sayfa"])
         kume |= {("kenar", k_) for k_, s_ in kenar.items() if len(s_) >= 2}
@@ -1267,10 +1273,25 @@ def _mobilya_mi(satir, kume, sayfa_yuk, sayfa_gen):
     m = _mobilya_anahtari(satir)
     if ("sabit", (m, round(satir["x0"] / 3), round(satir["y0"] / 3))) in kume:
         return True
-    return (("kenar", (re.sub(r"\d+", "#", m), round(satir["y0"] / 3),
-                       round(satir["x0"] / 6))) in kume
-            and not SORU_BASI_RE.match(satir["metin"])
-            and _kenar_bolgesi(satir, sayfa_yuk, sayfa_gen))
+    if SORU_BASI_RE.match(satir["metin"]) or \
+            not _kenar_bolgesi(satir, sayfa_yuk, sayfa_gen):
+        return False
+    # Komşu konumlara da bakılır (yuvarlama sınırında kalan satırlar için)
+    for kaba, ky, tur, kx in _kenar_anahtarlari(satir, m):
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if ("kenar", (kaba, ky + dy, tur, kx + dx)) in kume:
+                    return True
+    return False
+
+
+def _kenar_anahtarlari(satir, m):
+    """Kenar satırının konum anahtarları: aynı yükseklik + aynı sol kenar ya da
+    aynı orta nokta (ortalı sayfa numarası "1" ile "12"nin sol kenarı farklıdır)."""
+    kaba = re.sub(r"\d+", "#", m)
+    ky = round(satir["y0"] / 3)
+    return [(kaba, ky, "x0", round(satir["x0"] / 6)),
+            (kaba, ky, "xo", round((satir["x0"] + satir["x1"]) / 12))]
 
 
 def _satir_sinifi(r, orta):
@@ -1768,29 +1789,83 @@ def _gorsel_puan(docA, docB, bolgeA, bolgeB, onbellek):
 
 
 def _sayfa_nesneleri(doc, pno, onbellek):
-    """Sayfadaki resim ve çizimlerin dikdörtgenleri (ayırıcı çizgiler hariç)."""
+    """Sayfadaki çizim ve resim parçalarının GÖRÜNEN dikdörtgenleri: her çizim
+    parçası bağlı olduğu kırpma alanıyla kesilir (kırpılmış vektör resmin
+    görünmeyen parçaları düşer); sayfa/sütun ayırıcı çizgiler alınmaz."""
     anahtar = ("nesne", id(doc), pno)
     if anahtar not in onbellek:
         sayfa = doc[pno]
         W = sayfa.rect.width
         dikdortgenler = []
-        # Çizim kaydı: resim ve yol (path) çizimlerinin kutuları (hızlı).
-        # Degrade dolgu (fill-shade) kırpılmamış alanıyla geldiği için alınmaz;
-        # şeklin içindeyse görüntü kıyasında zaten görünür.
+        yigin = []                             # (düzey, kırpma alanı)
+        for d in sayfa.get_drawings(extended=True):
+            duzey = d.get("level", 0)
+            while yigin and yigin[-1][0] >= duzey:
+                yigin.pop()
+            ust = yigin[-1][1] if yigin else sayfa.rect
+            if d.get("type") == "clip":
+                yigin.append((duzey, fitz.Rect(d["scissor"]) & ust))
+                continue
+            if d.get("type") not in ("f", "s", "fs"):
+                continue
+            r = fitz.Rect(d["rect"])
+            if r.width < 0.5 and r.height < 0.5:
+                continue
+            gorunen = fitz.Rect(max(r.x0, ust.x0), max(r.y0, ust.y0),
+                                min(r.x1, ust.x1), min(r.y1, ust.y1))
+            if gorunen.x1 < gorunen.x0 or gorunen.y1 < gorunen.y0:
+                continue                       # tamamen kırpılmış
+            dikdortgenler.append(gorunen)
+        # Resimler (çizim listesinde yer almaz): çizim kaydından, hızlı
         for tur, kutu in sayfa.get_bboxlog():
-            if tur not in ("fill-path", "stroke-path", "fill-image",
-                           "fill-imgmask"):
-                continue
-            r = fitz.Rect(kutu)
-            if r.is_empty and r.width < 0.5 and r.height < 0.5:
-                continue
-            if r.width > 0.6 * W and r.height < 3:
-                continue                       # yatay sayfa/bölüm çizgisi
-            if r.width < 3 and abs((r.x0 + r.x1) / 2 - W / 2) < 8:
-                continue                       # sütun ayırıcı çizgi
-            dikdortgenler.append(r)
+            if tur in ("fill-image", "fill-imgmask"):
+                dikdortgenler.append(fitz.Rect(kutu))
+        dikdortgenler = [
+            r for r in dikdortgenler
+            if not (r.width > 0.6 * W and r.height < 3)              # yatay çizgi
+            and not (r.width < 3 and abs((r.x0 + r.x1) / 2 - W / 2) < 8)]  # sütun
         onbellek[anahtar] = dikdortgenler
     return onbellek[anahtar]
+
+
+def _murekkep_anahtari(doc, pno, kutu):
+    return ("murekkep_say", id(doc), pno, tuple(round(x, 1) for x in kutu))
+
+
+def _murekkep_alani(doc, pno, kutu, onbellek, olcek=1.0):
+    """Kutunun görünür (mürekkepli) kısmının dikdörtgeni; tamamen boşsa None.
+    Mürekkepli piksel sayısı onbellek[("murekkep_say", ...)] içine yazılır."""
+    anahtar = ("murekkep", id(doc), pno, tuple(round(x, 1) for x in kutu))
+    if anahtar in onbellek:
+        return onbellek[anahtar]
+    anahtar_d = ("dl", id(doc), pno)
+    if anahtar_d not in onbellek:
+        onbellek[anahtar_d] = doc[pno].get_displaylist()
+    r = fitz.Rect(kutu) & doc[pno].rect
+    sonuc = None
+    if not r.is_empty:
+        pix = onbellek[anahtar_d].get_pixmap(matrix=fitz.Matrix(olcek, olcek),
+                                             colorspace=fitz.csGRAY, alpha=False,
+                                             clip=r)
+        a = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
+            pix.height, pix.width).copy()
+        # Sütun ayırıcı çizgi mürekkep sayılmaz (kutuyu yana genişletmesin)
+        orta = doc[pno].rect.width / 2
+        for m_ in (fitz.Rect(orta - 4, r.y0, orta + 4, r.y1),):
+            kes = m_ & r
+            if kes.is_empty:
+                continue
+            a[max(0, int((kes.y0 - r.y0) * olcek)):int((kes.y1 - r.y0) * olcek) + 1,
+              max(0, int((kes.x0 - r.x0) * olcek)):int((kes.x1 - r.x0) * olcek) + 1] = 255
+        satir = np.where((a < 240).any(axis=1))[0]
+        sutun = np.where((a < 240).any(axis=0))[0]
+        if len(satir) and len(sutun):
+            sonuc = fitz.Rect(r.x0 + sutun[0] / olcek, r.y0 + satir[0] / olcek,
+                              r.x0 + (sutun[-1] + 1) / olcek,
+                              r.y0 + (satir[-1] + 1) / olcek)
+            onbellek[_murekkep_anahtari(doc, pno, sonuc)] = int((a < 240).sum())
+    onbellek[anahtar] = sonuc
+    return sonuc
 
 
 def _sekil_kutulari(doc, bolgeler, onbellek):
@@ -1827,8 +1902,13 @@ def _sekil_kutulari(doc, bolgeler, onbellek):
                         break
                 if degisti:
                     break
-        kutular = [k_ for k_ in kutular
+        # Kırpılmış çizim/resimlerin görünmeyen parçaları da çizim kaydında yer
+        # alır (kenar boşluğuna, sütun arasına taşar). Her kutu çizilip yalnızca
+        # mürekkep olan alana daraltılır; tamamen boş kutu atılır.
+        kutular = [_murekkep_alani(doc, pno, k_, onbellek) for k_ in kutular
                    if min(k_.width, k_.height) >= 3 and k_.width * k_.height >= 150]
+        kutular = [k_ for k_ in kutular if k_ is not None
+                   and min(k_.width, k_.height) >= 3 and k_.width * k_.height >= 150]
         # Sıra: satır satır (üst kenarları ±4 pt olanlar aynı satır), soldan sağa
         satirlar_ = []
         for k_ in sorted(kutular, key=lambda r: r.y0):
@@ -1871,20 +1951,28 @@ def _sekil_denetle(docA, docB, bolgelerA, bolgelerB, onbellek, durum, bildir):
     kb = _sekil_kutulari(docB, bolgelerB, onbellek)
     if not ka and not kb:
         return "—"
-    if len(ka) != len(kb):
+
+    def boyut_uyar(ra, rb):
+        return (abs(ra.width - rb.width) <= max(8, 0.12 * max(ra.width, rb.width))
+                and abs(ra.height - rb.height) <= max(8, 0.12 * max(ra.height,
+                                                                    rb.height)))
+    if len(ka) != len(kb) or not all(boyut_uyar(ra, rb)
+                                     for (_pa, ra), (_pb, rb) in zip(ka, kb)):
+        # Aynı şekiller satır aralığı farkı yüzünden farklı birleşmiş olabilir:
+        # sorudaki toplam şekil mürekkebi aynıysa fark yok sayılır; belirgin
+        # farklıysa eksik/fazla şekil olabilir
+        ta = sum(onbellek.get(_murekkep_anahtari(docA, p, r), 0) for p, r in ka)
+        tb = sum(onbellek.get(_murekkep_anahtari(docB, p, r), 0) for p, r in kb)
+        if abs(ta - tb) <= max(60, 0.06 * max(ta, tb)):
+            return f"aynı ({len(ka)}↔{len(kb)} parça)"
         durum.append("ŞEKİL FARKI")
-        bildir("UYARI", f"Şekil sayısı farklı: A'da {len(ka)}, B'de {len(kb)} "
-               f"şekil/resim — eksik ya da fazla şekil olabilir, elle bakın.")
+        oran = (tb - ta) / max(ta, 1) * 100
+        bildir("UYARI", f"Şekil/resim içeriği farklı: B'de şekil mürekkebi A'ya göre "
+               f"%{abs(oran):.0f} {'fazla' if oran > 0 else 'az'} (A'da {len(ka)}, "
+               f"B'de {len(kb)} şekil parçası) — eksik ya da fazla şekil olabilir, "
+               f"elle bakın.")
         return f"FARKLI ({len(ka)}↔{len(kb)})"
     for i, ((pa, ra), (pb, rb)) in enumerate(zip(ka, kb), 1):
-        # Küçük boyut farkı (yakındaki bir çizginin kutuya katılması vb.) boyut
-        # hatası sayılmaz; ortak alan aşağıda görüntü olarak kıyaslanır
-        if (abs(ra.width - rb.width) > max(8, 0.12 * max(ra.width, rb.width)) or
-                abs(ra.height - rb.height) > max(8, 0.12 * max(ra.height, rb.height))):
-            durum.append("ŞEKİL FARKI")
-            bildir("UYARI", f"{i}. şeklin boyutu farklı: A {ra.width:.0f}×"
-                   f"{ra.height:.0f}, B {rb.width:.0f}×{rb.height:.0f} pt — elle bakın.")
-            return "FARKLI"
         ia = _kontrol_kupur(docA, (pa, ra.x0, ra.y0, ra.x1, ra.y1), onbellek,
                             ("sekilA", pa, tuple(ra)))
         ib = _kontrol_kupur(docB, (pb, rb.x0, rb.y0, rb.x1, rb.y1), onbellek,
@@ -1939,15 +2027,12 @@ def _test_adlari(k, yapi):
         ilk = min((o for o in k["ogeler"] if o["ti"] == ti and o["no"]),
                   key=lambda o: o["no"], default=None)
         if ilk is not None:
-            pno = ilk["sayfa"]
-            yuk = k["yukseklikler"][pno]
-            for r in k["satirlar"]:
-                if r["sayfa"] != pno or r["y1"] > 0.2 * yuk:
-                    continue
-                m = re.search(r"BÖLÜM\s*[-–—]\s*(.{2,60})$", r["metin"].strip())
-                if m:
-                    ad = m.group(1).strip()
-                    break
+            bulunan = _sayfa_basligi(k["satirlar"], ilk["sayfa"],
+                                     k["yukseklikler"][ilk["sayfa"]], set(adlar))
+            if bulunan and ("BÖLÜM" in " ".join(
+                    r["metin"] for r in k["satirlar"] if r["sayfa"] == ilk["sayfa"]
+                    and r["y1"] < 0.2 * k["yukseklikler"][ilk["sayfa"]])):
+                ad = bulunan       # TYT/AYT'de yapıdaki ad (Türkçe vb.) kalır
         adlar.append(ad)
     return adlar
 
@@ -1978,9 +2063,9 @@ def _acik_cevaplar(k):
                 if re.fullmatch(r"[A-E]", tt):
                     if not (r["x1"] <= sinir + 1 or _magenta_mi(renk)):
                         continue
-                elif not (re.fullmatch(r"[A-Za-z0-9ÇĞİÖŞÜçğıöşü]{5,}", kod)
+                elif not (re.fullmatch(r"[A-Za-z0-9ÇĞİÖŞÜçğıöşü.\-_/]{4,20}", tt)
                           and re.search(r"\d", kod) and re.search(r"[A-Za-z]", kod)):
-                    continue
+                    continue     # soru kodu boşluksuz tek parçadır ("81 ilde" değil)
                 bulunan.append((o, r, tt, f"#{renk:06X}"))
     return bulunan
 
@@ -1991,7 +2076,10 @@ def _isaret_onbellegi(A, B, docA, docB, onbellek):
     for kk, doc in ((A, docA), (B, docB)):
         for pno in range(len(doc)):
             onbellek[("isaret", id(doc), pno)] = []
+            onbellek[("metinler", id(doc), pno)] = []
         for r in kk["satirlar"]:
+            onbellek[("metinler", id(doc), r["sayfa"])].append(
+                fitz.Rect(r["x0"], r["y0"], r["x1"], r["y1"]))
             dolu = [(t, rk) for t, rk in r.get("spanlar", []) if t.strip()]
             if dolu and all(_renkli_isaret_mi(t, rk) for t, rk in dolu):
                 onbellek[("isaret", id(doc), r["sayfa"])].append(

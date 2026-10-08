@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.22)
+# Kitapçık Eşleştirici (v2.23)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -31,8 +31,10 @@ Gerçek kitapçıklarda sonuç:
 | 8. sınıf Sayısal 1A ↔ 1B (40 soru) | 38/40 doğru (Matematik 17–18 yer değiştirmiş) | 40/40 |
 | TYT Deneme 1 A ↔ B (125 soru) | 125/125 | 125/125 |
 | AYT Deneme 1 A ↔ B (166 soru) | 166/166 | 166/166 |
-| 10. sınıf Deneme 2 A ↔ B (100 soru) | — | 100/100 |
-| 11. sınıf Deneme 2 A ↔ B (100 soru) | — | 100/100 |
+| 10. sınıf Deneme 2 A ↔ B (100 soru) | 100/100 | 100/100 |
+| 11. sınıf Deneme 2 A ↔ B (100 soru) | 98/100 | 100/100 |
+| 5. sınıf Deneme 1 A ↔ B (75 soru) | 69/75 | 75/75 |
+| 7. sınıf Deneme 1 A ↔ B (90 soru) | 85/90 (ders adı "Bölüm 1") | 90/90 |
 
 TYT ya da AYT seçili olup dosyalar o düzene uymuyorsa (ör. 10. sınıf kitapçığı varsayılan TYT
 seçiliyken çalıştırılırsa) önce diğer sınav türü denenir; o da uymazsa yapı kitapçığın kendisinden
@@ -101,7 +103,15 @@ Uygulama belirli bir kitapçığa göre ayarlanmadı; genel kurallarla çalış�
 
 10. ve 11. sınıf kitapçıkları bu kurallarla ilk denemede tanındı; yalnızca iki genel kusur
 düzeltildi (alt satıra kayan şık parçasının soru numarası sanılması, yakın iki tablonun şekil
-kutusunda birleşmesi). Hiç görülmemiş bir şablonda yine de beklenmedik bir durum çıkabilir;
+kutusunda birleşmesi). 5. ve 7. sınıfta da 75/75 ve 90/90 soru ilk denemede bulundu. Düzeltilen
+genel kusurlar: renkli içerik metninin ("81 ilde") soru kodu sanılması; kırpılmış vektör
+resimlerin görünmeyen parçalarının şekil sayılması (artık her çizim parçası PDF'teki kırpma
+alanıyla kesiliyor); ortalı sayfa numarasının ("1" ile "12") sayfa bilgisi olarak tanınmaması;
+kalıp sayfadan kalıp üstü örtülmüş eski başlığın test adı sanılması.
+
+Şekil kararı: şekil sayısı ve boyutları A ile B'de tutuyorsa her şekil görüntü olarak kıyaslanır
+(fark varsa HATA). Tutmuyorsa (aynı şekiller satır aralığı yüzünden farklı birleşmiş olabilir)
+sorudaki toplam şekil mürekkebi kıyaslanır; yalnızca belirgin fark varsa (%6'dan fazla) UYARI. Hiç görülmemiş bir şablonda yine de beklenmedik bir durum çıkabilir;
 öyle bir çiftte rapor şüpheli bir sonuç verirse o çift gönderilip kural genelleştirilmelidir.
 
 ### Bilinen sınırlar
@@ -122,6 +132,8 @@ kutusunda birleşmesi). Hiç görülmemiş bir şablonda yine de beklenmedik bir
 | AYT Deneme 1 A ↔ B | 166 | 166/166 birebir, 0 hata, 0 uyarı | ~5 sn |
 | 10. sınıf Deneme 2 A ↔ B | 100 | 100/100 birebir, 0 hata, 0 uyarı | ~14 sn |
 | 11. sınıf Deneme 2 A ↔ B | 100 | 100/100 birebir, 0 hata, 0 uyarı | ~4 sn |
+| 5. sınıf Deneme 1 A ↔ B | 75 | 75/75 birebir, 0 hata, 0 uyarı | ~16 sn |
+| 7. sınıf Deneme 1 A ↔ B | 90 | 90/90 birebir, 0 hata, 0 uyarı | ~50 sn |
 
 TYT'de B kitapçığı metne bağlı grubun sorularını ters sırayla diziyor (A 35-36 → B 38-37).
 Bu yayınevi düzeni hata sayılmaz; soruların yan yana ve aynı metnin altında olması denetlenir.
