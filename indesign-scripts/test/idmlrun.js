@@ -132,7 +132,17 @@ Object.keys(STORIES).forEach(function (sid) {
     var st = STORIES[sid], src = M.stories[sid];
     (src && src.anchored || []).forEach(function (aid, k) {
         var a = { id: aid, constructor: { name: src.anchoredKinds[k] }, allPageItems: [], parent: { constructor: { name: "Character" } } };
-        Object.defineProperty(a, "geometricBounds", { get: function () { var c = st.textContainers[0]; return c ? c.geometricBounds : [0, 0, 0, 0]; } });
+        // ANCHOR_SHIFT=1: InDesign'ın karşılıklı sayfada sağ sayfadaki çapalı nesneyi sol sayfa
+        // orijinine göre (x + sayfa genişliği) bildirmesini taklit eder.
+        Object.defineProperty(a, "geometricBounds", { get: function () {
+            var c = st.textContainers[0]; if (!c) { return [0, 0, 0, 0]; }
+            // ANCHOR_BOUNDS='{"u6370":[30,330,315,530]}': belirli çapalı nesnenin InDesign'ın
+            // bildirdiği konumu (sayfa koordinatı) — gerçek InDesign davranışını yeniden üretmek için
+            if (process.env.ANCHOR_BOUNDS) { var ab = JSON.parse(process.env.ANCHOR_BOUNDS); if (ab[aid]) { return ab[aid].slice(0); } }
+            var g = c.geometricBounds;
+            if (process.env.ANCHOR_SHIFT && c.pg && M.pages[c.pg.idx].sb[1] > -1 && M.facing) { return [g[0], g[1] + W, g[2], g[3] + W]; }
+            return g;
+        } });
         st.pageItems.push(a);
     });
 });
@@ -233,6 +243,9 @@ vm.runInContext(src, ctx, { filename: scriptPath, timeout: 600000 });
 var dt = Date.now() - t0;
 if (process.env.COUNT) { console.log("  yerleşim hesabı: " + (ctx.globalThis && ctx.globalThis.__N || vm.runInContext("typeof __N === 'undefined' ? 0 : __N", ctx))); }
 var LOG = (alerts[alerts.length - 1] || "").split("\n");
+// v4.22 biçimi: "x / y soru yer değiştirdi." satırını eski özet satırına çevir (araçların uyumu için)
+LOG = LOG.map(function (l) { var mm = /^(\d+) \/ (\d+) soru yer değiştirdi\./.exec(l); return mm ? "YER DEĞİŞTİREN SORU: " + mm[1] + " / " + mm[2] : l.replace(/^\s*\u2022\s*/, ""); });
+if (process.env.FULLALERT) { console.log(alerts.join("\n----\n")); }
 
 // ---------- BAĞIMSIZ DENETİMLER ----------
 var issues = [], KEYINFO = '', GROUPINFO = '';

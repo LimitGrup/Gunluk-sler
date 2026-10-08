@@ -1,5 +1,5 @@
 ﻿// =============================================================
-//  KİTAPÇIK B OLUŞTURUCU  v4.21
+//  KİTAPÇIK B OLUŞTURUCU  v4.22
 //  (v4.15: özel havuzlar + ikinci şans + kendini teşhis eden bekçi
 //   + bağlı-görsel sertleştirme + ortaokul kapısına belge-içi yedek.
 //   v4.16: sade panel. v4.17: kompakt seçenekler geri + doğal havuz yazımı
@@ -22,7 +22,10 @@
 //   v4.21: HIZ — v4.19-v4.20'deki yönerge regex'i sayı listeli metinlerde üstel sürede
 //   çalışıp InDesign'da scripti kilitliyordu; regex'siz, doğrusal ayrıştırıcıyla
 //   değiştirildi. Grafikler toplu okunur (everyItem), bekçi sabit engelleri yeniden
-//   okumaz, aynı yerleşim iki kez hesaplanmaz; ilerleme penceresi eklendi.)
+//   okumaz, aynı yerleşim iki kez hesaplanmaz; ilerleme penceresi eklendi.
+//   v4.22: test başlangıcı okuma sırasından bağımsız ("1." olan sayfa yeni testi başlatır);
+//   çerçeveyle örtüşmeyen çapalı nesne bir sayfa kaydırılarak düzeltilir ya da yok sayılır;
+//   rapor sadeleşti: yerinde kalan her sorunun nedeni, DİKKAT / BİLGİ bölümleri, ayrıntı CSV'de.)
 //  Limit Yayınları — A kitapçığından otomatik B kitapçığı üretimi
 //  (Lise AYT/TYT + Ortaokul 5-8. sınıf denemeleri)
 // -------------------------------------------------------------
@@ -88,7 +91,7 @@
     // ---------------------------------------------------------
     // 1) ARAYÜZ
     // ---------------------------------------------------------
-    var dlg = new Window("dialog", "Kitapçık B Oluşturucu v4.21 — Limit Yayınları");
+    var dlg = new Window("dialog", "Kitapçık B Oluşturucu v4.22 — Limit Yayınları");
     dlg.orientation = "column";
     dlg.alignChildren = "fill";
     dlg.margins = 16;
@@ -210,6 +213,10 @@
     // ---------------------------------------------------------
     var LOG = [];
     function log(s) { LOG.push(s); }
+    // v4.22: uyarı penceresinin BİLGİ bölümüne çıkan satırlar (hepsi CSV'ye de yazılır).
+    // "KRİTİK"/"UYARI" ile başlayanlar DİKKAT bölümüne; "Ayrıntı:" ile başlayanlar yalnız CSV'ye.
+    var INFO = [];
+    function info(s) { LOG.push(s); INFO.push(s); }
 
     var srcDoc = null;
     try {
@@ -277,10 +284,10 @@
     var doc = srcDoc;
     try { doc.save(bFile); }
     catch (eSave) { alert("B kopyası kaydedilemedi: " + eSave.message); return; }
-    log("B kopyası: " + bBase + ".indd");
+    info("B kopyası: " + bBase + ".indd");
     if (isMiddleSchool) {
-        log("Ortaokul güvenli geometri modu: " + middleSchoolGrade + ". sınıf — v4.11 çekirdeği korunarak ek ön-denetim aktif.");
-        log("Ortaokul hiza koruması: test giriş bandı sert sınır; sütun içi elastik boşluk üst sınırı " + MIDDLE_SCHOOL_GAP_CAP + " pt.");
+        info("Ortaokul (" + middleSchoolGrade + ". sınıf) güvenli yerleşim modu kullanıldı.");
+        log("Ayrıntı: ortaokul hiza koruması — test giriş bandı sert sınır; sütun içi elastik boşluk üst sınırı " + MIDDLE_SCHOOL_GAP_CAP + " pt.");
     }
 
     // ---------------------------------------------------------
@@ -359,7 +366,8 @@
         // iç içe tekrarlı regex üstel geri izlemeye düşüp scripti kilitliyordu. Paragrafta
         // "soru" yoksa hiç iş yapılmaz; varsa kelimenin önündeki en çok 80 karakter geriye
         // doğru karakter karakter okunur (süre metin uzunluğuyla doğru orantılı).
-        var LINKCTX_RE = /g[öo]re|cevaplay|yararlan|ilgili|ba[ğg]l[ıi]/i;
+        // "cevaplayınız" (yönerge) bağlamdır; "cevaplayacaktır" (Din Kültürü seçmeli blok açıklaması) değildir
+        var LINKCTX_RE = /g[öo]re|cevaplay[ıi]n[ıi]z|yararlan|ilgili|ba[ğg]l[ıi]/i;
         var LETTERS = "abcçdefgğhıijklmnoöprsştuüvyzqwxâîûABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZQWXÂÎÛ";
         function isLetterCh(c) { return c !== "" && LETTERS.indexOf(c) >= 0; }
         function isDigitCh(c) { return c >= "0" && c <= "9" && c.length === 1; }
@@ -505,6 +513,8 @@
         // -----------------------------------------------------
         var pages = doc.pages;
         var pageData = [];
+        var compTotal = 0;
+        var revertWhy = {};   // v4.22: sayfa A düzeninde bırakıldıysa nedeni
         var allSlots = [];
         var msSignal = false;
         var pi, ci, k, i, j;
@@ -711,6 +721,33 @@
                         // bağlı nesneler zarfı bozmasın
                         if (agb[0] < rU.fy1 - 1.2 * pgH || agb[2] > rU.fy2 + 1.2 * pgH) { continue; }
                         if (agb[3] < pb[1] - pW || agb[1] > pb[3] + pW) { continue; }
+                        // v4.22: çerçeveyle HİÇ örtüşmeyen çapalı nesne yanlış koordinat uzayındadır
+                        // (karşılıklı sayfada InDesign bazen yayılımın öbür sayfasına göre bildirir):
+                        // bir sayfa genişliği kaydırılmış hâli örtüşüyorsa o kullanılır, yoksa yok sayılır.
+                        var frA = [rU.fy1, rU.fx1, rU.fy2, rU.fx2];
+                        var touchesA = function (b) {
+                            return Math.min(b[2], frA[2]) > Math.max(b[0], frA[0]) && Math.min(b[3], frA[3]) > Math.max(b[1], frA[1]);
+                        };
+                        if (!touchesA(agb)) {
+                            var agbS = null, shA = [-pW, pW];
+                            for (var sa = 0; sa < shA.length && agbS === null; sa++) {
+                                var cand = [agb[0], agb[1] + shA[sa], agb[2], agb[3] + shA[sa]];
+                                if (touchesA(cand)) { agbS = cand; }
+                            }
+                            log("Ayrıntı: s." + pg.name + " — " + trimS(String(rU.etiket)).substr(0, 6) +
+                                " sorusunun çapalı nesnesi çerçevenin dışında bildirildi [" + Math.round(agb[0]) + "," +
+                                Math.round(agb[1]) + "," + Math.round(agb[2]) + "," + Math.round(agb[3]) + "] — " +
+                                (agbS ? "bir sayfa genişliği kaydırılarak düzeltildi." : "yok sayıldı."));
+                            if (agbS === null) { continue; }
+                            agb = agbS;
+                        }
+                        var tasma = Math.max(rU.fy1 - agb[0], agb[2] - rU.fy2, rU.fx1 - agb[1], agb[3] - rU.fx2);
+                        if (tasma > 10) {
+                            log("Ayrıntı: s." + pg.name + " — " + trimS(String(rU.etiket)).substr(0, 6) +
+                                " sorusunun çapalı nesnesi çerçeveden " + Math.round(tasma) + " pt taşıyor (çerçeve [" +
+                                Math.round(rU.fy1) + "," + Math.round(rU.fx1) + "," + Math.round(rU.fy2) + "," + Math.round(rU.fx2) +
+                                "], nesne [" + Math.round(agb[0]) + "," + Math.round(agb[1]) + "," + Math.round(agb[2]) + "," + Math.round(agb[3]) + "]).");
+                        }
                         if (agb[0] < rU.y1) { rU.y1 = agb[0]; }
                         if (agb[2] > rU.y2) { rU.y2 = agb[2]; }
                         if (agb[1] < rU.x1) { rU.x1 = agb[1]; }
@@ -865,14 +902,15 @@
                 if (!bgOb) { obstacles.push({ it: compCands[k].it, b: [ob[0], ob[1], ob[2], ob[3]] }); }
             }
             if (compN > 0) {
-                log("Bilgi: s." + pg.name + " — " + compN + " serbest görsel/şekil/etiket çerçevesi ait olduğu soruyla (" +
-                    compQs.join(", ") + ") birlikte taşınacak. (A'da soruyla gruplamanız önerilir.)");
+                compTotal += compN;
+                log("Ayrıntı: s." + pg.name + " — soruyla gruplanmamış " + compN + " görsel/şekil/etiket çerçevesi ait olduğu soruyla (" +
+                    compQs.join(", ") + ") birlikte taşınacak.");
             }
             if (droppedStub > 0) {
-                log("UYARI: s." + pg.name + " — " + droppedStub + " NUMARALI BOŞ çerçeve (taslak artığı) yerleşim dışı bırakıldı; A dosyasında temizlemeniz önerilir.");
+                log("UYARI: s." + pg.name + " — numarası olan ama içi boş " + droppedStub + " çerçeve (taslak artığı) yok sayıldı; A dosyasından silmeniz önerilir.");
             }
             if (droppedGhost > 0) {
-                log("Bilgi: s." + pg.name + " — " + droppedGhost + " boş/dekor çerçeve yerleşim dışı bırakıldı.");
+                log("Ayrıntı: s." + pg.name + " — içi boş ya da süs amaçlı " + droppedGhost + " metin çerçevesi yok sayıldı (sorulara dokunulmadı).");
             }
             items = kept;
             items.sort(function (a, b) { return (a.y1 - b.y1) || (a.x1 - b.x1); });
@@ -944,7 +982,7 @@
             try { fpMS = (doc.documentPreferences.facingPages === true); } catch (eFPms) {}
             if (fpMS) {
                 isMiddleSchool = true;
-                log("Ortaokul güvenli modu belge içeriğinden algılandı (karşılıklı sayfa + branş test girişi).");
+                info("Ortaokul güvenli yerleşim modu kullanıldı (belge içeriğinden algılandı).");
             }
         }
 
@@ -980,6 +1018,40 @@
         var pendingLinks = [];   // v4.19: sorusu sonraki sayfada olan yönergeler
         for (pi = 0; pi < pageData.length; pi++) {
             (function (pd) {
+                // v4.22: sayfada TEK bir "1." varsa yeni test SAYFA BAŞINDA başlamış sayılır; böylece
+                // okuma sırası (çapalı görsellerin InDesign'ın bildirdiği konumuna göre değişebiliyor)
+                // test ayrımını bozmaz. Önceki testin devamı olan numaralar (son sayıdan itibaren
+                // ardışık) önceki teste yazılır; yeni testin 1. sorusundan SONRA okunanlar v4.3'teki
+                // gibi yerinde kilitlenir. Sayfada iki "1." varsa eski (sıraya bağlı) yol kullanılır.
+                var pqA = [], onesA = 0, oneIdxA = -1, qa2;
+                pageQuestionWalk(pd, function (r) { if (r.kind === "soru") { pqA.push(r); } });
+                for (qa2 = 0; qa2 < pqA.length; qa2++) {
+                    if (pqA[qa2].num === 1) { onesA++; if (oneIdxA < 0) { oneIdxA = qa2; } }
+                }
+                if (onesA === 1 && seenAny) {
+                    var prevSecA = secCount, prevCntA = secQCount[secCount] || 0;
+                    secCount++;
+                    var haveA = {}, contTo = prevCntA, usedA = {};
+                    for (qa2 = 0; qa2 < pqA.length; qa2++) { haveA[pqA[qa2].num] = true; }
+                    while (haveA[contTo + 1] && contTo + 1 !== 1) { contTo++; }
+                    for (qa2 = 0; qa2 < pqA.length; qa2++) {
+                        var rA = pqA[qa2];
+                        if (rA.num !== 1 && rA.num > prevCntA && rA.num <= contTo && !usedA[rA.num]) {
+                            usedA[rA.num] = true;
+                            rA.sec = prevSecA;
+                            secQCount[prevSecA] = (secQCount[prevSecA] || 0) + 1;
+                            if (qa2 > oneIdxA) {
+                                spillN++;
+                                rA.grup = 900000 + spillN;   // kilit: hiçbir takasa girmez
+                                spillLog.push("Test " + (prevSecA + 1) + " S" + rA.num + " (s." + pd.name + ")");
+                            }
+                            continue;
+                        }
+                        seenAny = true;
+                        rA.sec = secCount;
+                        secQCount[secCount] = (secQCount[secCount] || 0) + 1;
+                    }
+                } else {
                 var resetOnPage = false, prevSecAtReset = -1, prevCntAtReset = 0;
                 pageQuestionWalk(pd, function (r) {
                     if (r.kind !== "soru") { return; }
@@ -1005,6 +1077,7 @@
                     if (!secQCount[secCount]) { secQCount[secCount] = 0; }
                     secQCount[secCount]++;
                 });
+                }
                 for (var q = 0; q < pd.items.length; q++) {
                     if (pd.items[q].kind === "yonerge" && seenAny) {
                         addZone(secCount, pd.items[q].lo, pd.items[q].hi);
@@ -1028,7 +1101,7 @@
         }
         var totalSections = secCount + 1;
         if (spillLog.length > 0) {
-            log("Test kayması yakalandı ve yerine kilitlendi: " + spillLog.join(", "));
+            info("Önceki testin son sorusu yeni testin sayfasında; numarası korunarak yerinde bırakıldı: " + spillLog.join(", "));
         }
 
         for (pi = 0; pi < pageData.length; pi++) {
@@ -1163,12 +1236,12 @@
             } else { dupSeen[rD.sec][rD.num] = rD; }
         }
         if (strayFix.length > 0) {
-            log("Düzeltildi — komşu testin sayfasına konmuş soru kendi testine sayıldı ve yerinde kilitlendi: " +
-                strayFix.join(", ") + ". (A dosyasında bu soruyu doğru sayfaya almanız önerilir.)");
+            log("UYARI: Bir testin sorusu önceki testin soruları arasında okundu: " + strayFix.join(", ") +
+                " — kendi testine sayıldı, numarası korunarak yerinde bırakıldı. A dosyasında yerini kontrol edin.");
         }
         if (dupList.length > 0) {
-            log("KRİTİK: Aynı testte yinelenen soru numarası: " + dupList.join(", ") +
-                " — bu sorular YERİNDE KİLİTLENDİ ve cevap anahtarı yazımından dışlandı; A dosyasını kontrol edin.");
+            log("KRİTİK: Aynı testte aynı numaralı iki soru var: " + dupList.join(", ") +
+                " — ikisi de yerinde bırakıldı ve cevap anahtarına yazılmadı; A dosyasını düzeltin.");
         }
 
         // -----------------------------------------------------
@@ -1248,7 +1321,7 @@
                     if (allSlots[sI].pool !== poolIdx) { continue; }
                     if (allSlots[sI].shape === "FW") { fwC++; } else { colC++; }
                 }
-                log("Özel havuz " + poolIdx + " (\u201C" + ent + "\u201D): " + cnt + " soru" +
+                info("Özel havuz " + poolIdx + " (\u201C" + ent + "\u201D): " + cnt + " soru" +
                     (cnt === 0 ? " — EŞLEŞME YOK, tanımı kontrol edin." :
                      (cnt === 1 ? " — tek soru karışamaz, yerinde kalır." :
                       " kendi içinde karışacak.")));
@@ -1311,17 +1384,21 @@
             }
             if (lzs.length > 0) { linkLog.push("Test " + (k + 1) + ": " + lzs.join(", ")); }
         }
-        log(linkLog.length > 0
-            ? "Ortak metne bağlı soru grupları (yalnız kendi içinde karışır) — " + linkLog.join("  |  ")
-            : "Bilgi: Ortak metin yönergesi (\u201C8 ve 9. soruları ... göre\u201D vb.) bulunamadı.");
+        if (linkLog.length > 0) {
+            info("Ortak metinli soru grupları korundu (yalnız kendi içinde karıştı): " + linkLog.join("  |  "));
+        } else {
+            log("Ayrıntı: ortak metin yönergesi (\u201C8 ve 9. soruları ... göre\u201D vb.) bulunamadı.");
+        }
         if (carrierLock.length > 0) {
-            log("Ortak metni/yönergeyi kendi içinde taşıyan soru yerinde kilitlendi: " + carrierLock.join(", "));
+            log("Ayrıntı: ortak metni/yönergeyi kendi içinde taşıyan soru yerinde bırakıldı: " + carrierLock.join(", "));
         }
         if (cueLock.length > 0) {
-            log("UYARI: Yönergesi bulunamayan ama dışarıdaki bir metne/görsele gönderme yapan soru yerinde kilitlendi: " +
-                cueLock.join(", ") + " — bağlı değilse sorun yok; bağlıysa A'da yönerge yazımını kontrol edin.");
+            log("Ayrıntı: yönergesi bulunamayan ama dışarıdaki bir metne/görsele gönderme yapan soru yerinde bırakıldı: " + cueLock.join(", "));
         }
 
+        if (compTotal > 0) {
+            info("Soruyla gruplanmamış " + compTotal + " görsel/şekil/etiket, ait olduğu soruyla birlikte taşınacak.");
+        }
         var zi2 = [];
         for (k = 0; k < totalSections; k++) {
             var zstr = "";
@@ -1332,9 +1409,12 @@
             } else { zstr = " [tek bölge]"; }
             zi2.push("Test " + (k + 1) + ": " + (secQCount[k] || 0) + " soru" + zstr);
         }
-        log("Envanter: " + pages.length + " sayfa (" + skippedPages + " sorusuz sayfa atlandı), " +
+        log("Ayrıntı: envanter — " + pages.length + " sayfa (" + skippedPages + " sorusuz sayfa), " +
             totalSections + " test, " + totalQ + " soru (" + fwQ + " tam genişlik, " + colQ + " sütun).");
-        log("Ders bölgeleri — " + zi2.join("  |  "));
+        log("Ayrıntı: ders bölgeleri — " + zi2.join("  |  "));
+        var testLine = [];
+        for (k = 0; k < totalSections; k++) { testLine.push("Test " + (k + 1) + ": " + (secQCount[k] || 0) + " soru"); }
+        info("Bulunan testler — " + testLine.join(", ") + " (toplam " + totalQ + " soru).");
 
 
         // -----------------------------------------------------
@@ -1736,7 +1816,8 @@
                 }
             }
             if (exchLog.length > 0) {
-                log("Sayfalar arası takas (" + exchLog.length + "): " + exchLog.join("  |  "));
+                info("Sayfalar arası takas: " + exchLog.length + " kez iki farklı sayfadaki soru yer değiştirdi (ayrıntı CSV'de).");
+                log("Ayrıntı: sayfalar arası takas — " + exchLog.join("  |  "));
             }
         }
 
@@ -1861,10 +1942,10 @@
                     pageData[infT2.pdi].bundleInfo = infT2;
                     bundleSecs[infS.sec] = true;
                     bundleLog.push("Test " + (infS.sec + 1) + ": s." + pageData[Sb2.pdIdx].name +
-                                   " \u2194 s." + pageData[infT2.pdi].name + " (tüm sorular blok hâlinde)");
+                                   " \u2194 s." + pageData[infT2.pdi].name);
                 }
             }
-            if (bundleLog.length > 0) { log("Tam sayfa takası (" + bundleLog.length + "): " + bundleLog.join("  |  ")); }
+            if (bundleLog.length > 0) { info("Tam sayfa takası (iki sayfanın soruları blok hâlinde yer değiştirdi): " + bundleLog.join("  |  ")); }
         }
 
         // -----------------------------------------------------
@@ -1927,7 +2008,8 @@
             } else {
                 var lvlP = fitLevel(pdP, assigns[pi]);
                 if (lvlP < 0) {
-                    log("KRİTİK: Sayfa " + pdP.name + " yerleşimi doğrulanamadı; sayfa değiştirilmedi.");
+                    log("Ayrıntı: s." + pdP.name + " — sayfanın A düzeni doğrulanamadı; güvenlik için dokunulmadı.");
+                    if (!revertWhy[pi]) { revertWhy[pi] = "sayfanın A düzeni ölçülerek doğrulanamadı, güvenlik için dokunulmadı"; }
                     continue;
                 }
                 var placements = layoutAt(pdP, assigns[pi], lvlP);
@@ -1938,7 +2020,7 @@
                 }
                 pagePlans[pi] = planN;
                 if (LEVELS[lvlP].s < 1.0) {
-                    log("Bilgi: s." + pdP.name + " boşluklar %" + Math.round(LEVELS[lvlP].s * 100) + " ölçeğinde sıkıştırıldı.");
+                    log("Ayrıntı: s." + pdP.name + " — sorular arası boşluklar %" + Math.round(LEVELS[lvlP].s * 100) + " ölçeğinde sıkıştırıldı.");
                 }
             }
         }
@@ -2033,11 +2115,18 @@
                 }
             }
         }
-        log("Yerleştirme: " + movedCount + " çerçeve taşındı (" + xPageMoves + " tanesi sayfa değiştirdi).");
+        log("Ayrıntı: yerleştirme — " + movedCount + " çerçeve taşındı (" + xPageMoves + " tanesi sayfa değiştirdi).");
 
         // -----------------------------------------------------
         // 12) BİNDİRME DENETİMİ + GERİ ALMA (numaralamadan ÖNCE)
         // -----------------------------------------------------
+        function auditLog(pi5, msg) {
+            var why = trimS(String(msg).replace(/\s*\u2014\s*sayfa (A düzenine )?geri alındı\.?\s*$/, "").replace(/^\s*\u2014\s*/, ""));
+            why = why.replace("bindirme saptandı", "karışık düzende üst üste binme olacaktı")
+                     .replace("taşma saptandı", "karışık düzende sayfadan taşma olacaktı");
+            if (!revertWhy[pi5]) { revertWhy[pi5] = why; }
+            log("Ayrıntı: s." + pageData[pi5].name + " — " + why + " — bu sayfa A düzeninde bırakıldı.");
+        }
         function rectsOverlap(a, b) {
             return !(a[2] <= b[0] + 1 || b[2] <= a[0] + 1 || a[3] <= b[1] + 1 || b[3] <= a[1] + 1);
         }
@@ -2046,7 +2135,7 @@
             if (plan2 === null) { return true; }
             for (var qc = 0; qc < plan2.list.length; qc++) {
                 if (plan2.list[qc].cont.compErr) {
-                    log("KRİTİK: s." + pageData[pi2].name + " — S" + plan2.list[qc].cont.num +
+                    auditLog(pi2, " — S" + plan2.list[qc].cont.num +
                         " sorusuna ait görsel/şekil çerçevesi taşınamadı (kilitli nesne/katman?) — sayfa A düzenine geri alındı.");
                     return false;
                 }
@@ -2091,13 +2180,13 @@
             for (var a2 = 0; a2 < contRects.length; a2++) {
                 for (var b2i = a2 + 1; b2i < contRects.length; b2i++) {
                     if (rectsOverlap(contRects[a2], contRects[b2i])) {
-                        log("KRİTİK: s." + pageData[pi2].name + " bindirme saptandı (" +
+                        auditLog(pi2, " bindirme saptandı (" +
                             contRects[a2][4] + " × " + contRects[b2i][4] + ") — sayfa A düzenine geri alındı.");
                         return false;
                     }
                 }
                 if (contRects[a2][2] > pageData[pi2].HB + 2) {
-                    log("KRİTİK: s." + pageData[pi2].name + " taşma saptandı (" + contRects[a2][4] + ") — sayfa geri alındı.");
+                    auditLog(pi2, " taşma saptandı (" + contRects[a2][4] + ") — sayfa geri alındı.");
                     return false;
                 }
                 // içerik × sabit: sabit A'da zaten bir soruya değiyorsa tasarım gereğidir → UYARI
@@ -2107,7 +2196,7 @@
                             log("UYARI: s." + pageData[pi2].name + " — " + contRects[a2][4] + " ile " +
                                 fixRects[f2][4] + " kesişiyor (A'da da temas eden dekor); baskı öncesi göz atın.");
                         } else {
-                            log("KRİTİK: s." + pageData[pi2].name + " bindirme saptandı (" +
+                            auditLog(pi2, " bindirme saptandı (" +
                                 contRects[a2][4] + " × " + fixRects[f2][4] + ") — sayfa A düzenine geri alındı.");
                             return false;
                         }
@@ -2142,7 +2231,7 @@
                 if (crossedInA) { continue; }
                 for (var cq2 = 0; cq2 < contRects.length; cq2++) {
                     if (crosses(contRects[cq2])) {
-                        log("KRİTİK: s." + pageData[pi2].name + " — " + contRects[cq2][4] +
+                        auditLog(pi2, " — " + contRects[cq2][4] +
                             " sayfadaki bir çizginin (sütun ayırıcı vb.) üstüne düşüyor — sayfa A düzenine geri alındı.");
                         return false;
                     }
@@ -2154,7 +2243,7 @@
                 for (var oo = 0; oo < obsP.length; oo++) {
                     var ogb2 = obsP[oo].b;   // engeller taşınmaz: envanterdeki sınır yeterli
                     if (dOv0(contRects[ca], ogb2)) {
-                        log("KRİTİK: s." + pageData[pi2].name + " — " + contRects[ca][4] +
+                        auditLog(pi2, " — " + contRects[ca][4] +
                             " sayfadaki görsel/şekil çerçevesine biniyor — sayfa A düzenine geri alındı.");
                         return false;
                     }
@@ -2315,9 +2404,8 @@
             closureExtra.push("s." + pageData[pi].name);
         }
         if (reverted > 1) {
-            log("Takas bütünlüğü için birlikte geri alınanlar: " + closureExtra.join(", "));
+            log("Ayrıntı: takas bütünlüğü için birlikte geri alınanlar: " + closureExtra.join(", "));
         }
-        if (reverted > 0) { log("Geri alınan sayfa/çift: " + reverted + " — CSV'deki KRİTİK satırlarına bakın."); }
 
         // v4.15 İKİNCİ ŞANS: geri alınan sayfalar A'da kalmasın — yalnız
         // sayfa-içi, sıkıştırmasız güvenli karışım denenir ve bekçiden
@@ -2404,7 +2492,16 @@
             }
         }
         if (rescued.length > 0) {
-            log("İkinci deneme — sayfa-içi güvenli karışımla kurtarıldı: " + rescued.join(", "));
+            log("Ayrıntı: ikinci deneme — sayfa-içi güvenli karışımla kurtarıldı: " + rescued.join(", "));
+        }
+        // v4.22: son durumda A düzeninde kalan sayfalar (kurtarılamayanlar)
+        var keptA = [];
+        for (pi = 0; pi < pageData.length; pi++) {
+            if (failed[pi] && pagePlans[pi] === null) { keptA.push("s." + pageData[pi].name); }
+        }
+        if (keptA.length > 0) {
+            info("Güvenlik denetimi: " + keptA.length + " sayfa A düzeninde bırakıldı (" + keptA.join(", ") +
+                 ") — karışık düzende bir çakışma olacaktı; B dosyasında sorun yok, nedeni aşağıdaki listede.");
         }
 
         // -----------------------------------------------------
@@ -2444,7 +2541,7 @@
                     }
                     mapping.push({ sec: r.sec, oldNum: r.num, oldPage: pageData[r.page].name,
                                    newNum: nn0, newPage: pageData[pi].name, ans: r.ans, shape: r.shape,
-                                   keySkip: (r.keySkip === true) });
+                                   keySkip: (r.keySkip === true), rec: r });
                 });
                 continue;
             }
@@ -2464,19 +2561,46 @@
                 if (!writeNum(cM, nn)) { log("UYARI: S" + cM.num + " numarası bulunamadı (s." + pageData[pi].name + ")."); }
                 mapping.push({ sec: cM.sec, oldNum: cM.num, oldPage: pageData[cM.page].name,
                                newNum: nn, newPage: pageData[pi].name, ans: cM.ans, shape: cM.shape,
-                               keySkip: (cM.keySkip === true) });
+                               keySkip: (cM.keySkip === true), rec: cM });
             }
         }
 
         // bütünlük denetimi + yerinde kalan raporu
         var chkArr = [];
         for (k = 0; k < totalSections; k++) { chkArr.push({}); }
-        var stillList = [];
+        // v4.22: yerinde kalan her soru için anlaşılır neden
+        function stayReason(r) {
+            var tip = (r.shape === "FW") ? "tam genişlik" : "sütun";
+            if (r.grup >= 900000) { return "önceki testin son sorusu, yeni testin sayfasında duruyor"; }
+            if (r.grup >= 800000) {
+                return r.keySkip ? "testte aynı numaralı başka bir soru var (A dosyasını kontrol edin)"
+                                 : "önceki testin soruları arasında okundu; numarası korunarak bırakıldı";
+            }
+            if (r.grup >= 650000) { return "\u201CBuna göre / Bu metne göre\u201D gibi dışarıdaki bir metne gönderme yapıyor, yönergesi yok"; }
+            if (r.grup >= 600000) { return "ortak metni ya da yönergesini kendi içinde taşıyor"; }
+            if (revertWhy[r.pdIdx] && pagePlans[r.pdIdx] === null) { return "sayfa A düzeninde bırakıldı: " + revertWhy[r.pdIdx]; }
+            if (mode === "col") { return "\u201CSütun içi ikili\u201D modunda sütununda eşi yok"; }
+            var peers = 0;
+            for (var pq3 = 0; pq3 < allSlots.length; pq3++) {
+                var T3 = allSlots[pq3];
+                if (T3 === r || T3.sec !== r.sec || T3.zone !== r.zone || T3.shape !== r.shape || T3.pool !== r.pool) { continue; }
+                if (T3.grup !== r.grup && !(T3.grup === 0 && r.grup === 0)) { continue; }
+                peers++;
+            }
+            if (peers === 0) {
+                if (r.pool > 0) { return "özel havuzunda tek soru"; }
+                if (isLinkZone(r.sec, r.zone)) { return "ortak metin grubunun tek sorusu"; }
+                return "testte başka " + tip + " soru yok (sorular yalnız aynı türden soruyla yer değiştirir)";
+            }
+            return "yerine sığan " + tip + " soru bulunamadı (boyu uyan eş yok)";
+        }
+        var stillList = [], stayLines = [];
         for (k = 0; k < mapping.length; k++) {
             chkArr[mapping[k].sec][mapping[k].newNum] = true;
             if (mapping[k].oldNum === mapping[k].newNum && mapping[k].oldPage === mapping[k].newPage) {
-                stillList.push("Test " + (mapping[k].sec + 1) + " S" + mapping[k].newNum +
-                               (mapping[k].shape === "FW" ? " (tam genişlik)" : ""));
+                var stTag = "Test " + (mapping[k].sec + 1) + " S" + mapping[k].newNum + " (s." + mapping[k].newPage + ")";
+                stillList.push(stTag);
+                stayLines.push(stTag + ": " + (mapping[k].rec ? stayReason(mapping[k].rec) : "nedeni belirlenemedi"));
             }
         }
         for (k = 0; k < totalSections; k++) {
@@ -2484,11 +2608,7 @@
             for (i = 1; i <= (secQCount[k] || 0); i++) { if (!chkArr[k][i]) { eks.push(i); } }
             if (eks.length > 0) { log("KRİTİK: Test " + (k + 1) + " numara dizisinde eksik: " + eks.join(",")); }
         }
-        if (stillList.length > 0) {
-            log("Yerinde kalanlar (" + stillList.length + "): " + stillList.join(", "));
-        } else if (mapping.length > 0) {
-            log("Tüm sorular yer değiştirdi.");
-        }
+        for (k = 0; k < stayLines.length; k++) { log("Yerinde kalan: " + stayLines[k]); }
 
         // -----------------------------------------------------
         // 14) KİTAPÇIK HARFİ A→B (Bölüm İşareti + master bant)
@@ -2502,7 +2622,7 @@
                     // v4.18: yalnız tek başına duran A değişir; "KİMYA"/"COĞRAFYA" gibi
                     // A ile biten kelimeler artık "KİMYB" olmaz ("1A" → "1B" korunur).
                     var nmk = mk.replace(/(^|[^A-Za-zÇĞİÖŞÜçğıöşü])A(?![0-9A-Za-zÇĞİÖŞÜçğıöşü])/g, "$1B");
-                    if (nmk !== mk) { sec.marker = nmk; chg++; log("Bölüm işareti: \u201C" + mk + "\u201D → \u201C" + nmk + "\u201D"); }
+                    if (nmk !== mk) { sec.marker = nmk; chg++; log("Ayrıntı: bölüm işareti \u201C" + mk + "\u201D → \u201C" + nmk + "\u201D"); }
                 }
             }
             var bandChg = 0;
@@ -2522,7 +2642,7 @@
                     }
                 }
             } catch (eMS) {}
-            if (bandChg > 0) { log("Master üst bant: " + bandChg + " çerçevede A→B yapıldı."); }
+            if (bandChg > 0) { log("Ayrıntı: master üst bant " + bandChg + " çerçevede A→B yapıldı."); }
             // v4.19: kapak, arka kapak, anahtar sayfası gibi SORUSUZ sayfalardaki kitapçık harfi
             // ("A", "A KİTAPÇIĞI"). Soru sayfalarına dokunulmaz (şekillerdeki "A" etiketleri).
             // Değişim yerinde yapılır; harfin biçimi korunur.
@@ -2550,8 +2670,13 @@
                     if (fA.length > 0) { coverChg.push("s." + pageData[pi].name + " \u201C" + cC + "\u201D"); }
                 }
             }
-            if (coverChg.length > 0) { log("Sorusuz sayfada kitapçık harfi A→B: " + coverChg.join(", ")); }
-            if (chg === 0 && bandChg === 0 && coverChg.length === 0) { log("Bilgi: A içeren bölüm işareti/master bant bulunamadı."); }
+            if (coverChg.length > 0) { log("Ayrıntı: sorusuz sayfada kitapçık harfi A→B: " + coverChg.join(", ")); }
+            var harfYer = [];
+            if (chg > 0) { harfYer.push("bölüm işareti"); }
+            if (bandChg > 0) { harfYer.push("master üst bant (" + bandChg + " çerçeve)"); }
+            if (coverChg.length > 0) { harfYer.push("kapak/sorusuz sayfa (" + coverChg.length + " yer)"); }
+            if (harfYer.length > 0) { info("Kitapçık harfi A → B yapıldı: " + harfYer.join(", ") + "."); }
+            else { log("UYARI: Belgede A kitapçık harfi (bölüm işareti, master bant ya da kapakta) bulunamadı — B harfini elle kontrol edin."); }
         }
 
         // -----------------------------------------------------
@@ -2612,8 +2737,8 @@
                     var expOld = oldBySecNum[secIdx][num2];
                     if (expOld && expOld !== "?" && expOld !== oldL) {
                         mismatch++;
-                        log("KRİTİK — A uyuşmazlığı: Test " + (secIdx + 1) + " S" + num2 +
-                            " soru içi \u201C" + expOld + "\u201D, blokta \u201C" + oldL + "\u201D.");
+                        log("KRİTİK: A dosyasında Test " + (secIdx + 1) + " S" + num2 + " — cevap soru içinde \u201C" + expOld +
+                            "\u201D, cevap anahtarında \u201C" + oldL + "\u201D. Hangisi doğruysa A'yı düzeltin (B anahtarına soru içindeki harf yazıldı).");
                     }
                     var newL = newLetters[secIdx][num2];
                     if (!newL || newL === "?") {
@@ -2627,12 +2752,12 @@
                         log("UYARI: Anahtar Test " + (secIdx + 1) + " S" + num2 + " için harf üretilemedi.");
                     }
                 }
-                log("Cevap anahtarı: " + toks.length + " girdi, " + updated + " güncellendi." +
-                    (mismatch ? " (" + mismatch + " A-uyuşmazlığı.)" : ""));
+                info("Cevap anahtarı güncellendi: " + toks.length + " numaradan " + updated + " numarada harf değişti" +
+                     (toks.length - updated > 0 ? ", " + (toks.length - updated) + " numarada aynı kaldı." : "."));
                 if (fromKey > 0) {
-                    log("Bilgi: " + fromKey + " sorunun harfi soru içinden okunamadı; A anahtar bloğundan eşlemeyle alındı.");
+                    log("Ayrıntı: " + fromKey + " sorunun harfi soru içinden okunamadı; A anahtar bloğundan eşlemeyle alındı.");
                 }
-            } else { log("Bilgi: Cevap anahtarı bloğu bulunamadı."); }
+            } else { log("UYARI: Cevap anahtarı bloğu bulunamadı — B kitapçığının cevap anahtarını elle hazırlayın."); }
         }
 
         // -----------------------------------------------------
@@ -2655,7 +2780,7 @@
                 csv.writeln("LOG");
                 for (k = 0; k < LOG.length; k++) { csv.writeln(LOG[k].replace(/;/g, ",")); }
                 csv.close();
-                log("Rapor: " + decodeURI(csv.name));
+                info("Ayrıntılı rapor: " + decodeURI(csv.name));
             } else { log("UYARI: CSV yazılamadı."); }
         }
 
@@ -2663,11 +2788,30 @@
         for (k = 0; k < mapping.length; k++) {
             if (mapping[k].oldNum !== mapping[k].newNum || mapping[k].oldPage !== mapping[k].newPage) { movedQ++; }
         }
-        summaryHead = "YER DEĞİŞTİREN SORU: " + movedQ + " / " + mapping.length + "\n";
-        if (reverted > 0) {
-            summaryHead += "DİKKAT: " + reverted + " sayfa güvenlik nedeniyle A düzenine geri alındı — LOG'daki KRİTİK satırlarını iletin.\n";
+        // v4.22: sade uyarı penceresi — özet, yerinde kalanlar (nedenleriyle), dikkat, bilgi
+        var R = [];
+        R.push(movedQ + " / " + mapping.length + " soru yer değiştirdi.");
+        if (stayLines.length > 0) {
+            R.push("");
+            R.push("YERİNDE KALAN " + stayLines.length + " SORU");
+            for (k = 0; k < stayLines.length; k++) { R.push("  \u2022 " + stayLines[k]); }
         }
-        summaryHead += "\n";
+        var dik = [], dikSeen = {};
+        for (k = 0; k < LOG.length; k++) {
+            if (/^(KRİTİK|UYARI)/.test(LOG[k]) && !dikSeen[LOG[k]]) { dikSeen[LOG[k]] = true; dik.push(LOG[k]); }
+        }
+        R.push("");
+        if (dik.length === 0) {
+            R.push("DİKKAT: yok — elle kontrol gerektiren bir durum bulunmadı.");
+        } else {
+            R.push("DİKKAT (" + dik.length + ")");
+            for (k = 0; k < dik.length && k < 12; k++) { R.push("  \u2022 " + dik[k]); }
+            if (dik.length > 12) { R.push("  \u2022 \u2026 ve " + (dik.length - 12) + " satır daha (CSV raporunda)."); }
+        }
+        R.push("");
+        R.push("BİLGİ");
+        for (k = 0; k < INFO.length; k++) { R.push("  \u2022 " + INFO[k]); }
+        summaryHead = R.join("\n");
 
         doc.save();
 
@@ -2687,6 +2831,6 @@
               "\n\nB dosyası yarım kalmış olabilir; orijinal A dosyanız diskte değişmedi.");
         return;
     }
-    alert("Kitapçık B v4.21 — Tamamlandı ✔\n" + summaryHead + LOG.join("\n"));
+    alert("Kitapçık B v4.22 — Tamamlandı ✔\n\n" + summaryHead);
 
 })();
