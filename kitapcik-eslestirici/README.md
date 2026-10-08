@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.24)
+# Kitapçık Eşleştirici (v2.25)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -64,7 +64,11 @@ Her kitapçık önce **kendi içinde**, sonra **A ile B karşılıklı** denetle
    sorunun kendi metni sorunun parçası sayılır. Eşleştirme her testin içinde, dersler arasında
    yapılır; soru başka dersin aralığına kaymışsa yakalanır.
 5. **Eşleşen her çift için:**
-   - Metin ve şıklar birebir aynı mı? Fark kelime düzeyinde gösterilir.
+   - Metin ve şıklar birebir aynı mı? Fark kelime düzeyinde gösterilir. Baskıda görünmeyen
+     farklar sayılmaz: boşluklar, satır sonunda bölünen kelimeler, tirenin kodu ("-", yumuşak
+     tire, Unicode tire), "ü"nün tek harf ya da "u"+"¨" yazılması, ﬁ gibi bitişik harfler.
+     Görünen noktalama farkı (ör. virgül yalnızca A'da) sarı UYARI, kelime/harf farkı kırmızı
+     HATA olur.
    - Ders aynı mı?
    - Cevap harfi aynı mı? (cevap açık PDF'lerde)
    - Şekil ve resimler aynı mı? Sorudaki resim ve çizimler "şekil kutuları"na toplanır, her şekil
@@ -84,7 +88,8 @@ A B C D şıklarıyla) ve iki sütun bir arada olsa da her satır kendi sorusund
 
 ### Rapor
 
-- **Özet:** Her kontrol için TEMİZ / HATA / KONTROL ET. Altında **"NEREYE BAKMALI?"** listesi:
+- **Özet:** Her kontrol için TEMİZ / HATA / KONTROL ET. Hatalar kırmızı zemin üzerinde beyaz,
+  açıklamaları koyu kırmızı yazılır; uyarılar sarıdır. Altında **"NEREYE BAKMALI?"** listesi:
   her sorun sıra numarası, testi, soru numarası (A-7 / B-2), **A ve B sayfası** ve ne bulunduğuyla.
   Liste kitapçıktaki sıraya göredir (önce hatalar, sonra uyarılar).
 - **Sorun kartları PDF'i** (`kitapcik_kontrol_raporu_sorunlar.pdf`): Her sorun için bir sayfa.
@@ -134,6 +139,11 @@ sorudaki toplam şekil mürekkebi kıyaslanır; yalnızca belirgin fark varsa (%
 
 - PDF'te **seçilebilir metin** olmalı. Yazılar eğriye çevrilmişse (outline) ya da taranmışsa önce
   OCR gerekir.
+- PDF küçültülürken ya da Distiller / "PDF olarak yazdır" ile yeniden kaydedilirken yazı
+  tiplerinin harf eşlemesi kaybolabilir: görüntü doğru, metin anlamsız ("Bu testte" →
+  "%X WHVWWH"). Uygulama bunu fark edip "yazılar okunamıyor" diye durur; özgün PDF
+  kullanılmalıdır. Küçültmek gerekirse Acrobat'ta Dosya > Farklı Kaydet > Küçültülmüş Boyutlu
+  PDF yazıları korur.
 - B baskı PDF'i **sayfa sayfa** olmalı; montajlı (imposition, 2 sayfa yan yana) PDF desteklenmez.
 - Bir şeklin parçaları arasındaki boşluk A ve B'de çok farklıysa "şekil sayısı farklı" uyarısı
   çıkabilir. Bu uyarılar "elle bakın" düzeyindedir.
@@ -173,6 +183,7 @@ pip install pymupdf numpy scipy openpyxl
 python3 testler/ornek_pdf_uret.py /tmp/ornek          # gerçek dizgiye benzeyen A/B PDF'leri
 python3 testler/eslestir_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/ornek /tmp/sonuc.json
 python3 testler/kontrol_sina.py  "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/ornek
+python3 testler/tire_sina.py     "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/tire   # A ve B'de farklı tire karakteri: sahte uyarı olmamalı
 ```
 
 Üretilen örnekler: iki sütunlu ve tek sütunlu (2x2 şıklı) sayfalar, metne bağlı gruplar, şekilli

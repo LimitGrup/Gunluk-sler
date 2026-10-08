@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.24"
+SURUM = "2.25"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -126,6 +126,15 @@ def eksikleri_bul():
     importlib.invalidate_caches()
     return [p for p in GEREKLI if importlib.util.find_spec({"pymupdf": "fitz", "python-docx": "docx"}.get(p, p)) is None
         and not (p == "pymupdf" and importlib.util.find_spec("fitz"))]
+
+
+_XL_YASAK_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _xl(v):
+    """Excel hücresine yazılamayan kontrol karakterlerini atar (PDF metninden
+    gelen açıklamalarda bulunabilir; openpyxl bunlarla dosyayı yazamaz)."""
+    return _XL_YASAK_RE.sub("", v) if isinstance(v, str) else v
 
 
 def normalize(s):
@@ -977,7 +986,7 @@ def excel_yaz(sablon, sayfa_adi, yapi, eslesme, a_sorular,
                 if ca and cb and ca != cb:
                     farklar.append(f"CEVAP UYUŞMAZLIĞI: {test['test']} "
                                    f"A-{n} ({ca}) ↔ B-{b_no} ({cb}).")
-                ws.cell(row=r, column=1, value=ders)
+                ws.cell(row=r, column=1, value=_xl(ders))
                 ws.cell(row=r, column=2, value="A")
                 ws.cell(row=r, column=3, value=n)
                 ws.cell(row=r, column=4, value=ca)
@@ -1015,11 +1024,11 @@ def excel_yaz(sablon, sayfa_adi, yapi, eslesme, a_sorular,
                         durum = "KONTROL ET"
                     else:
                         durum = "OK"
-                    kw.append([test["test"], ders, n, es["b_no"], yuzde, yontem,
-                               ca_, cb_, kod, durum])
+                    kw.append([_xl(v) for v in (test["test"], ders, n, es["b_no"],
+                                                yuzde, yontem, ca_, cb_, kod, durum)])
                 else:
-                    kw.append([test["test"], ders, n, "", "", "",
-                               ca_, "", kod, "EŞLEŞMEDİ"])
+                    kw.append([_xl(v) for v in (test["test"], ders, n, "", "", "",
+                                                ca_, "", kod, "EŞLEŞMEDİ")])
     _kn = wb["Konular"] if "Konular" in wb.sheetnames else None
     if sablon_verildi and (_kn is None or not any(
             any(c not in (None, "") for c in r_)
@@ -1029,13 +1038,39 @@ def excel_yaz(sablon, sayfa_adi, yapi, eslesme, a_sorular,
     kw.append([])
     kw.append(["UYARILAR"])
     for u in uyarilar + farklar:
-        kw.append([u])
+        kw.append([_xl(u)])
     return wb, farklar
+
+
+def okunurluk_denetle(*pdfler):
+    """PDF'teki yazılar okunabiliyor mu? Yazı tipinin harf eşlemesi (ToUnicode)
+    yoksa görüntü doğru olsa da metin anlamsız harflere döner ("Bu testte" →
+    "%X WHVWWH"); bu durumda karşılaştırma yapılamaz. Sağlam PDF'lerde bu tür
+    karakterler binde birin altında, bozuklarda yüzde 15 civarındadır."""
+    for pdf in pdfler:
+        harf = bozuk = 0
+        with fitz.open(pdf) as doc:
+            for sayfa in doc:
+                for c in sayfa.get_text():
+                    if c.isspace():
+                        continue
+                    harf += 1
+                    bozuk += ord(c) < 32
+        if harf and bozuk / harf > 0.02:
+            raise RuntimeError(
+                f"'{Path(pdf).name}' içindeki yazılar okunamıyor (metnin yaklaşık "
+                f"%{bozuk / harf * 100:.0f} kadarı anlamsız karakter). PDF görüntüsü doğru "
+                f"olsa da yazı tiplerinin harf eşlemesi kaybolmuş; bu çoğunlukla PDF "
+                f"küçültülürken ya da Distiller / 'PDF olarak yazdır' ile yeniden "
+                f"kaydedilirken olur. Dizgiden alınan özgün PDF'i seçin. (Küçültmek "
+                f"gerekirse Acrobat'ta Dosya > Farklı Kaydet > Küçültülmüş Boyutlu "
+                f"PDF yazıları korur.)")
 
 
 def calistir(a_pdf, b_pdf, sinav, sablon, anah_a, anah_b, cikti, log,
              yol_sor=None):
     log(f"Motor sürümü: {SURUM}")
+    okunurluk_denetle(a_pdf, b_pdf)
     if sinav in ("OTOMATİK", "ORTAOKUL"):
         log("Yapı A kitapçığından çıkarılıyor...")
         yapi = yapi_cikar(a_pdf)
@@ -1172,10 +1207,13 @@ KONTROL_SEKIL_ESIK = 28.0      # şekil kutusunda küçük bölge gri ton farkı
 def _grup_basligi_coz(metin, devam=""):
     """'14 ve 15. soruları', '1-4. soruları', '5, 6 ve 7. soruları',
     '12. ve 13. soruları', '9. soruyu' ... → [numaralar]; başlık değilse None."""
-    m = GRUP_NUMARA_RE.search(metin)
-    if not m or m.start() > 80:
+    # Satır sonunda tireyle bölünmüş kelimeler ("cevaplayı-/nız") birleştirilir
+    ilk = _kiyas_metni(metin)
+    tum = _kiyas_metni(metin + "\n" + devam) if devam else ilk
+    m = GRUP_NUMARA_RE.search(tum)
+    if not m or m.start() > min(80, len(ilk)):
         return None
-    tum = (metin + " " + devam).casefold()
+    tum = tum.casefold()
     if "cevaplay" not in tum:
         return None
     # "16-20. soruları Din Kültürü ... öğrenciler cevaplayacaktır" gibi seçmeli
@@ -1213,6 +1251,34 @@ def _renkli_isaret_mi(metin, renk):
 def _sik_harfi(satir):
     m = SECENEK_SATIRI_RE.match(satir["metin"])
     return m.group(1) if m else None
+
+
+# Görünüşü aynı, kodu farklı karakterler: satır sonu tiresi dizgi programına
+# göre "-", yumuşak tire ya da Unicode tire olabilir; "ü" tek harf ya da "u"+"¨"
+TIRE_RE = re.compile("[\u2010\u2011\u2012\u2043\ufe63\uff0d]")
+TIRELER = "-\u00ad\u2010\u2011\u2012\u2043\ufe63\uff0d"
+GORUNMEZ_RE = re.compile("[\u00ad\u200b\u200c\u200d\u2060\ufeff]")
+BITISIK_HARF = {"\ufb00": "ff", "\ufb01": "fi", "\ufb02": "fl", "\ufb03": "ffi",
+                "\ufb04": "ffl"}
+
+
+def _kiyas_metni(metin):
+    """Karşılaştırılan metin: satır sonunda bölünmüş kelime birleşir; tire
+    çeşitleri, görünmez karakterler, bitişik harfler (ﬁ) ve Unicode yazım
+    farkları eşitlenir; boşluklar teke iner."""
+    m = unicodedata.normalize("NFC", metin)
+    m = "".join(BITISIK_HARF.get(c, c) for c in m)
+    m = TIRE_RE.sub("-", m)
+    m = re.sub(r"(\w)[-\u00ad][ \t]*\n[ \t]*(\w)", r"\1\2", m)
+    m = GORUNMEZ_RE.sub("", m)
+    return re.sub(r"\s+", " ", m).strip()
+
+
+def _gorunur_ayni(a, b):
+    """İki karşılaştırma metni baskıda aynı mı? Boşluk ve tire farkı sayılmaz:
+    satır kırılması, iki yana yaslamadaki harf aralığı ya da tirenin kodu
+    A ile B'de farklı olabilir; okuyan için metin aynıdır."""
+    return re.sub(r"[\s\-]", "", a) == re.sub(r"[\s\-]", "", b)
 
 
 def _temiz_satir(satir, ilk=False):
@@ -1513,14 +1579,23 @@ def _kitapcik_bolumle(k, mobilya, log):
     # --- metne bağlı grup başlıkları -----------------------------------------
     basliklar = []
     for i, r in enumerate(sira):
-        devam = " ".join(x["metin"] for x in sira[i + 1:i + 3]
-                         if x["sayfa"] == r["sayfa"])
+        devam = "\n".join(x["metin"] for x in sira[i + 1:i + 3]
+                          if x["sayfa"] == r["sayfa"])
         nums = _grup_basligi_coz(r["metin"], devam)
         if nums:
             bitis = i            # başlık cümlesi alt satıra taştıysa onu da al
-            if "cevaplay" not in r["metin"].casefold():
-                bitis = next((j for j in range(i + 1, min(i + 3, len(sira)))
-                              if "cevaplay" in sira[j]["metin"].casefold()), i)
+            for j in range(i, min(i + 3, len(sira))):
+                if sira[j]["sayfa"] != r["sayfa"]:
+                    break
+                if "cevaplay" in _kiyas_metni("\n".join(
+                        x["metin"] for x in sira[i:j + 1])).casefold():
+                    bitis = j
+                    break
+            # Başlığın son satırı tireyle bölünmüşse ("cevaplayı-") devamı da başlık
+            while (bitis + 1 < min(i + 4, len(sira))
+                   and sira[bitis]["metin"].rstrip()[-1:] in TIRELER
+                   and sira[bitis + 1]["sayfa"] == r["sayfa"]):
+                bitis += 1
             basliklar.append({"poz": i, "bitis": bitis, "satir": r,
                               "nolar": nums})
     baslik_poz = {b["poz"] for b in basliklar}
@@ -1611,8 +1686,7 @@ def _kitapcik_bolumle(k, mobilya, log):
         #                                        üstündeki renkli harfler hariç)
         parcalar = [_temiz_satir(r, ilk=(j == 0)) for j, r in tutulan]
         metin = "\n".join(x for x in parcalar if x)
-        cmp = re.sub(r"\s+", " ", re.sub(r"(\w)[-\u00ad]\n(\w)", r"\1\2",
-                                         metin)).strip()
+        cmp = _kiyas_metni(metin)
         norm = normalize(metin)
         bas = sira[p]
         if tur == "S":
@@ -1647,7 +1721,7 @@ def _kitapcik_bolumle(k, mobilya, log):
                  if not mob(r)
                  and not KONTROL_DUR_RE.search(r["metin"])]
         b["metin"] = "\n".join(_temiz_satir(r) for r in parca)
-        b["cmp"] = re.sub(r"\s+", " ", b["metin"]).strip()
+        b["cmp"] = _kiyas_metni(b["metin"])
         b["ti"] = sonrakiler[0]["ti"] if sonrakiler else None
         b["sayfa"] = b["satir"]["sayfa"]
         bas_sat = [x for x in sira[b["poz"]:b["bitis"] + 1]
@@ -2323,7 +2397,7 @@ def _bolge_kelimeleri(doc, bolgeler):
         for grup in sira_:
             satir_kel = [(m, [(pno, rc)]) for _y, _x, kel in
                          sorted(grup, key=lambda t: t[1]) for m, rc in kel]
-            if (kelimeler and satir_kel and kelimeler[-1][0][-1:] in ("-", "­")
+            if (kelimeler and satir_kel and kelimeler[-1][0][-1:] in TIRELER
                     and len(kelimeler[-1][0]) > 1 and satir_kel[0][0][:1].islower()):
                 onceki_m, onceki_r = kelimeler.pop()
                 ilk_m, ilk_r = satir_kel.pop(0)
@@ -2342,8 +2416,9 @@ def _fark_kelimeleri(docs, gorunum):
     kb = _bolge_kelimeleri(docs["B"], [b for et, b in gorunum if et == "B"])
     if not ka or not kb:
         return []
-    sm = difflib.SequenceMatcher(None, [m for m, _r in ka], [m for m, _r in kb],
-                                 autojunk=False)
+    anahtar = lambda m: re.sub(r"-", "", _kiyas_metni(m))
+    sm = difflib.SequenceMatcher(None, [anahtar(m) for m, _r in ka],
+                                 [anahtar(m) for m, _r in kb], autojunk=False)
     sonuc, farkli = [], 0
     for op, i1, i2, j1, j2 in sm.get_opcodes():
         if op == "equal":
@@ -2386,6 +2461,7 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                yapi_b=None):
     """A ve B kitapçığını denetler. Dönen: (sonuc sözlüğü, sorunlar listesi)."""
     cevap_a, cevap_b = cevap_a or {}, cevap_b or {}
+    okunurluk_denetle(a_pdf, b_pdf)
     sorunlar = []
 
     def sorun(onem, kitapcik, aciklama, test="", ders="", soru="", yerler=(),
@@ -2548,11 +2624,11 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
         for o_, karsi in ((oa, f"B-{ob['etiket_no']}"), (ob, f"A-{oa['etiket_no']}")):
             if o_.get("_sorun"):         # numarası hatalı sorunun karşılığını yaz
                 o_["_sorun"]["aciklama"] += f" İçerik {karsi} ile aynı soru."
-        if oa["cmp"] == ob["cmp"]:
+        if _gorunur_ayni(oa["cmp"], ob["cmp"]):
             pass
         elif oa["norm"] == ob["norm"]:
             durum.append("NOKTALAMA")
-            sorun("UYARI", "A-B", "Noktalama/boşluk farkı: "
+            sorun("UYARI", "A-B", "Noktalama farkı: "
                   + _fark_ozeti(oa["cmp"], ob["cmp"]), test_adi(ti),
                   oa["ders"], etiket, yerler, vurgula=True)
         else:
@@ -2647,11 +2723,11 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                 if None not in b_nolar and gb["nolar"] != sorted(b_nolar):
                     durum.append("B BAŞLIĞI YANLIŞ")   # ayrıntı numaralandırmada
                 parca_oran = _benzerlik_orani(ga["cmp"], gb["cmp"])
-                if ga["cmp"] != gb["cmp"]:
+                if not _gorunur_ayni(ga["cmp"], gb["cmp"]):
                     if normalize(ga["cmp"]) == normalize(gb["cmp"]):
                         durum.append("NOKTALAMA")
-                        sorun("UYARI", "A-B", "Parça metninde noktalama/boşluk "
-                              "farkı: " + _fark_ozeti(ga["cmp"], gb["cmp"]),
+                        sorun("UYARI", "A-B", "Parça metninde noktalama farkı: "
+                              + _fark_ozeti(ga["cmp"], gb["cmp"]),
                               test_adi(ti), "", etiket,
                               [(A["etiket"], ga["bolge"]), (B["etiket"], gb["bolge"])],
                               vurgula=True)
@@ -2736,10 +2812,24 @@ def kart_yolu(rapor):
 def kontrol_raporu_yaz(sonuc, sorunlar, cikti, kartlar=None):
     import openpyxl
     from openpyxl.styles import Alignment, Font, PatternFill
-    KIRMIZI = PatternFill("solid", fgColor="F8CBAD")
+    KIRMIZI = PatternFill("solid", fgColor="E53935")    # hata: açık kırmızı
     SARI = PatternFill("solid", fgColor="FFE699")
     YESIL = PatternFill("solid", fgColor="C6EFCE")
     KALIN = Font(name="Tahoma", bold=True)
+    BEYAZ_KALIN = Font(name="Tahoma", bold=True, color="FFFFFF")
+    KOYU_KIRMIZI = Font(name="Tahoma", bold=True, color="B71C1C")
+
+    def ekle(sayfa, satir):
+        sayfa.append([_xl(v) for v in satir])
+
+    def boya(hucre, tur):
+        """tur: HATA (kırmızı, beyaz kalın yazı), UYARI/KONTROL ET (sarı), TEMİZ."""
+        if tur == "HATA":
+            hucre.fill, hucre.font = KIRMIZI, BEYAZ_KALIN
+        elif tur == "TEMİZ":
+            hucre.fill = YESIL
+        else:
+            hucre.fill = SARI
     adlar = sonuc["test_adlari"]
     test_adi = lambda ti: adlar[ti] if ti is not None and ti < len(adlar) else ""
 
@@ -2751,11 +2841,11 @@ def kontrol_raporu_yaz(sonuc, sorunlar, cikti, kartlar=None):
     es = sonuc["eslesmeler"]
     ayni = sum(1 for e in es if not e[6])
     toplam_a = sonuc["numara"]["A"][1]
-    oz.append(["A–B KİTAPÇIK KONTROL RAPORU", f"Motor sürümü {SURUM}"])
-    oz.append(["A kitapçığı", Path(sonuc["A"]["pdf"]).name])
-    oz.append(["B kitapçığı", Path(sonuc["B"]["pdf"]).name])
-    oz.append([])
-    oz.append(["Kontrol", "Sonuç", "Durum"])
+    ekle(oz, ["A–B KİTAPÇIK KONTROL RAPORU", f"Motor sürümü {SURUM}"])
+    ekle(oz, ["A kitapçığı", Path(sonuc["A"]["pdf"]).name])
+    ekle(oz, ["B kitapçığı", Path(sonuc["B"]["pdf"]).name])
+    ekle(oz, [])
+    ekle(oz, ["Kontrol", "Sonuç", "Durum"])
     for c in oz[5]:
         c.font = KALIN
     satirlar = [
@@ -2796,80 +2886,82 @@ def kontrol_raporu_yaz(sonuc, sorunlar, cikti, kartlar=None):
                          "yok" if not acik else f"{acik} işaret bulundu",
                          "TEMİZ" if not acik else "HATA"))
     for s in satirlar:
-        oz.append(list(s))
-        c = oz.cell(row=oz.max_row, column=3)
-        c.fill = YESIL if s[2] == "TEMİZ" else (KIRMIZI if s[2] == "HATA" else SARI)
+        ekle(oz, list(s))
+        boya(oz.cell(row=oz.max_row, column=3), s[2])
     oz.column_dimensions["A"].width = 40
     oz.column_dimensions["B"].width = 70
     oz.column_dimensions["C"].width = 16
 
     # Nereye bakmalı: her sorun, sayfasıyla birlikte doğrudan özette
-    oz.append([])
+    ekle(oz, [])
     if sorunlar:
-        oz.append(["NEREYE BAKMALI?", f"{len(sorunlar)} sorun — kitapçıktaki "
+        ekle(oz, ["NEREYE BAKMALI?", f"{len(sorunlar)} sorun — kitapçıktaki "
                    f"sırasıyla (önce hatalar)", "Sayfa"])
         for c in oz[oz.max_row]:
             c.font = KALIN
         if kartlar:
-            oz.append(["Görüntüler", f"Her sorunun A ve B görüntüsü yan yana, "
+            ekle(oz, ["Görüntüler", f"Her sorunun A ve B görüntüsü yan yana, "
                        f"farklı kelimeler sarı: {Path(kartlar).name}", ""])
             c = oz.cell(row=oz.max_row, column=2)
             c.hyperlink = Path(kartlar).name
             c.font = Font(name="Tahoma", color="0563C1", underline="single")
         for s in sorunlar:
-            oz.append([f"{s['sira']}. {s['onem']} · {s['test'] or s['kitapcik']}"
+            ekle(oz, [f"{s['sira']}. {s['onem']} · {s['test'] or s['kitapcik']}"
                        + (f" · {s['soru']}" if s["soru"] else ""),
                        s["aciklama"], _sorun_yeri(s)])
-            oz.cell(row=oz.max_row, column=1).fill = (
-                KIRMIZI if s["onem"] == "HATA" else SARI)
+            boya(oz.cell(row=oz.max_row, column=1), s["onem"])
+            if s["onem"] == "HATA":           # açıklama da kırmızı okunsun
+                oz.cell(row=oz.max_row, column=2).font = KOYU_KIRMIZI
             oz.cell(row=oz.max_row, column=2).alignment = Alignment(
                 wrap_text=True, vertical="top")
             oz.cell(row=oz.max_row, column=1).alignment = Alignment(vertical="top")
             oz.cell(row=oz.max_row, column=3).alignment = Alignment(vertical="top")
     else:
-        oz.append(["NEREYE BAKMALI?", "Bakılacak soru yok — A ile B kitapçığında "
+        ekle(oz, ["NEREYE BAKMALI?", "Bakılacak soru yok — A ile B kitapçığında "
                    "sorun bulunamadı.", ""])
         oz.cell(row=oz.max_row, column=1).font = KALIN
 
     ws = wb.create_sheet("Sorunlar")
-    ws.append(["Sıra", "Önem", "Kitapçık", "Test", "Ders", "Soru", "Sayfa",
+    ekle(ws, ["Sıra", "Önem", "Kitapçık", "Test", "Ders", "Soru", "Sayfa",
                "Açıklama"])
     for s in sorunlar:
-        ws.append([s.get("sira", ""), s["onem"], s["kitapcik"], s["test"],
+        ekle(ws, [s.get("sira", ""), s["onem"], s["kitapcik"], s["test"],
                    s["ders"], s["soru"], _sorun_yeri(s), s["aciklama"]])
-        ws.cell(row=ws.max_row, column=2).fill = (
-            KIRMIZI if s["onem"] == "HATA" else SARI)
+        boya(ws.cell(row=ws.max_row, column=2), s["onem"])
+        if s["onem"] == "HATA":
+            ws.cell(row=ws.max_row, column=8).font = KOYU_KIRMIZI
     if not sorunlar:
-        ws.append(["", "", "", "", "", "", "", "Sorun bulunamadı."])
+        ekle(ws, ["", "", "", "", "", "", "", "Sorun bulunamadı."])
     for col, gen in zip("ABCDEFGH", (6, 8, 9, 26, 18, 22, 14, 110)):
         ws.column_dimensions[col].width = gen
 
     se = wb.create_sheet("Soru Eşleşmesi")
-    se.append(["Test", "Ders (A)", "A No", "B No", "Ders (B)", "Metin %",
+    ekle(se, ["Test", "Ders (A)", "A No", "B No", "Ders (B)", "Metin %",
                "Şekil/Resim", "A Cevap", "B Cevap", "A Sayfa", "B Sayfa", "Durum"])
     for oa, ob, oran, gorsel, ca_, cb_, durum in sorted(
             es, key=lambda e: (e[0]["ti"], e[0]["no"] or 999)):
-        se.append([test_adi(oa["ti"]), oa["ders"], oa["etiket_no"], ob["etiket_no"],
+        ekle(se, [test_adi(oa["ti"]), oa["ders"], oa["etiket_no"], ob["etiket_no"],
                    ob["ders"], round(oran * 100, 1),
                    gorsel,
                    ca_, cb_, oa["sayfa"] + 1, ob["sayfa"] + 1,
                    ", ".join(durum) or "OK"])
-        se.cell(row=se.max_row, column=12).fill = (
-            YESIL if not durum else
-            (SARI if set(durum) <= {"NOKTALAMA", "ŞEKİL FARKI", "KOD FARKLI"}
-             else KIRMIZI))
+        boya(se.cell(row=se.max_row, column=12),
+             "TEMİZ" if not durum else
+             ("UYARI" if set(durum) <= {"NOKTALAMA", "ŞEKİL FARKI", "KOD FARKLI"}
+              else "HATA"))
 
     gs = wb.create_sheet("Metne Bağlı Gruplar")
-    gs.append(["Test", "A Başlığı", "A Sorular", "B Başlığı", "B Karşılıkları",
+    ekle(gs, ["Test", "A Başlığı", "A Sorular", "B Başlığı", "B Karşılıkları",
                "Parça Metni %", "Parça Şekil/Resim", "Durum"])
     for ti, ga, gb, a_nolar, b_nolar, p_oran, p_gorsel, durum in gr:
-        gs.append([test_adi(ti), _nolar_yazi(ga["nolar"]), _nolar_yazi(a_nolar),
+        ekle(gs, [test_adi(ti), _nolar_yazi(ga["nolar"]), _nolar_yazi(a_nolar),
                    _nolar_yazi(gb["nolar"]) if gb else "—",
                    ", ".join(str(n) if n else "?" for n in b_nolar),
                    round(p_oran * 100, 1) if p_oran is not None else "",
                    p_gorsel or "",
                    ", ".join(durum) or "OK"])
-        gs.cell(row=gs.max_row, column=8).fill = YESIL if not durum else KIRMIZI
+        boya(gs.cell(row=gs.max_row, column=8), "TEMİZ" if not durum else
+             ("UYARI" if set(durum) <= {"NOKTALAMA"} else "HATA"))
     for sayfa in (se, gs):
         for c in sayfa[1]:
             c.font = KALIN
@@ -3115,6 +3207,7 @@ def kontrol_kartlari_yaz(sonuc, sorunlar, hedef, azami=300):
 def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
                      yol_sor=None):
     log(f"Motor sürümü: {SURUM} — A–B KONTROL")
+    okunurluk_denetle(a_pdf, b_pdf)
     yapi_b = None
     if sinav in ("OTOMATİK", "ORTAOKUL"):
         log("Yapı A ve B kitapçıklarından çıkarılıyor...")
