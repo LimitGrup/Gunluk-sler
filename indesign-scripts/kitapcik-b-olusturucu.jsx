@@ -1,10 +1,14 @@
 // =============================================================
-//  KİTAPÇIK B OLUŞTURUCU  v4.17
+//  KİTAPÇIK B OLUŞTURUCU  v4.18
 //  (v4.15: özel havuzlar + ikinci şans + kendini teşhis eden bekçi
 //   + bağlı-görsel sertleştirme + ortaokul kapısına belge-içi yedek.
 //   v4.16: sade panel. v4.17: kompakt seçenekler geri + doğal havuz yazımı
 //   (\u201Csayfa 7-8 soru 25,31\u201D, \u201Cve\u201D bağlacı desteklenir).
-//   Lise/AYT yolu davranışsal olarak birebir korunur.)
+//   Lise/AYT yolu davranışsal olarak birebir korunur.
+//   v4.18: hata düzeltmeleri — bölüm işaretinde "KİMYA"→"KİMYB" hatası,
+//   boş sayfanın komşu sayfa sorularını sahiplenmesi, kaçak/yinelenen
+//   sorulu testte blok takası numarası, karşılıklı sayfada blok takası
+//   yatay kayması, harfi okunamayan soruda B anahtarında A harfi kalması.)
 //  Limit Yayınları — A kitapçığından otomatik B kitapçığı üretimi
 //  (Lise AYT/TYT + Ortaokul 5-8. sınıf denemeleri)
 // -------------------------------------------------------------
@@ -70,7 +74,7 @@
     // ---------------------------------------------------------
     // 1) ARAYÜZ
     // ---------------------------------------------------------
-    var dlg = new Window("dialog", "Kitapçık B Oluşturucu v4.17 — Limit Yayınları");
+    var dlg = new Window("dialog", "Kitapçık B Oluşturucu v4.18 — Limit Yayınları");
     dlg.orientation = "column";
     dlg.alignChildren = "fill";
     dlg.margins = 16;
@@ -370,6 +374,15 @@
                     for (k2 = 0; k2 < spIt.length; k2++) {
                         var cnS = spIt[k2].constructor.name;
                         if (cnS !== "TextFrame" && cnS !== "Group") { continue; }
+                        // v4.18: PAGE_ORIGIN'de karşılıklı sayfaların ikisi de 0..W aralığında
+                        // ölçüldüğünden komşu sayfanın soruları da bu sayfaya alınıyordu.
+                        // Başka sayfaya ait olduğu kesin öğe atlanır (pasteboard öğesi eski kuralla).
+                        var ppS = null, ppId = -1;
+                        try { ppS = spIt[k2].parentPage; } catch (eTL5) { ppS = null; }
+                        if (ppS) {
+                            try { ppId = ppS.id; } catch (eTL6) { ppId = -1; }
+                            if (ppId !== -1 && ppId !== pg.id) { continue; }
+                        }
                         var gbS;
                         try { gbS = spIt[k2].geometricBounds; } catch (eTL3) { continue; }
                         var cxS = (gbS[1] + gbS[3]) / 2;
@@ -812,6 +825,9 @@
         for (k = 0; k < totalSections; k++) { haveNum.push({}); }
         for (k = 0; k < allSlots.length; k++) { haveNum[allSlots[k].sec][allSlots[k].num] = true; }
         var dupSeen = [], dupList = [], strayFix = [];
+        // v4.18: kaçak/yinelenen soru içeren testler blok takasına girmez; blok takası
+        // testi okuma sırasıyla baştan numaraladığından bu sorular yanlış numara alıyordu.
+        var noBundleSec = {};
         for (k = 0; k < totalSections; k++) { dupSeen.push({}); }
         for (k = 0; k < allSlots.length; k++) {
             var rD = allSlots[k];
@@ -825,11 +841,13 @@
                     rD.sec = rD.sec + 1;
                     rD.zone = zoneOf(rD.sec, rD.num);
                     rD.grup = 800000 + k;   // yerinde kilitli: numarası ve yeri zaten doğru
+                    noBundleSec[rD.sec] = true;
                     strayFix.push("Test " + (rD.sec + 1) + " S" + rD.num + " (s." + pageData[rD.pdIdx].name + ")");
                 } else {
                     dupList.push("Test " + (rD.sec + 1) + " S" + rD.num + " (s." + pageData[rD.pdIdx].name + ")");
                     rD.grup = 800000 + k;
                     rD.keySkip = true;
+                    noBundleSec[rD.sec] = true;
                     dupSeen[rD.sec][rD.num].grup = 800000 + k + 500;
                     dupSeen[rD.sec][rD.num].keySkip = true;
                 }
@@ -902,7 +920,7 @@
                 var numList = (trimS(numRaw) === "") ? null : parseList(numRaw);
                 if (pgsList === null || (trimS(numRaw) !== "" && numList === null)) {
                     log("UYARI: Özel havuz girdisi anlaşılamadı: \u201C" + ent +
-                        "\u201D — beklenen biçim sayfa[:sorular], örn 5:3-6");
+                        "\u201D — örnek yazım: sayfa 7 ve 8 soru 5-10  (ya da 7-8:5-10)");
                     continue;
                 }
                 poolIdx++;
@@ -1341,6 +1359,14 @@
             }
             return true;
         }
+        // v4.18: sayfadaki soru çerçevelerinin en soldaki kenarı (sütun düzeninin x başlangıcı)
+        function bundleLeftEdge(info) {
+            var mx = null;
+            for (var q5 = 0; q5 < info.qs.length; q5++) {
+                if (mx === null || info.qs[q5].fx1 < mx) { mx = info.qs[q5].fx1; }
+            }
+            return mx;
+        }
         if (chkBundle.value && mode !== "col") {
             var stillB = [];
             for (k = 0; k < allSlots.length; k++) {
@@ -1352,7 +1378,7 @@
                 if (assigns[Sb2.pdIdx][Sb2.slotKey] !== Sb2) { continue; }
                 if (pageData[Sb2.pdIdx].bundleWith >= 0) { continue; }
                 var infS = pageBundleInfo(Sb2.pdIdx);
-                if (infS === null) { continue; }
+                if (infS === null || noBundleSec[infS.sec]) { continue; }
                 var bestB = null;
                 for (j = 0; j < pageData.length; j++) {
                     if (j === Sb2.pdIdx || pageData[j].bundleWith >= 0) { continue; }
@@ -1364,6 +1390,12 @@
                     if (!tailFits(infT, infT.top + infS.aH)) { continue; }
                     if (!tailFits(infS, infS.top + infT.aH)) { continue; }
                     if (isMiddleSchool) {
+                        // v4.18: blok, KAYNAK sayfanın x konumlarıyla yerleştirilir. İç/dış kenar
+                        // boşluğu farklı karşılıklı sayfalarda sol ve sağ sayfanın sütunları farklı
+                        // x'te durur; blok yatayda kayar ve bekçi bunu bindirme saymaz.
+                        // Sütun başlangıcı iki sayfada farklıysa blok takası yapılmaz.
+                        var dxB = bundleLeftEdge(infS) - bundleLeftEdge(infT);
+                        if (dxB > 3 || dxB < -3) { continue; }
                         // v4.15: blok nakli hedef sayfada 2D zarf denetiminden geçmeli
                         var msOK = true, pqB, pseudoB;
                         pseudoB = [];
@@ -1895,7 +1927,9 @@
                 var sec = doc.sections[k];
                 var mk = String(sec.marker);
                 if (/A/.test(mk)) {
-                    var nmk = mk.replace(/A(?![0-9A-Za-zÇĞİÖŞÜçğıöşü])/g, "B");
+                    // v4.18: yalnız tek başına duran A değişir; "KİMYA"/"COĞRAFYA" gibi
+                    // A ile biten kelimeler artık "KİMYB" olmaz ("1A" → "1B" korunur).
+                    var nmk = mk.replace(/(^|[^A-Za-zÇĞİÖŞÜçğıöşü])A(?![0-9A-Za-zÇĞİÖŞÜçğıöşü])/g, "$1B");
                     if (nmk !== mk) { sec.marker = nmk; chg++; log("Bölüm işareti: \u201C" + mk + "\u201D → \u201C" + nmk + "\u201D"); }
                 }
             }
@@ -1949,7 +1983,25 @@
                 app.findGrepPreferences.findWhat = "(\\d{1,3})-([A-E])";
                 var toks = keyStory.findGrep();
                 clearGrep();
-                var secIdx = -1, updated = 0, mismatch = 0;
+                // v4.18: soru içinden harfi okunamayan ("?") sorularda B anahtarında A'nın
+                // o numaradaki harfi kalıyordu. Önce A anahtarı okunur; bu sorular için harf,
+                // sorunun A numarasındaki anahtar harfinden eşlemeyle alınır.
+                var aKey = [], oldNumOf = [];
+                for (k = 0; k < totalSections; k++) { aKey.push([]); oldNumOf.push([]); }
+                var secIdxA = -1;
+                for (k = 0; k < toks.length; k++) {
+                    var mmA = /^(\d{1,3})-([A-E])$/.exec(String(toks[k].contents));
+                    if (!mmA) { continue; }
+                    var numA = parseInt(mmA[1], 10);
+                    if (numA === 1) { secIdxA++; }
+                    if (secIdxA < 0 || secIdxA >= totalSections) { continue; }
+                    if (!aKey[secIdxA][numA]) { aKey[secIdxA][numA] = mmA[2]; }
+                }
+                for (k = 0; k < mapping.length; k++) {
+                    if (mapping[k].keySkip) { continue; }
+                    oldNumOf[mapping[k].sec][mapping[k].newNum] = mapping[k].oldNum;
+                }
+                var secIdx = -1, updated = 0, mismatch = 0, fromKey = 0;
                 for (k = 0; k < toks.length; k++) {
                     var mm2 = /^(\d{1,3})-([A-E])$/.exec(String(toks[k].contents));
                     if (!mm2) { continue; }
@@ -1964,6 +2016,10 @@
                             " soru içi \u201C" + expOld + "\u201D, blokta \u201C" + oldL + "\u201D.");
                     }
                     var newL = newLetters[secIdx][num2];
+                    if (!newL || newL === "?") {
+                        var oN = oldNumOf[secIdx][num2];
+                        if (oN !== undefined && aKey[secIdx][oN]) { newL = aKey[secIdx][oN]; fromKey++; }
+                    }
                     if (newL && newL !== "?" && newL !== oldL) {
                         toks[k].contents = num2 + "-" + newL;
                         updated++;
@@ -1973,6 +2029,9 @@
                 }
                 log("Cevap anahtarı: " + toks.length + " girdi, " + updated + " güncellendi." +
                     (mismatch ? " (" + mismatch + " A-uyuşmazlığı.)" : ""));
+                if (fromKey > 0) {
+                    log("Bilgi: " + fromKey + " sorunun harfi soru içinden okunamadı; A anahtar bloğundan eşlemeyle alındı.");
+                }
             } else { log("Bilgi: Cevap anahtarı bloğu bulunamadı."); }
         }
 
@@ -2027,6 +2086,6 @@
               "\n\nB dosyası yarım kalmış olabilir; orijinal A dosyanız diskte değişmedi.");
         return;
     }
-    alert("Kitapçık B v4.17 — Tamamlandı ✔\n" + summaryHead + LOG.join("\n"));
+    alert("Kitapçık B v4.18 — Tamamlandı ✔\n" + summaryHead + LOG.join("\n"));
 
 })();
