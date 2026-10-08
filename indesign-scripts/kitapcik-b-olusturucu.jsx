@@ -1,5 +1,5 @@
 ﻿// =============================================================
-//  KİTAPÇIK B OLUŞTURUCU  v4.24
+//  KİTAPÇIK B OLUŞTURUCU  v4.25
 //  (v4.15: özel havuzlar + ikinci şans + kendini teşhis eden bekçi
 //   + bağlı-görsel sertleştirme + ortaokul kapısına belge-içi yedek.
 //   v4.16: sade panel. v4.17: kompakt seçenekler geri + doğal havuz yazımı
@@ -44,7 +44,17 @@
 //   genişlik soru, sayfadaki iki sütunlu blokla yer değiştirir. HİZA: 1-3 pt kaçık satırlar da
 //   satırdır; itilen satırın karşı sütunu da aynı hizaya iner; taşan sütun yalnız kendi aralığını
 //   daraltır (diğer sütun A'daki yerinde kalır); sorunun altındaki sabit yazıya en az 12 pt.
-//   "Yerinde kalan" artık numarası değişmeyen sorudur (sayfası değişse bile).)
+//   "Yerinde kalan" artık numarası değişmeyen sorudur (sayfası değişse bile).
+//   v4.25: GENELLEME — belgeye özel ayar yok; görülmemiş belgeler için kurallar ve güvenlik ağı:
+//   BRANŞ SINIRI: numaralar branşlar arasında sıfırlanmadan sürse bile her "Bu testte N soru
+//   vardır." girişi yeni branş bölgesi açar; üst bant yazısı ("SÖZEL BÖLÜM - TÜRKÇE", "MATEMATİK
+//   TESTİ") farklı sayfalar arasında takas yapılmaz. SÜTUN TAKASI: sol ve sağ sütun soruları dikey
+//   konumlarını koruyarak yer değiştirebilir. ORTAK METİN GÜVENLİK AĞI: yönergesi tanınmayan soru
+//   dışı metin varsa o sayfanın soruları sayfa dışına çıkmaz; metnin altındaki "Bu metne göre /
+//   Tabloda / According to" gönderme yapan ardışık sorular örtük grup olarak kendi aralarında
+//   karışır; gönderme yoksa yerinde kalır ve DİKKAT'te bildirilir. Takasta "TEST BİTTİ" yazısı
+//   görsele binmez, ayırıcı çizgi alt kenar boşluğunu aşmaz. 90 değiştirilmiş belge varyasyonuyla
+//   (soru boyları, silinmiş yönergeler, kesintisiz numaralar) doğrulandı.)
 //  Limit Yayınları — A kitapçığından otomatik B kitapçığı üretimi
 //  (Lise AYT/TYT + Ortaokul 5-8. sınıf denemeleri)
 // -------------------------------------------------------------
@@ -110,7 +120,7 @@
     // ---------------------------------------------------------
     // 1) ARAYÜZ
     // ---------------------------------------------------------
-    var dlg = new Window("dialog", "Kitapçık B Oluşturucu v4.24 — Limit Yayınları");
+    var dlg = new Window("dialog", "Kitapçık B Oluşturucu v4.25 — Limit Yayınları");
     dlg.orientation = "column";
     dlg.alignChildren = "fill";
     dlg.margins = 16;
@@ -563,6 +573,21 @@
 
         // v4.8: grup içindeki metin çerçevelerini güvenle listele.
         // allPageItems bazı sürümlerde boş dönebildiğinden öz-yinelemeli yedek içerir.
+        // v4.25: üst bant yazısından branş etiketi: "SÖZEL BÖLÜM - TÜRKÇE" → TÜRKÇE,
+        //        "MATEMATİK TESTİ" → MATEMATİK ("TESTİ BİTTİ", "TESTİNE GEÇİNİZ" sayılmaz)
+        function branchLabelOf(t) {
+            var tl = trimS(String(t));
+            if (tl.length < 3 || tl.length > 70 || /[\r\n\u2029]/.test(tl)) { return ""; }
+            var mB = /B[ÖO]L[ÜU]M[Ü]?\s*[-\u2013\u2014:]\s*(.+)$/i.exec(tl);
+            var nm = mB ? mB[1] : null;
+            if (nm === null) {
+                var mT = /^(.{3,60}?)\s+TEST[İI]\s*$/.exec(tl);
+                if (mT) { nm = mT[1]; }
+            }
+            if (nm === null || /B[İI]TT[İI]|GE[ÇC][İI]N[İI]Z/i.test(tl)) { return ""; }
+            return nm.toUpperCase().replace(/[\s\u00A0.,:;\-\u2013\u2014]+/g, "").replace(/İ/g, "I");
+        }
+
         // v4.24: grubun doğrudan/iç içe (çapalı olmayan) metin çerçevelerinde kaç tam soru var
         function groupQCount(g) {
             var tfsQ = innerTextFrames(g), nQ = 0;
@@ -642,6 +667,7 @@
             var introRanges = [];
             var linkRanges = [];   // v4.19: bu sayfadaki ortak metin yönergeleri
             var compCands = [];    // v4.19: soruya ait olabilecek serbest görsel/şekil/etiket
+            var textBlocks = [];   // v4.25: soru dışı uzun metin içeren dekor gruplar (olası ortak metin)
 
             var items = [];
             var ignoredIds = {};
@@ -649,6 +675,7 @@
             // (v4.5-4.7'de hiç soru bulunamamasının nedeni). Kanıtlı yöntem:
             // textFrames + groups; ikisi de boşsa spread öğelerinden bu sayfaya düşenler.
             var tlItems = [];
+            var pageLabel = "";   // v4.25: "SÖZEL BÖLÜM - TÜRKÇE" / "MATEMATİK TESTİ" → branş etiketi
             var k2;
             try {
                 var tfsL = pg.textFrames;
@@ -688,6 +715,7 @@
                     var c0 = "";
                     try { c0 = String(scanTfs[q7].parentStory.texts[0].contents); } catch (eIsc) { continue; }
                     if (!msSignal && /Bu\s+testte\s+\d+\s+soru/i.test(c0)) { msSignal = true; }
+                    if (pageLabel === "") { pageLabel = branchLabelOf(c0); }
                     if (isIntroText(c0)) {
                         RANGE_RE.lastIndex = 0;
                         var mR;
@@ -757,11 +785,12 @@
                         compCands.push({ it: pit, b: gb });
                         continue;
                     }
-                    var numCount = 0, introTxt = null, grpCarrier = false, grpVisual = false;
+                    var numCount = 0, introTxt = null, grpCarrier = false, grpVisual = false, grpTxtLen = 0, grpNonQLen = 0;
                     content = "";
                     for (i = 0; i < innerTFs.length; i++) {
                         var itxt = "";
                         try { itxt = String(innerTFs[i].parentStory.texts[0].contents); } catch (eG3) { continue; }
+                        grpTxtLen += itxt.length;
                         var gm = QNUM_RE.exec(itxt);
                         var gIsQ = false;
                         if (gm && !SINIF_RE.test(itxt) && !isDirectiveStart(itxt)) {
@@ -774,6 +803,11 @@
                             }
                         }
                         if (!gIsQ && linkDirectives(itxt).length > 0) { grpCarrier = true; }
+                        if (!gIsQ) {
+                            var anchG = false;
+                            try { anchG = (innerTFs[i].parent.constructor.name === "Character"); } catch (eAG) {}
+                            if (!anchG) { grpNonQLen += itxt.length; }
+                        }
                         if (introTxt === null && isIntroText(itxt)) { introTxt = itxt; }
                     }
                     if (numCount === 1) {
@@ -798,6 +832,7 @@
                         }
                         // v4.19: etiketli şekil grubu bir sorunun içindeyse onunla taşınır
                         compCands.push({ it: pit, b: gb });
+                        if (grpTxtLen >= 120) { textBlocks.push({ y1: gb[0], x1: gb[1], y2: gb[2], x2: gb[3], etiket: "grup" }); }
                         continue; // dekor grup — yok say (iç metinleri bekçi engeli DEĞİLDİR)
                     }
                 } else {
@@ -813,12 +848,15 @@
                     col: ((gb[1] + gb[3]) / 2 < midX) ? 0 : 1,
                     kind: "diger", num: 0, zone: 0, sec: -1,
                     linkedHeader: false, grup: 0, ans: "?", noXPage: false,
-                    emptyText: (trimS(content) === "" && cn === "TextFrame")
+                    emptyText: (trimS(content) === "" && cn === "TextFrame"),
+                    txtLen: trimS(content).length, bigText: (cn === "Group" && grpNonQLen >= 120)
                 };
                 try { if (noXP[pit.id] === true) { rec.noXPage = true; } } catch (eNX) {}
 
                 if (isIntroText(content)) {
                     rec.kind = "intro";
+                    var mIn = /Bu\s+(testte|denemede)\s+(\d{1,3})\s+soru/i.exec(content);
+                    rec.introN = mIn ? parseInt(mIn[2], 10) : 0;
                 } else {
                     var m = QNUM_RE.exec(content);
                     if (m && !SINIF_RE.test(content) && !isDirectiveStart(content)) {
@@ -1135,7 +1173,7 @@
                 if (items[k].kind === "soru" && items[k].y2 > maxQB) { maxQB = items[k].y2; }
             }
 
-            pageData.push({ blocks: blocks, items: items, HB: maxB + 0.5, QB: maxQB + 0.5, rowPairs: rowPairs, introRanges: introRanges,
+            pageData.push({ blocks: blocks, items: items, HB: maxB + 0.5, QB: maxQB + 0.5, rowPairs: rowPairs, label: pageLabel, textBlocks: textBlocks, introRanges: introRanges,
                             linkRanges: linkRanges, obstacles: obstacles, dividers: dividers,
                             bundleWith: -1, name: String(pg.name), ignoredIds: ignoredIds });
         }
@@ -1281,6 +1319,31 @@
             for (j = 0; j < pageData[pi].introRanges.length; j++) {
                 addZone(firstSec, pageData[pi].introRanges[j].lo, pageData[pi].introRanges[j].hi);
             }
+        }
+
+        // v4.25: BRANŞ SINIRI — numaralar branşlar arasında sıfırlanmadan sürüyorsa (Türkçe 1-20,
+        // Sosyal 21-30) test ortasında yeni bir "Bu testte N soru vardır." girişi görülür; girişten
+        // sonraki ilk sorudan başlayan N soruluk aralık ayrı branş bölgesidir (takas sınırı).
+        var branchZoneLog = [];
+        for (pi = 0; pi < pageData.length; pi++) {
+            var pdI = pageData[pi];
+            if (pdI.introRanges.length > 0) { continue; }
+            for (k = 0; k < pdI.items.length; k++) {
+                var inI = pdI.items[k];
+                if (inI.kind !== "intro" || !(inI.introN > 0)) { continue; }
+                var q0I = null;
+                for (var pq0 = pi; pq0 < pageData.length && q0I === null && pq0 <= pi + 1; pq0++) {
+                    pageQuestionWalk(pageData[pq0], function (r) {
+                        if (q0I === null && r.kind === "soru" && r.sec >= 0 && (pq0 > pi || r.y1 >= inI.y1)) { q0I = r; }
+                    });
+                }
+                if (q0I === null || q0I.num <= 1) { continue; }
+                addZone(q0I.sec, q0I.num, q0I.num + inI.introN - 1);
+                branchZoneLog.push("Test " + (q0I.sec + 1) + ": " + q0I.num + "-" + (q0I.num + inI.introN - 1) + " (s." + pdI.name + ")");
+            }
+        }
+        if (branchZoneLog.length > 0) {
+            info("Numaraları kesintisiz süren branşlar ayrıldı (takaslar branş içinde kalır): " + branchZoneLog.join(", "));
         }
 
         // v4.19: iç içe bölgelerde EN DAR olan seçilir (ör. ders bölgesi 25-34 içindeki
@@ -1514,7 +1577,7 @@
         // Güçlü gönderme: dışarıdaki METNE (her zaman kilit nedeni).
         var REF_START_RE = /^(bu\s+(metn|metin|par[çc]a|[öo]yk[üu]|hik[âa]ye|[şs]iir|diyalo|konu[şs]ma)|yukar[ıi]daki\s+(metn|metin|par[çc]a|[öo]yk[üu]|hik[âa]ye|[şs]iir|diyalo)|metne\s+g[öo]re|metinde|metnin|par[çc]aya\s+g[öo]re|par[çc]ada|[şs]iirde|according\s+to\s+the\s+(texts?|passage|dialogue|conversation|story|e-?mail|letter|paragraphs?|poem|article)|based\s+on\s+the\s+(texts?|passage|dialogue|conversation|story))/i;
         // Zayıf gönderme: "Buna göre", tablo/grafik/görsel — soru kendi görselini taşıyorsa ona aittir.
-        var REF_WEAK_RE = /^(buna\s+g[öo]re|bu\s+(tablo|grafi|g[öo]rsel|harita|bilgi|veri|[şs]ekil)|yukar[ıi]daki|tabloya\s+g[öo]re|grafi[ğg]e\s+g[öo]re|[şs]ekle\s+g[öo]re|verilen\s+bilgilere\s+g[öo]re|according\s+to\s+the\s+(chart|table|graph|picture|information|map|poster|advertisement|schedule|menu|survey|results))/i;
+        var REF_WEAK_RE = /^(buna\s+g[öo]re|bu\s+(tablo|grafi|g[öo]rsel|harita|bilgi|veri|[şs]ekil)|yukar[ıi]daki|tabloya\s+g[öo]re|grafi[ğg]e\s+g[öo]re|[şs]ekle\s+g[öo]re|verilen\s+bilgilere\s+g[öo]re|tablo(da|daki)\s|grafi(kte|kteki|ğe)\s|[şs]ekil(de|deki)\s|harita(da|daki)\s|g[öo]rsel(de|deki)\s|according\s+to\s+the\s+(chart|table|graph|picture|information|map|poster|advertisement|schedule|menu|survey|results))/i;
         var REF_ANY_RE = /yukar[ıi]daki\s+(metn|metin|par[çc]a|[öo]yk[üu]|hik[âa]ye|[şs]iir|tablo|grafi|g[öo]rsel|harita)|the\s+(texts?|passage|dialogue|conversation)\s+above|(^|[^a-zçğıöşü])bu\s+([öo]yk[üu]|hik[âa]ye|[şs]iir|metin|metn|par[çc]a)[a-zçğıöşü]*(den|dan|ten|tan)([^a-zçğıöşü]|$)/i;
         var carrierLock = [], cueLock = [];
         for (k = 0; k < allSlots.length; k++) {
@@ -1539,8 +1602,89 @@
             if (REF_START_RE.test(hd) || anyHit || (!ownVisual && REF_WEAK_RE.test(hd))) {
                 rL.grup = 650000 + k;
                 cueLock.push(tagL);
+                // v4.25: gönderilen metni kendi grubunda taşıyan bir önceki soru (aynı sayfa) da yerinde kalır
+                var prevQ = null;
+                pageQuestionWalk(pageData[rL.pdIdx], function (r) {
+                    if (r.kind === "soru" && r.sec === rL.sec && r.num === rL.num - 1) { prevQ = r; }
+                });
+                if (prevQ !== null && prevQ.bigText && prevQ.grup === 0 && !prevQ.carrier) {
+                    prevQ.carrier = true; prevQ.grup = 600000 + k;
+                    carrierLock.push("Test " + (prevQ.sec + 1) + " S" + prevQ.num + " (s." + pageData[prevQ.pdIdx].name + ")");
+                }
             }
         }
+        // v4.25 GÜVENLİK AĞI: sayfada soru dışı uzun bir metin (olası ortak metin) var ama yönergesi
+        // tanınmadıysa ("8 ve 9. soruları..." / "Answer the questions..." dışında bir yazım), o sayfanın
+        // soruları başka sayfaya taşınmaz (yalnız kendi sayfasında karışır) ve DİKKAT'te bildirilir.
+        var orphanPg = [];
+        for (pi = 0; pi < pageData.length; pi++) {
+            var pdOr = pageData[pi], qOr = [], linkedOr = false;
+            pageQuestionWalk(pdOr, function (r) {
+                if (r.kind !== "soru") { return; }
+                qOr.push(r);
+                if (isLinkZone(r.sec, r.zone)) { linkedOr = true; }
+            });
+            if (qOr.length === 0 || linkedOr || pdOr.linkRanges.length > 0) { continue; }
+            var bigOr = null;
+            for (k = 0; k < pdOr.items.length; k++) {
+                var itOr = pdOr.items[k];
+                if (itOr.kind === "soru" || itOr.kind === "intro" || itOr.emptyText) { continue; }
+                if (itOr.y2 - itOr.y1 >= 40 && itOr.x2 - itOr.x1 >= 150 && (itOr.txtLen || 0) >= 60) { bigOr = itOr; break; }
+            }
+            if (bigOr === null) {
+                var tbs = pdOr.textBlocks || [];
+                for (k = 0; k < tbs.length; k++) {
+                    if (tbs[k].y2 - tbs[k].y1 >= 40 && tbs[k].x2 - tbs[k].x1 >= 150) {
+                        // bir sorunun zarfı içindeyse (soruya ait görsel/etiket) ortak metin değildir
+                        var inQ = false;
+                        for (var qz = 0; qz < qOr.length; qz++) {
+                            if (tbs[k].y1 >= qOr[qz].y1 - 2 && tbs[k].y2 <= qOr[qz].y2 + 2 && tbs[k].x1 >= qOr[qz].x1 - 2 && tbs[k].x2 <= qOr[qz].x2 + 2) { inQ = true; break; }
+                        }
+                        if (!inQ) { bigOr = tbs[k]; break; }
+                    }
+                }
+            }
+            if (bigOr === null) { continue; }
+            for (k = 0; k < qOr.length; k++) { qOr[k].noXPage = true; }
+            // metnin altındaki sorular okuma sırasıyla; ilki gönderme yapıyorsa (kilitliyse) ardışık
+            // gönderme yapan sorular örtük ortak metin grubu olur (kendi aralarında karışır). Hiçbiri
+            // gönderme yapmıyorsa grubun nereye kadar sürdüğü bilinemez: metnin altındakiler yerinde kalır.
+            var belowOr = [];
+            for (k = 0; k < qOr.length; k++) {
+                if (qOr[k].y1 >= bigOr.y2 - 6 && qOr[k].pool === 0) { belowOr.push(qOr[k]); }
+            }
+            belowOr.sort(function (a, b) { return a.num - b.num; });
+            var runOr = [];
+            for (k = 0; k < belowOr.length; k++) {
+                var isCue = belowOr[k].grup >= 650000 && belowOr[k].grup < 700000;
+                if (!isCue || (runOr.length > 0 && (belowOr[k].num !== runOr[runOr.length - 1].num + 1 || belowOr[k].sec !== runOr[0].sec))) { break; }
+                runOr.push(belowOr[k]);
+            }
+            var grpTxt = "";
+            if (runOr.length >= 2) {
+                var loO = runOr[0].num, hiO = runOr[runOr.length - 1].num, secO = runOr[0].sec;
+                addZone(secO, loO, hiO, true);
+                var znO = zoneOf(secO, loO);
+                for (k = 0; k < runOr.length; k++) {
+                    var tagO = "Test " + (secO + 1) + " S" + runOr[k].num + " (s." + pdOr.name + ")";
+                    for (var cq9 = cueLock.length - 1; cq9 >= 0; cq9--) { if (cueLock[cq9] === tagO) { cueLock.splice(cq9, 1); } }
+                    runOr[k].grup = 0; runOr[k].zone = znO;
+                }
+                grpTxt = ", " + loO + "-" + hiO + " kendi içinde karıştı";
+            } else if (runOr.length === 0 && belowOr.length > 0 && !(belowOr[0].grup >= 600000)) {
+                // işaret yok: metnin altındaki sorular yerinde kalır (kilit)
+                for (k = 0; k < belowOr.length; k++) {
+                    if (belowOr[k].grup === 0) { belowOr[k].grup = 660000 + orphanPg.length * 100 + k; belowOr[k].orphanLock = true; }
+                }
+                grpTxt = ", altındaki sorular yerinde bırakıldı";
+            }
+            orphanPg.push("s." + pdOr.name + " (" + (bigOr.etiket === "grup" ? "metin grubu" : "\u2018" + bigOr.etiket + "\u2019") + grpTxt + ")");
+        }
+        if (orphanPg.length > 0) {
+            log("UYARI: " + orphanPg.join(", ") + " — soru dışı uzun metin var ama hangi sorulara ait olduğunu söyleyen yönerge " +
+                "tanınmadı; bu sayfaların soruları başka sayfaya taşınmadı (yalnız kendi sayfasında karıştı). Metne bağlı soru varsa kontrol edin.");
+        }
+
         var linkLog = [];
         for (k = 0; k < totalSections; k++) {
             var lzs = [];
@@ -1884,6 +2028,11 @@
             return null;
         }
 
+        // v4.25: iki sayfanın üst bant branş etiketi (ikisinde de varsa) aynı mı
+        function sameBranchPages(p1, p2) {
+            var l1 = pageData[p1].label, l2 = pageData[p2].label;
+            return !(l1 && l2 && l1 !== l2);
+        }
         // v4.23: A'da aynı satırda başlayan sol/sağ soru çiftlerinden B yerleşiminde
         // aynı satırda başlamayanların sayısı (satır hizası bozulması).
         function rowBreaks(pdR, plcR) {
@@ -2048,6 +2197,7 @@
                         if (T.pool !== S.pool) { continue; }  // özel havuzlar yalnız kendi içinde
                         var contT0 = assigns[T.pdIdx][T.slotKey];
                         if (contT0.noXPage) { continue; }   // v4.24: grup üyesi sayfasından çıkamaz
+                        if (!sameBranchPages(S.pdIdx, T.pdIdx)) { continue; }   // v4.25: üst bant branşı
                         var dh = contS.h - contT0.h; if (dh < 0) { dh = -dh; }
                         var dp = T.pdIdx - S.pdIdx; if (dp < 0) { dp = -dp; }
                         cands.push({ pri: (contT0 === T ? 0 : 1), dh: dh, dp: dp, num: T.num, T: T });
@@ -2141,9 +2291,24 @@
                      qs: qs, tail: tail, pdi: pdi, plc: plcB };
         }
         function tailFits(info, newBot) {
+            var pdT = pageData[info.pdi];
             for (var t4 = 0; t4 < info.tail.length; t4++) {
-                var nt5 = newBot + (info.tail[t4].y1 - info.bot);
-                if (nt5 + (info.tail[t4].y2 - info.tail[t4].y1) > pageData[info.pdi].HB + 0.5) { return false; }
+                var tl4 = info.tail[t4];
+                var nt5 = newBot + (tl4.y1 - info.bot);
+                if (nt5 < tl4.y1) { nt5 = tl4.y1; }   // v4.24: kuyruk yukarı çekilmez
+                if (nt5 + (tl4.y2 - tl4.y1) > pdT.HB + 0.5) { return false; }
+                if (nt5 === tl4.y1) { continue; }
+                // v4.25: aşağı inen kuyruk ("TEST BİTTİ") sayfadaki başka sabit öğeye ya da görsele binmemeli
+                var r4 = [nt5, tl4.x1, nt5 + (tl4.y2 - tl4.y1), tl4.x2];
+                for (var o4 = 0; o4 < pdT.items.length; o4++) {
+                    var it4 = pdT.items[o4];
+                    if (it4 === tl4 || it4.kind === "soru") { continue; }
+                    var inTail = false;
+                    for (var u4 = 0; u4 < info.tail.length; u4++) { if (info.tail[u4] === it4) { inTail = true; } }
+                    if (!inTail && middleSchoolRectsOverlap(r4, [it4.y1, it4.x1, it4.y2, it4.x2])) { return false; }
+                }
+                var obs4 = pdT.obstacles || [];
+                for (o4 = 0; o4 < obs4.length; o4++) { if (middleSchoolRectsOverlap(r4, obs4[o4].b)) { return false; } }
             }
             return true;
         }
@@ -2252,6 +2417,7 @@
                     var infT = pageBundleInfo(j);
                     // yalnız aynı branş: aynı test ve aynı ders bölgesi
                     if (infT === null || infT.sec !== infS.sec || infT.zone !== infS.zone) { continue; }
+                    if (!sameBranchPages(Sb2.pdIdx, j)) { continue; }   // v4.25: üst bant branşı
                     if (!bundleRenumberSafe(infS, infT)) { continue; }
                     if (isMiddleSchool) {
                         // v4.18: blok, KAYNAK sayfanın x konumlarıyla yerleştirilir. İç/dış kenar
@@ -2396,7 +2562,7 @@
         //      kayar; yalnız sayfanın tüm soruları aynı test ve aynı bölgedeyse yapılır
         //      (ortak metin grubu da olabilir: numaralar grubun aralığında kalır).
         // -----------------------------------------------------
-        var reorderLog = [];
+        var reorderLog = [], colSwapLog = [];
         // pdO sayfasında, asO atamasıyla blok sırası değiştirilmiş yerleşim (olmazsa null)
         function reorderLayout(pdO, asO, fwO, regO, fwFirst, colFix) {
             if (fitLevel(pdO, asO) < 0) { return null; }
@@ -2468,6 +2634,95 @@
             return { ord: fwFirst ? ordR.concat([fwN]) : [fwN].concat(ordR),
                      regTop: rTopN + dR, regBot: rBotN + dR, regTopNow: rTopN };
         }
+        // v4.25 SÜTUN TAKASI: sayfadaki iki sütunlu bloğun sol ve sağ sütun soruları dikey
+        // konumlarını koruyarak yer değiştirir (satır hizası korunur, ayırıcı yerinde kalır).
+        // Sütunlarda soru dışı öğe yalnız sütunun en altında olabilir ve takastan sonra çakışmamalı.
+        function columnSwapLayout(pdC, asC) {
+            var regC = null, nReg = 0, b8, c8, k8;
+            for (b8 = 0; b8 < pdC.blocks.length; b8++) {
+                if (pdC.blocks[b8].type !== "REG") { continue; }
+                var hasQ8 = false;
+                for (c8 = 0; c8 < 2; c8++) { for (k8 = 0; k8 < pdC.blocks[b8].cols[c8].length; k8++) { if (pdC.blocks[b8].cols[c8][k8].kind === "soru") { hasQ8 = true; } } }
+                if (hasQ8) { regC = pdC.blocks[b8]; nReg++; }
+            }
+            if (nReg !== 1) { return null; }
+            var bx = [[null, null], [null, null]], fix8 = [];
+            for (c8 = 0; c8 < 2; c8++) {
+                var qBot8 = null;
+                for (k8 = 0; k8 < regC.cols[c8].length; k8++) {
+                    var it8 = regC.cols[c8][k8];
+                    if (it8.kind !== "soru") { continue; }
+                    if (it8.grup !== 0 || it8.pool !== 0) { return null; }
+                    if (bx[c8][0] === null || it8.x1 < bx[c8][0]) { bx[c8][0] = it8.x1; }
+                    if (bx[c8][1] === null || it8.x2 > bx[c8][1]) { bx[c8][1] = it8.x2; }
+                    if (qBot8 === null || it8.y2 > qBot8) { qBot8 = it8.y2; }
+                }
+                if (bx[c8][0] === null) { return null; }
+                for (k8 = 0; k8 < regC.cols[c8].length; k8++) {
+                    var fx8 = regC.cols[c8][k8];
+                    if (fx8.kind === "soru") { continue; }
+                    if (fx8.y1 < qBot8 - 2) { return null; }   // sütun içinde soruların arasında/üstünde sabit öğe
+                }
+            }
+            var w0 = bx[0][1] - bx[0][0], w1 = bx[1][1] - bx[1][0], dx8 = bx[1][0] - bx[0][0];
+            if (w0 - w1 > 3 || w1 - w0 > 3) { return null; }
+            if (fitLevel(pdC, asC) < 0) { return null; }
+            var pl8 = lastFitPlc, ent = [], newCols = [[], []], fwOrd = [];
+            for (k8 = 0; k8 < pl8.length; k8++) {
+                var e8 = pl8[k8];
+                if (e8.slot.shape === "COL" && e8.ny1 >= regC.top - 400 && (e8.slot.col === 0 || e8.slot.col === 1) && inBlock(regC, e8.slot)) {
+                    var toC = 1 - e8.slot.col;
+                    var ne = { slot: { x1: e8.slot.x1 + (toC === 1 ? dx8 : -dx8), col: toC }, cont: e8.cont, ny1: e8.ny1 };
+                    newCols[toC].push(ne); ent.push(ne);
+                } else {
+                    ent.push(e8);
+                }
+            }
+            // güvenlik: kendi aralarında, sabit öğelerle, engellerle çakışma yok
+            var rc8 = [];
+            for (k8 = 0; k8 < ent.length; k8++) {
+                rc8.push([ent[k8].ny1, ent[k8].slot.x1, ent[k8].ny1 + (ent[k8].cont.y2 - ent[k8].cont.y1),
+                          ent[k8].slot.x1 + (ent[k8].cont.x2 - ent[k8].cont.x1)]);
+            }
+            for (k8 = 0; k8 < rc8.length; k8++) {
+                for (var j8 = k8 + 1; j8 < rc8.length; j8++) { if (middleSchoolRectsOverlap(rc8[k8], rc8[j8])) { return null; } }
+            }
+            for (k8 = 0; k8 < pdC.items.length; k8++) {
+                var fz = pdC.items[k8];
+                if (fz.kind === "soru") { continue; }
+                var frz = [fz.y1, fz.x1, fz.y2, fz.x2], tz = false;
+                for (var q8 = 0; q8 < pdC.items.length; q8++) {
+                    var sz = pdC.items[q8];
+                    if (sz.kind === "soru" && middleSchoolDeepOverlap(frz, [sz.y1, sz.x1, sz.y2, sz.x2])) { tz = true; break; }
+                }
+                if (tz) { continue; }
+                for (j8 = 0; j8 < rc8.length; j8++) { if (middleSchoolRectsOverlap(rc8[j8], frz)) { return null; } }
+            }
+            if (!obstacleSafe(pdC, ent)) { return null; }
+            // okuma sırası: bloklar sırayla; sütun bloğunda yeni sol sütun, sonra yeni sağ sütun
+            var ord8 = [];
+            for (b8 = 0; b8 < pdC.blocks.length; b8++) {
+                var bk = pdC.blocks[b8];
+                if (bk === regC) {
+                    for (c8 = 0; c8 < 2; c8++) {
+                        newCols[c8].sort(function (a, b) { return a.ny1 - b.ny1; });
+                        for (k8 = 0; k8 < newCols[c8].length; k8++) { ord8.push(newCols[c8][k8]); }
+                    }
+                } else if (bk.type === "FWQ") {
+                    for (k8 = 0; k8 < pl8.length; k8++) { if (pl8[k8].slot === bk.it) { ord8.push(pl8[k8]); } }
+                } else if (bk.type === "REG") {
+                    for (c8 = 0; c8 < 2; c8++) { for (k8 = 0; k8 < bk.cols[c8].length; k8++) {
+                        for (j8 = 0; j8 < pl8.length; j8++) { if (pl8[j8].slot === bk.cols[c8][k8]) { ord8.push(pl8[j8]); } }
+                    } }
+                }
+            }
+            if (ord8.length !== pl8.length) { return null; }
+            return { ord: ord8 };
+        }
+        function inBlock(blk9, slot9) {
+            for (var c9 = 0; c9 < 2; c9++) { for (var k9 = 0; k9 < blk9.cols[c9].length; k9++) { if (blk9.cols[c9][k9] === slot9) { return true; } } }
+            return false;
+        }
         progress("Sayfa içi blok sırası deneniyor…", true);
         if (mode !== "col") {
             for (pi = 0; pi < pageData.length; pi++) {
@@ -2482,6 +2737,42 @@
                     if (slO[k].sec !== slO[0].sec || slO[k].zone !== slO[0].zone || slO[k].grup !== 0 || slO[k].pool !== 0) { okO = false; }
                 }
                 if (stO === 0 || !okO) { continue; }
+                var numsC = fnO.slice(0);
+                numsC.sort(function (a, b) { return a - b; });
+                // v4.25: önce sütun takası (dikey düzen aynen kalır); sütun soruları her dizilişte denenir
+                var colBest = null, colStBest = stO, colAs = null;
+                (function () {
+                    var regSlC = [];
+                    for (var bC = 0; bC < pdO.blocks.length; bC++) {
+                        if (pdO.blocks[bC].type !== "REG") { continue; }
+                        for (var cC = 0; cC < 2; cC++) { for (var kC = 0; kC < pdO.blocks[bC].cols[cC].length; kC++) {
+                            if (pdO.blocks[bC].cols[cC][kC].kind === "soru") { regSlC.push(pdO.blocks[bC].cols[cC][kC]); }
+                        } }
+                    }
+                    if (regSlC.length < 2 || regSlC.length > 6) { return; }
+                    var contC = [];
+                    for (var kC2 = 0; kC2 < regSlC.length; kC2++) { contC.push(asO[regSlC[kC2].slotKey]); }
+                    var permsC = allPerms(regSlC.length);
+                    for (var pC = 0; pC < permsC.length; pC++) {
+                        var trC = copyAssign(asO);
+                        for (kC2 = 0; kC2 < regSlC.length; kC2++) { trC[regSlC[kC2].slotKey] = contC[permsC[pC][kC2]]; }
+                        var lyC = columnSwapLayout(pdO, trC);
+                        if (lyC === null) { continue; }
+                        var stC = 0;
+                        for (kC2 = 0; kC2 < lyC.ord.length; kC2++) { if (lyC.ord[kC2].cont.num === numsC[kC2]) { stC++; } }
+                        if (stC < colStBest) { colStBest = stC; colBest = lyC; colAs = trC; if (stC === 0) { break; } }
+                    }
+                })();
+                if (colBest !== null && colStBest === 0) {
+                    assigns[pi] = colAs;
+                    var planC = { list: [], isBundle: true, tailMoves: [], divIn: [] };
+                    for (k = 0; k < colBest.ord.length; k++) {
+                        planC.list.push({ cont: colBest.ord[k].cont, ny1: colBest.ord[k].ny1, nx1: colBest.ord[k].slot.x1, ord: k });
+                    }
+                    pdO.reorder = planC;
+                    colSwapLog.push("s." + pdO.name);
+                    continue;
+                }
                 // soru blokları tam olarak ardışık [tam genişlik soru, sütun bloğu] ya da tersi
                 var qbO = [];
                 for (var bO = 0; bO < pdO.blocks.length; bO++) {
@@ -2550,6 +2841,9 @@
             if (reorderLog.length > 0) {
                 info("Sayfa içi blok sırası: " + reorderLog.join(", ") + " — tam genişlik soru ile iki sütunlu sorular yer değiştirdi (aynı sayfa, aynı test).");
             }
+            if (colSwapLog.length > 0) {
+                info("Sütun takası: " + colSwapLog.join(", ") + " — sol ve sağ sütunun soruları yer değiştirdi (aynı sayfa, aynı test).");
+            }
         }
 
         // -----------------------------------------------------
@@ -2612,11 +2906,14 @@
                 planA.divIn = []; planB.divIn = [];
                 var dvB = bandDividers(B1), dvA = bandDividers(A1);
                 for (k = 0; k < dvB.length; k++) {
-                    var botB = (dvB[k].b[2] >= pageData[B1.pdi].HB - 3) ? pageData[A1.pdi].HB - 0.5 : dvB[k].b[2] + dyToA;
+                    // v4.25: alt uç soru sınırına (QB) göre; hedef sayfanın sınırını aşmaz
+                    var botB = (dvB[k].b[2] >= pageData[B1.pdi].QB - 3) ? pageData[A1.pdi].QB - 0.5 : dvB[k].b[2] + dyToA;
+                    if (botB > pageData[A1.pdi].QB - 0.5) { botB = pageData[A1.pdi].QB - 0.5; }
                     planA.divIn.push({ d: dvB[k], from: B1.pdi, top: dvB[k].b[0] + regShiftOf(B1, dvB[k]) + dyToA, bot: botB });
                 }
                 for (k = 0; k < dvA.length; k++) {
-                    var botA = (dvA[k].b[2] >= pageData[A1.pdi].HB - 3) ? pageData[B1.pdi].HB - 0.5 : dvA[k].b[2] + dyToB;
+                    var botA = (dvA[k].b[2] >= pageData[A1.pdi].QB - 3) ? pageData[B1.pdi].QB - 0.5 : dvA[k].b[2] + dyToB;
+                    if (botA > pageData[B1.pdi].QB - 0.5) { botA = pageData[B1.pdi].QB - 0.5; }
                     planB.divIn.push({ d: dvA[k], from: A1.pdi, top: dvA[k].b[0] + regShiftOf(A1, dvA[k]) + dyToB, bot: botA });
                 }
                 pagePlans[A1.pdi] = planA;
@@ -3217,6 +3514,7 @@
                 return r.keySkip ? "testte aynı numaralı başka bir soru var (A dosyasını kontrol edin)"
                                  : "önceki testin soruları arasında okundu; numarası korunarak bırakıldı";
             }
+            if (r.orphanLock) { return "yönergesi tanınmayan bir metnin altında; hangi sorulara ait olduğu bilinemediği için yerinde bırakıldı"; }
             if (r.grup >= 650000) { return "\u201CBuna göre / Bu metne göre\u201D gibi dışarıdaki bir metne gönderme yapıyor, yönergesi yok"; }
             if (r.grup >= 600000) { return "ortak metni ya da yönergesini kendi içinde taşıyor"; }
             if (revertWhy[r.pdIdx] && pagePlans[r.pdIdx] === null) { return "sayfa A düzeninde bırakıldı: " + revertWhy[r.pdIdx]; }
@@ -3483,6 +3781,6 @@
               "\n\nB dosyası yarım kalmış olabilir; orijinal A dosyanız diskte değişmedi.");
         return;
     }
-    alert("Kitapçık B v4.24 — Tamamlandı ✔\n\n" + summaryHead);
+    alert("Kitapçık B v4.25 — Tamamlandı ✔\n\n" + summaryHead);
 
 })();

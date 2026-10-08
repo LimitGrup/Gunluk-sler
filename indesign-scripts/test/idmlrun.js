@@ -370,6 +370,36 @@ Object.keys(bNums).forEach(function (tt) {
     for (var i = 1; i <= nums[nums.length - 1]; i++) { if (!bNums[tt][i]) { bad.push("eksik " + i); } else if (bNums[tt][i] > 1) { bad.push(i + "×" + bNums[tt][i]); } }
     if (bad.length) { issue("NUMARA Test " + (+tt + 1) + ": " + bad.join(", ")); }
 });
+// 3b) BRANŞ (fuzz.py varyasyonları): soru, A'daki branşının sayfalarında ve numara aralığında kalmalı
+if (M.branchOf) {
+    var brPages = {}, brLo = {}, brHi = {};
+    qa.forEach(function (q) {
+        var b = M.branchOf[q.sid]; if (b === undefined) { return; }
+        brPages[b] = brPages[b] || {}; brPages[b][q.pg] = 1;
+        if (brLo[b] === undefined || q.num < brLo[b]) { brLo[b] = q.num; }
+        if (brHi[b] === undefined || q.num > brHi[b]) { brHi[b] = q.num; }
+    });
+    qb.forEach(function (q) {
+        var b = M.branchOf[q.sid]; if (b === undefined) { return; }
+        if (!brPages[b][q.pg] || q.num < brLo[b] || q.num > brHi[b]) {
+            issue("BRANŞ DIŞI: A" + aNum[q.sid] + " (branş " + (b + 1) + ") → s." + pages[q.pg].name + " no " + q.num);
+        }
+    });
+}
+// 3c) ÖZGÜN ORTAK METİN GRUBU (yönergesi silinmiş olsa bile): grup sayfasında, numaraları kendi arasında
+if (M.origGroups) {
+    M.origGroups.forEach(function (g) {
+        var an = [], bn = [], bad = false;
+        g.sids.forEach(function (sid) {
+            var a = qa.filter(function (x) { return x.sid === sid; })[0], b = qb.filter(function (x) { return x.sid === sid; })[0];
+            if (!a || !b) { return; }
+            an.push(a.num); bn.push(b.num);
+            if (b.pg !== g.pg) { bad = true; }
+        });
+        an.sort(function (x, y) { return x - y; }); bn.sort(function (x, y) { return x - y; });
+        if (bad || an.join(",") !== bn.join(",")) { issue("ORTAK METİN (özgün) s." + pages[g.pg].name + ": A " + an.join(",") + " → B " + bn.join(",") + (bad ? " (sayfa dışı)" : "")); }
+    });
+}
 // 4) HİZA: taşınan soru çerçevesinin sol kenarı, o sayfada A'daki bir soru sütununun sol kenarına denk mi?
 qb.forEach(function (q) {
     var a = qa.filter(function (x) { return x.sid === q.sid; })[0];
