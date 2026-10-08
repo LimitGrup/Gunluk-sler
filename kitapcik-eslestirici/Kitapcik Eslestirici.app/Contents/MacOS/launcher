@@ -1,0 +1,25 @@
+#!/bin/bash
+# Kitapçık Eşleştirici başlatıcısı — uygun Python'u bulur, yerli mimaride çalıştırır.
+KOK="$(cd "$(dirname "$0")/.." && pwd)"
+GUNLUK="$HOME/Library/Logs/KitapcikEslestirici.log"
+mkdir -p "$HOME/Library/Logs"
+PY=""
+for aday in /usr/local/bin/python3 /opt/homebrew/bin/python3; do
+    [ -x "$aday" ] && PY="$aday" && break
+done
+if [ -z "$PY" ]; then
+    en_yeni=$(ls -d /Library/Frameworks/Python.framework/Versions/3.* 2>/dev/null | sort -V | tail -1)
+    [ -n "$en_yeni" ] && [ -x "$en_yeni/bin/python3" ] && PY="$en_yeni/bin/python3"
+fi
+if [ -z "$PY" ]; then
+    osascript -e "display dialog \"Bu uygulama için önce Python kurulmalı. Tamam'a basınca indirme sayfası açılacak; kurulumdan sonra uygulamayı yeniden başlatın.\" buttons {\"Tamam\"} default button 1 with title \"Kitapçık Eşleştirici\""
+    open "https://www.python.org/downloads/macos/"
+    exit 1
+fi
+# Apple Silicon Mac'lerde her zaman yerli (arm64) modda çalıştır - Rosetta'ya düşmeyi engelle
+MIMARI=""
+if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+    MIMARI="arch -arm64"
+fi
+echo "--- $(date) | Python: $PY | Mod: ${MIMARI:-yerel} ---" >> "$GUNLUK"
+exec $MIMARI "$PY" "$KOK/Resources/kitapcik_eslestirici_app.py" >> "$GUNLUK" 2>&1
