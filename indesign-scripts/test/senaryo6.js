@@ -1,7 +1,7 @@
 // v4.23: (1) ALT SINIR — s.2'de altbilgi bandına (kenar boşluğu y=802'nin altına) konmuş
 //        "TEST BİTTİ." çerçevesi soruların inebileceği sınırı aşağı çekmemeli.
 //        (2) SATIR HİZASI — s.1'de A'da aynı satırdan başlayan sol/sağ sorular B'de de
-//        aynı satırdan başlamalı. (3) Ortak metinli 1-2 grubu s.1'de, kendi slotlarında.
+//        aynı satırdan başlamalı. (3) Ortak metinli 1-2 grubu s.1'de, metnin altında.
 module.exports = function (a) {
     var L = [40, 290], R = [305, 555];
     function col(pg, x, y1, y2, n, txt, ans, id) { var t = a.q(pg, [y1, x[0], y2, x[1]], n, txt, ans); t._qid = id; return t; }
@@ -37,8 +37,10 @@ module.exports = function (a) {
             expect(aligned, "s.1'de A'daki iki satır hizası korundu (sol " + l1.map(function (q) { return Math.round(q.gb[0]); }).join("/") +
                    ", sağ " + r1.map(function (q) { return Math.round(q.gb[0]); }).join("/") + ")");
             var g = qs.filter(function (q) { return q.id === "A1" || q.id === "A2"; });
-            expect(g.every(function (q) { return q.page === "1" && (q.num === 1 || q.num === 2) && q.gb[1] < 297 && (Math.abs(q.gb[0] - 200) < 1 || Math.abs(q.gb[0] - 400) < 1); }),
-                   "Ortak metinli 1-2 grubu s.1'de kendi slotlarında (" + g.map(function (q) { return q.id + "→" + q.num; }).join(", ") + ")");
+            // v4.24: grup s.1'de, sol sütunda, ortak metnin (y<190) altında ve 1-2 numaralarında kalır
+            //        (satır eşitlemesiyle ikinci satır aşağı inebilir)
+            expect(g.every(function (q) { return q.page === "1" && (q.num === 1 || q.num === 2) && q.gb[1] < 297 && q.gb[0] >= 195; }),
+                   "Ortak metinli 1-2 grubu s.1'de, sol sütunda, metnin altında (" + g.map(function (q) { return q.id + "→" + q.num + " y" + Math.round(q.gb[0]); }).join(", ") + ")");
             var nums = qs.map(function (q) { return q.num; }).sort(function (x, y) { return x - y; });
             expect(nums.join(",") === "1,2,3,4,5,6,7", "Numara dizisi eksiksiz ve tekrarsız: " + nums.join(","));
             var stay = qs.filter(function (q) { return "A" + q.num === q.id && q.page === (q.num <= 4 ? "1" : "2"); });

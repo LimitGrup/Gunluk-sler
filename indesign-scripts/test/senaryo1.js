@@ -54,9 +54,14 @@ module.exports = function (a) {
             expect(a8.page === "4" && a9.page === "4" && [8, 9].indexOf(a8.num) >= 0 && [8, 9].indexOf(a9.num) >= 0,
                    "Test 1: metne bağlı A8/A9 s.4'te ve 8-9 numaralarında kaldı (A8→s." + a8.page + " no " + a8.num + ", A9→s." + a9.page + " no " + a9.num + ")");
             var b1 = where("T2-A1"), b2 = where("T2-A2"), b3 = where("T2-A3");
-            expect(b1.page === "7" && b1.num === 1, "Test 2: metne bağlı A1 s.7'de 1 numarada kaldı (s." + b1.page + " no " + b1.num + ")");
-            expect([b2, b3].every(function (z) { return z.page === "7" && (z.num === 2 || z.num === 3); }),
-                   "Test 2: metne bağlı A2/A3 s.7'de 2-3 numaralarında kaldı");
+            // v4.24: grup sayfasında ve 1-3 aralığında kalır; tam genişlik A1 sütunların altına geçebilir
+            var g3 = [b1, b2, b3];
+            expect(g3.every(function (z) { return z.page === "7" && z.num >= 1 && z.num <= 3; }) &&
+                   b1.num !== b2.num && b2.num !== b3.num && b1.num !== b3.num,
+                   "Test 2: metne bağlı 1-3 grubu s.7'de ve 1-3 numaralarında kaldı (A1→" + b1.num + ", A2→" + b2.num + ", A3→" + b3.num + ")");
+            var t2 = ALL.filter(function (x) { return /^T2-A[123]$/.test(x._qid); });
+            expect(t2.every(function (x) { return x.geometricBounds[0] >= 420; }),
+                   "Test 2: grup soruları ortak metnin (y<420) altında");
             var a9q = ALL.filter(function (x) { return x._qid === "T2-A9"; })[0];
             var im = ALL.filter(function (x) { return x._img; })[0];
             var dy = im.geometricBounds[0] - a9q.geometricBounds[0], dx = im.geometricBounds[1] - a9q.geometricBounds[1];

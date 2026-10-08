@@ -161,15 +161,6 @@ Object.keys(M.stories).forEach(function (sid) { story(sid); });
 
 // ---------- A anlık görüntüsü (denetim için) ----------
 var QRE = /^[\s​﻿￼\u009E]*(\d{1,3})\.(?=[\s\t])/;
-function snapshot() {
-    var out = [];
-    ALLTOP.forEach(function (x) {
-        if (!x.pg) { return; }
-        out.push({ it: x, pg: x.pg.idx, gb: x.geometricBounds, kind: x.constructor.name });
-    });
-    return out;
-}
-var A = snapshot();
 var aNum = {};   // hikâye id -> A numarası
 Object.keys(STORIES).forEach(function (sid) {
     var all = STORIES[sid]._p.map(function (p) { return p._t; }).join("\r");
@@ -178,6 +169,21 @@ Object.keys(STORIES).forEach(function (sid) {
     if (all.substr(m[0].length).replace(/[\s ​﻿￼\u009e»«¶]+/g, "").length < 8) { return; }
     aNum[sid] = +m[1];
 });
+// birden çok soru içeren grup: üyeleri ayrı öğe sayılır (her soru kendi konumuyla denetlenir)
+function nQ(x) { return x.allPageItems.filter(function (k) { return k.parentStory && aNum[k.parentStory.id] !== undefined && !M.anchoredOwner[k.id]; }).length; }
+// ortak metin yönergesi taşıyan (soru olmayan) çerçeve: "17 ve 18. soruları ... göre"
+function hasDir(x) { return x.allPageItems.some(function (k) { return k.parentStory && aNum[k.parentStory.id] === undefined && !M.anchoredOwner[k.id] &&
+    /\d{1,3}\s*\.?\s*(ve|,|-|–|ile)\s*\d{1,3}\s*\.?\s*sorular/i.test(k.parentStory._p.map(function (p) { return p._t; }).join(" ")); }); }
+function snapshot() {
+    var out = [];
+    function add(x) {
+        if (x.constructor.name === "Group" && (nQ(x) > 1 || (nQ(x) === 1 && hasDir(x)))) { x._kids.forEach(add); return; }
+        out.push({ it: x, pg: x.pg.idx, gb: x.geometricBounds, kind: x.constructor.name });
+    }
+    ALLTOP.forEach(function (x) { if (x.pg) { add(x); } });
+    return out;
+}
+var A = snapshot();
 
 // A cevap anahtarı (en çok "N-X" içeren hikâye)
 function keyTokens() {
@@ -195,6 +201,7 @@ function keyTokens() {
 var KEY_A = keyTokens();
 // A'daki ortak metin grupları (bağımsız: yalnız sayfada duran, soru olmayan çerçevelerdeki yönergeler)
 var DIR_RE = /(\d{1,3})\s*[-–]\s*(\d{1,3})\.?\s*sorular|(\d{1,3})\s*(?:,\s*\d{1,3}\s*)*(?:ve|ile)\s*(\d{1,3})\s*\.\s*sorular/i;
+var DIR_EN_RE = /questions?\s+(\d{1,3})\s*(?:(?:-|–|—|to|and|,)\s*\d{1,3}\s*)*(?:-|–|—|to|and|,)\s*(\d{1,3})/i;
 var GROUPS_A = [];
 ALLTOP.forEach(function (x) {
     if (!x.pg) { return; }
@@ -202,8 +209,14 @@ ALLTOP.forEach(function (x) {
     tfs.forEach(function (tf) {
         var t = tf.parentStory._p.map(function (p) { return p._t; }).join(" ");
         if (QRE.test(t) && !/^\s*\d+\s*\.?\s*(ve|,|-|–)/.test(t)) { return; }
-        var m = DIR_RE.exec(t); if (!m || !/g[öo]re/i.test(t)) { return; }
-        var lo = +(m[1] || m[3]), hi = +(m[2] || m[4]);
+        var m = DIR_RE.exec(t), lo, hi;
+        if (m && /g[öo]re/i.test(t)) { lo = +(m[1] || m[3]); hi = +(m[2] || m[4]); }
+        else {
+            // İngilizce: "Answer the questions 8-10 according to ...", "questions 8 and 9 ...", "Questions 4 to 6 are based on"
+            var e = DIR_EN_RE.exec(t);
+            if (!e || !/according\s+to|based\s+on|answer|read/i.test(t)) { return; }
+            lo = +e[1]; hi = +e[2];
+        }
         GROUPS_A.push({ pg: x.pg.idx, lo: lo, hi: hi });
     });
 });
@@ -260,6 +273,7 @@ function label(x) {
     if (x.constructor.name === "Group") { var tf = x.allPageItems.filter(function (k) { return k.parentStory; })[0]; return "grup" + (tf ? "[" + tf.parentStory._p[0]._t.replace(/[\t\u009e]/g, " ").trim().substr(0, 18) + "]" : ""); }
     return x.constructor.name + (x.allGraphics.length ? "(görsel)" : "");
 }
+function aNumOf(it) { var tfs = it.parentStory ? [it] : it.allPageItems.filter(function (k) { return k.parentStory; }); return tfs.some(function (t) { return aNum[t.parentStory.id] !== undefined; }); }
 // 1) YENİ ÇAKIŞMA: A'da örtüşmeyen iki öğe B'de örtüşüyor mu?
 var moved = B.filter(function (r) { var a = aById[r.it.id]; return !a || a.pg !== r.pg || Math.abs(a.gb[0] - r.gb[0]) > 0.01 || Math.abs(a.gb[1] - r.gb[1]) > 0.01; });
 moved.forEach(function (r) {
@@ -270,6 +284,13 @@ moved.forEach(function (r) {
         if (!nowOv) { return; }
         var a1 = aById[r.it.id], a2 = aById[o.it.id];
         var was = (a1 && a2 && a1.pg === a2.pg) ? ov(a1.gb, a2.gb) : 0;
+        // tasarım teması: yerinde duran öğe A'da da bu sayfada bir soruya en az bu derinlikte değiyordu
+        if (!was && a2 && a2.pg === o.pg && Math.abs(a2.gb[0] - o.gb[0]) < 0.01) {
+            var dB = Math.min(r.gb[2], o.gb[2]) - Math.max(r.gb[0], o.gb[0]);
+            var dA = 0;
+            A.forEach(function (x) { if (x.pg === o.pg && x.it !== o.it && aNumOf(x.it) && ov(x.gb, a2.gb)) { dA = Math.max(dA, Math.min(x.gb[2], a2.gb[2]) - Math.max(x.gb[0], a2.gb[0])); } });
+            if (dB <= dA + 1) { return; }
+        }
         if (nowOv > was + 4) {
             var key = [r.it.id, o.it.id].sort().join("|");
             if (!issue[key]) { issue[key] = 1; issue("ÇAKIŞMA s." + pages[r.pg].name + ": " + label(r.it) + " × " + label(o.it) + " (" + Math.round(nowOv) + " pt²)"); }
@@ -399,9 +420,10 @@ pages.forEach(function (p, i) {
     function colList(list, c) { return list.filter(function (q) { return (q.gb[3] - q.gb[1]) < W * 0.55 && colOf(q.gb) === c; }).sort(function (x, y) { return x.gb[0] - y.gb[0]; }); }
     var aL = colList(aq, 0), aR = colList(aq, 1), bL = colList(bq, 0), bR = colList(bq, 1);
     aL.forEach(function (x, li) { aR.forEach(function (y, ri) {
-        if (Math.abs(x.gb[0] - y.gb[0]) > 1) { return; }
+        var dAr = Math.abs(x.gb[0] - y.gb[0]);
+        if (dAr > 3) { return; }   // 1-3 pt'lik tasarım kaçıklığı da satırdır
         nAlign++;
-        if (bL[li] && bR[ri] && Math.abs(bL[li].gb[0] - bR[ri].gb[0]) > 1) {
+        if (bL[li] && bR[ri] && Math.abs(bL[li].gb[0] - bR[ri].gb[0]) > dAr + 1) {
             issue("SATIR HİZASI s." + p.name + ": A'da aynı satırdaki sol/sağ slotlar B'de " + bL[li].gb[0].toFixed(1) + " / " + bR[ri].gb[0].toFixed(1));
         }
     }); });
@@ -422,7 +444,8 @@ var summary = LOG.filter(function (l) { return /Bölüm işareti|Master üst ban
 console.log("################ " + M.name + "  (" + (dt / 1000).toFixed(3) + " sn)");
 if (alerts.length > 1 || /HATA/.test(alerts[0] || "")) { console.log(alerts.join("\n----\n")); }
 (QUIET ? summary.filter(function (l) { return /YER DEĞİŞTİREN|KRİTİK|Ortak metne|Envanter|Geri alınan|HATA/.test(l); }) : summary).forEach(function (l) { console.log("  LOG| " + l); });
-console.log("  Denetim: " + (issues.length ? issues.length + " sorun" : "TEMİZ") + "  (" + KEYINFO + "; " + GROUPINFO + "; " + nAlign + " satır hizası)");
+var sameNum = qb.filter(function (q) { return testOf[q.sid] !== undefined && q.num === aNum[q.sid]; }).length;
+console.log("  Denetim: " + (issues.length ? issues.length + " sorun" : "TEMİZ") + "  (" + KEYINFO + "; " + GROUPINFO + "; " + nAlign + " satır hizası; numarası aynı kalan " + sameNum + ")");
 issues.forEach(function (s) { console.log("   ✘ " + s); });
 if (process.argv.indexOf("--layout") > 0) {
     pages.forEach(function (p, i) {
@@ -431,7 +454,7 @@ if (process.argv.indexOf("--layout") > 0) {
     });
 }
 var pgArg = process.argv.indexOf("--page");
-if (pgArg > 0) {
+if (pgArg > 0 && process.argv[pgArg + 1] !== "ALL") {
     process.argv[pgArg + 1].split(",").forEach(function (name) {
         var pi = pages.filter(function (p) { return p.name === name; })[0].idx;
         var p = M.pages[pi];
@@ -445,4 +468,20 @@ if (pgArg > 0) {
             console.log("   A" + f(a && a.pg === pi ? a.gb : null) + "  B" + f(r.gb) + "  " + label(r.it));
         });
     });
+}
+// RENDER=klasör: A/B sayfa çizimleri (görsel denetim)
+if (process.env.RENDER) { require("./render.js")(process.env.RENDER, { A: A, B: B, M: M, W: W, H: H, aNum: aNum }); }
+
+// DRIFT=1: her sayfada B'deki sütun sorularının, A'da o sütunda aynı sıradaki slotun y'sinden ortalama kayması
+if (process.env.DRIFT) {
+    var dsum = 0, dn = 0, dbig = 0;
+    pages.forEach(function (p, i) {
+        [0, 1].forEach(function (c) {
+            function col(list) { return list.filter(function (q) { return q.pg === i && (q.gb[3] - q.gb[1]) < W * 0.55 && colOf(q.gb) === c; }).sort(function (x, y) { return x.gb[0] - y.gb[0]; }); }
+            var a = col(qa), b = col(qb);
+            if (a.length !== b.length) { return; }
+            for (var k = 0; k < a.length; k++) { var d = Math.abs(a[k].gb[0] - b[k].gb[0]); dsum += d; dn++; if (d > 60) { dbig++; if (process.env.DRIFT === '2') { console.log('  KAYMA s.' + p.name + ' sütun ' + c + ' sıra ' + k + ': A y=' + Math.round(a[k].gb[0]) + ' B y=' + Math.round(b[k].gb[0])); } } }
+        });
+    });
+    console.log("DRIFT " + (dn ? (dsum / dn).toFixed(2) : 0) + " " + dn + " " + dbig);
 }
