@@ -1,5 +1,5 @@
-// =============================================================
-//  KİTAPÇIK B OLUŞTURUCU  v4.20
+﻿// =============================================================
+//  KİTAPÇIK B OLUŞTURUCU  v4.21
 //  (v4.15: özel havuzlar + ikinci şans + kendini teşhis eden bekçi
 //   + bağlı-görsel sertleştirme + ortaokul kapısına belge-içi yedek.
 //   v4.16: sade panel. v4.17: kompakt seçenekler geri + doğal havuz yazımı
@@ -18,7 +18,11 @@
 //   sıkıştırma başlık/giriş ile ilk soru arasını daraltmaz; sütun ayırıcı çizgi blokla
 //   (ve blok takasında karşı sayfaya) taşınır; dekor şekiller/başlık şeritleri ve
 //   çizgiler bekçide engel sayılır; kendi metnini çapalı taşıyan soru kilitlenmez;
-//   kapaktaki "A KİTAPÇIĞI" harfi B olur; "..._1A" dosyası "..._1B" adını alır.)
+//   kapaktaki "A KİTAPÇIĞI" harfi B olur; "..._1A" dosyası "..._1B" adını alır.
+//   v4.21: HIZ — v4.19-v4.20'deki yönerge regex'i sayı listeli metinlerde üstel sürede
+//   çalışıp InDesign'da scripti kilitliyordu; regex'siz, doğrusal ayrıştırıcıyla
+//   değiştirildi. Grafikler toplu okunur (everyItem), bekçi sabit engelleri yeniden
+//   okumaz, aynı yerleşim iki kez hesaplanmaz; ilerleme penceresi eklendi.)
 //  Limit Yayınları — A kitapçığından otomatik B kitapçığı üretimi
 //  (Lise AYT/TYT + Ortaokul 5-8. sınıf denemeleri)
 // -------------------------------------------------------------
@@ -84,7 +88,7 @@
     // ---------------------------------------------------------
     // 1) ARAYÜZ
     // ---------------------------------------------------------
-    var dlg = new Window("dialog", "Kitapçık B Oluşturucu v4.20 — Limit Yayınları");
+    var dlg = new Window("dialog", "Kitapçık B Oluşturucu v4.21 — Limit Yayınları");
     dlg.orientation = "column";
     dlg.alignChildren = "fill";
     dlg.margins = 16;
@@ -296,6 +300,26 @@
         app.changeGrepPreferences = NothingEnum.NOTHING;
     }
 
+    // v4.20: ilerleme penceresi (uzun belgelerde scriptin çalıştığı görülsün)
+    var prog = null, progLast = 0;
+    function progress(msg, force) {
+        try {
+            var now = new Date().getTime();
+            if (!force && now - progLast < 400) { return; }
+            progLast = now;
+            if (prog === null) {
+                prog = new Window("palette", "Kitapçık B Oluşturucu");
+                prog.alignChildren = "fill";
+                prog.msg = prog.add("statictext", undefined, msg);
+                prog.msg.characters = 46;
+                prog.show();
+            }
+            prog.msg.text = msg;
+            prog.update();
+        } catch (ePr) {}
+    }
+    function progressClose() { try { if (prog !== null) { prog.close(); } } catch (ePr2) {} prog = null; }
+
     var hadError = null;
     var summaryHead = "";
     try {
@@ -331,31 +355,88 @@
 
         // v4.19 ORTAK METİN YÖNERGESİ: "8 ve 9. soruları", "1, 2 ve 3. soruları",
         // "6. ve 7. sorular", "10-12. soruları", "5 ile 8. sorular", "13. soruyu ... göre".
-        // v4.18'e kadar yalnız tireli "8-9. sorular" tanınıyordu; diğer yazımlarda
-        // metne bağlı sorular serbestçe başka sayfalara taşınıyordu.
-        var LINKDIR_RE = /((?:\d{1,3}\s*(?:['\u2019]\s*[a-zçğıöşü]{1,5})?\s*\.?\s*(?:,|-|\u2013|\u2014|ve|ile|ila)\s*)*\d{1,3})\s*(?:['\u2019]\s*[a-zçğıöşü]{1,5})?\s*\.?\s*soru/gi;
+        // v4.20: REGEX YOK — ExtendScript'te sayı listeli metinlerde (anahtar, tablo, dizi)
+        // iç içe tekrarlı regex üstel geri izlemeye düşüp scripti kilitliyordu. Paragrafta
+        // "soru" yoksa hiç iş yapılmaz; varsa kelimenin önündeki en çok 80 karakter geriye
+        // doğru karakter karakter okunur (süre metin uzunluğuyla doğru orantılı).
         var LINKCTX_RE = /g[öo]re|cevaplay|yararlan|ilgili|ba[ğg]l[ıi]/i;
+        var LETTERS = "abcçdefgğhıijklmnoöprsştuüvyzqwxâîûABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZQWXÂÎÛ";
+        function isLetterCh(c) { return c !== "" && LETTERS.indexOf(c) >= 0; }
+        function isDigitCh(c) { return c >= "0" && c <= "9" && c.length === 1; }
+        function isSpaceCh(c) {
+            if (c === "") { return false; }
+            var cc = c.charCodeAt(0);
+            return cc === 32 || cc === 9 || cc === 160 || (cc >= 0x2000 && cc <= 0x200B) || cc === 0x202F || cc === 0x3000;
+        }
+        // p konumundaki "soru"nun önündeki sayı listesini geriye doğru oku: [sayılar, başlangıç] ya da null
+        function numsBefore(par, low, p) {
+            var i = p - 1, lim = p - 80, nums = [], start = -1;
+            if (lim < 0) { lim = 0; }
+            function skipSp() { while (i >= lim && isSpaceCh(par.charAt(i))) { i--; } }
+            function skipSuffix() {          // "4\u2019üncü", "3'üncü"
+                var k = i;
+                while (k >= lim && isLetterCh(par.charAt(k))) { k--; }
+                if (k < i && k >= lim && (par.charAt(k) === "'" || par.charAt(k) === "\u2019")) { i = k - 1; }
+            }
+            function readNum() {
+                var e = i;
+                while (i >= lim && isDigitCh(par.charAt(i))) { i--; }
+                var len = e - i;
+                if (len < 1 || len > 3) { return false; }
+                if (i >= lim && isDigitCh(par.charAt(i))) { return false; }
+                nums.push(parseInt(par.substring(i + 1, e + 1), 10));
+                start = i + 1;
+                return true;
+            }
+            skipSp();
+            if (i >= lim && par.charAt(i) === ".") { i--; }
+            skipSp(); skipSuffix(); skipSp();
+            if (!readNum()) { return null; }
+            for (var guard = 0; guard < 40; guard++) {
+                var save = i;
+                skipSp();
+                if (i >= lim && par.charAt(i) === ".") { i--; skipSp(); }
+                var c = par.charAt(i), ok = false;
+                if (i >= lim && (c === "," || c === "-" || c === "\u2013" || c === "—")) { i--; ok = true; }
+                else {
+                    var words = ["ve", "ile", "ila"];
+                    for (var w = 0; w < words.length && !ok; w++) {
+                        var wl = words[w].length, b = i - wl + 1;
+                        if (b >= lim && low.substr(b, wl) === words[w] && !isLetterCh(par.charAt(b - 1))) { i = b - 1; ok = true; }
+                    }
+                }
+                if (!ok) { i = save; break; }
+                skipSp();
+                if (i >= lim && par.charAt(i) === ".") { i--; skipSp(); }
+                skipSuffix(); skipSp();
+                if (!readNum()) { i = save; break; }
+            }
+            return { nums: nums, at: start };
+        }
         function linkDirectives(text) {
             var out = [];
             var pars = String(text).split(/[\r\n\u2029]+/);
             for (var pq = 0; pq < pars.length; pq++) {
                 var par = pars[pq];
-                if (par.length > 300 || isIntroText(par)) { continue; }
-                LINKDIR_RE.lastIndex = 0;
-                var md;
-                while ((md = LINKDIR_RE.exec(par)) !== null) {
-                    var nums = md[1].match(/\d{1,3}/g);
-                    if (!nums) { continue; }
-                    var ctx = LINKCTX_RE.test(par);
-                    if (nums.length === 1 && !ctx) { continue; }   // "Bu testte 10 soru" vb.
+                if (par.length > 300) { continue; }
+                var low = par.toLowerCase();
+                if (low.indexOf("soru") < 0 || isIntroText(par)) { continue; }
+                var ctx = null, from = 0, p;
+                while ((p = low.indexOf("soru", from)) >= 0) {
+                    from = p + 4;
+                    if (p > 0 && isLetterCh(par.charAt(p - 1))) { continue; }
+                    if (low.substr(p, 6) === "sorulu") { continue; }   // "20 soruluk sınav"
+                    var nb = numsBefore(par, low, p);
+                    if (nb === null) { continue; }
+                    if (ctx === null) { ctx = LINKCTX_RE.test(par); }
+                    if (nb.nums.length === 1 && !ctx) { continue; }   // "Toplam 40 soru" vb.
                     var lo = 999, hi = 0;
-                    for (var nq = 0; nq < nums.length; nq++) {
-                        var nv = parseInt(nums[nq], 10);
-                        if (nv < lo) { lo = nv; }
-                        if (nv > hi) { hi = nv; }
+                    for (var nq = 0; nq < nb.nums.length; nq++) {
+                        if (nb.nums[nq] < lo) { lo = nb.nums[nq]; }
+                        if (nb.nums[nq] > hi) { hi = nb.nums[nq]; }
                     }
                     if (lo < 1 || hi - lo > 40) { continue; }
-                    out.push({ lo: lo, hi: hi, link: ctx, at: md.index });
+                    out.push({ lo: lo, hi: hi, link: ctx, at: nb.at });
                 }
             }
             return out;
@@ -365,6 +446,31 @@
             var first = String(text).split(/[\r\n\u2029]/)[0].replace(/^[\s\u200B\uFEFF\uFFFC\u009E]+/, "");
             var ds = linkDirectives(first);
             return ds.length > 0 && ds[0].at === 0;
+        }
+
+        // v4.20 HIZ: InDesign koleksiyonunu tek çağrıda diziye çevir; öğe öğe erişim
+        // (coll[i], coll.length her turda) InDesign'da en pahalı işlemdir.
+        function itemsOf(coll) {
+            var n = 0;
+            try { n = coll.length; } catch (eIo0) { return []; }
+            if (n === 0) { return []; }
+            try { var el = coll.everyItem().getElements(); if (el && el.length === n) { return el; } } catch (eIo1) {}
+            var out = [];
+            for (var q = 0; q < n; q++) { try { out.push(coll[q]); } catch (eIo2) {} }
+            return out;
+        }
+        // aynı koleksiyonun sınırlarını tek çağrıda al (tek öğede InDesign düz dizi döndürür)
+        function boundsOf(coll, els) {
+            var n = els.length, out = [];
+            if (n === 0) { return out; }
+            if (n > 1) {
+                try {
+                    var bAll = coll.everyItem().geometricBounds;
+                    if (bAll && bAll.length === n && bAll[0] && bAll[0].length === 4) { return bAll; }
+                } catch (eBo1) {}
+            }
+            for (var q = 0; q < n; q++) { try { out.push(els[q].geometricBounds); } catch (eBo2) { out.push(null); } }
+            return out;
         }
 
         // v4.8: grup içindeki metin çerçevelerini güvenle listele.
@@ -403,7 +509,9 @@
         var msSignal = false;
         var pi, ci, k, i, j;
 
+        progress("Sayfalar okunuyor…", true);
         for (pi = 0; pi < pages.length; pi++) {
+            progress("Sayfalar okunuyor: " + (pi + 1) + " / " + pages.length);
             var pg = pages[pi];
             var pb = pg.bounds;
             var pW = pb[3] - pb[1];
@@ -687,14 +795,14 @@
             // sorunun zarfı içinde olan çerçeve o sorunun parçası sayılır ve soruyla
             // birlikte taşınır; zarf bu çerçeveleri de kapsar.
             try {
+                // sayfanın üst düzey grafikleri (metne çapalı olanlar bu koleksiyonlarda yer almaz)
                 var fgCols = [pg.rectangles, pg.polygons, pg.ovals, pg.graphicLines];
                 for (var fc = 0; fc < fgCols.length; fc++) {
-                    for (var fi = 0; fi < fgCols[fc].length; fi++) {
-                        var fgb, fpn = "";
-                        try { fpn = fgCols[fc][fi].parent.constructor.name; } catch (eFG0) {}
-                        if (fpn === "Character") { continue; }   // metne çapalı: zaten metinle taşınır
-                        try { fgb = fgCols[fc][fi].geometricBounds; } catch (eFG1) { continue; }
-                        compCands.push({ it: fgCols[fc][fi], b: fgb });
+                    var fgEl = itemsOf(fgCols[fc]);
+                    var fgB = boundsOf(fgCols[fc], fgEl);
+                    for (var fi = 0; fi < fgEl.length; fi++) {
+                        if (!fgB[fi]) { continue; }
+                        compCands.push({ it: fgEl[fi], b: fgB[fi], line: (fc === 3) });
                     }
                 }
             } catch (eFG2) {}
@@ -738,9 +846,8 @@
             var obstacles = [], dividers = [];
             for (k = 0; k < compCands.length; k++) {
                 // v4.19: dikey sütun ayırıcı çizgi (blok kayarsa üst ucu blokla birlikte kayar)
-                var cbD = compCands[k].b, cnD = "";
-                try { cnD = compCands[k].it.constructor.name; } catch (eDv) {}
-                if (!compCands[k].assigned && cnD === "GraphicLine" && (cbD[3] - cbD[1]) < 3 && (cbD[2] - cbD[0]) > 30) {
+                var cbD = compCands[k].b;
+                if (!compCands[k].assigned && compCands[k].line === true && (cbD[3] - cbD[1]) < 3 && (cbD[2] - cbD[0]) > 30) {
                     dividers.push({ it: compCands[k].it, b: [cbD[0], cbD[1], cbD[2], cbD[3]] });
                 }
             }
@@ -1432,16 +1539,19 @@
             return true;
         }
 
+        // v4.20: başarılı düzeyin yerleşimi saklanır (aynı hesabı tekrar yapmamak için)
+        var lastFitPlc = null;
         function fitLevel(pd, assign) {
+            lastFitPlc = null;
             for (var si = 0; si < LEVELS.length; si++) {
                 if (isMiddleSchool) {
                     var middleSchoolPlc = layoutAt(pd, assign, si);
                     if (middleSchoolPlc !== null && middleSchoolLayoutSafe(pd, middleSchoolPlc) &&
-                        obstacleSafe(pd, middleSchoolPlc)) { return si; }
+                        obstacleSafe(pd, middleSchoolPlc)) { lastFitPlc = middleSchoolPlc; return si; }
                     continue;
                 }
                 var plcF = layoutAt(pd, assign, si);
-                if (plcF !== null && obstacleSafe(pd, plcF)) { return si; }
+                if (plcF !== null && obstacleSafe(pd, plcF)) { lastFitPlc = plcF; return si; }
             }
             return -1;
         }
@@ -1473,7 +1583,9 @@
 
         var assigns = [];
 
+        progress("Sayfa içi karışım…", true);
         for (pi = 0; pi < pageData.length; pi++) {
+            progress("Sayfa içi karışım: " + (pi + 1) + " / " + pageData.length);
             var pd = pageData[pi];
             var slots = [];
             pageQuestionWalk(pd, function (r) { if (r.kind === "soru") { slots.push(r); } });
@@ -1530,6 +1642,7 @@
                     for (k = 0; k < mQ; k++) { trial[grp[k].slotKey] = contents[pr2[k]]; }
                     var lvl = fitLevel(pd, trial);
                     if (lvl < 0) { continue; }
+                    var plcP = lastFitPlc;
                     var disp = 0, sumd = 0;
                     for (k = 0; k < mQ; k++) {
                         if (pr2[k] !== k) { disp++; }
@@ -1542,8 +1655,7 @@
                     // v4.19: eşit karışım ve düzeyde, soruları A'daki yerinden en az kaydıran
                     // permütasyon seçilir (satır hizası korunur).
                     var pen = 0;
-                    if (disp > bestD || (disp === bestD && lvl <= bestL)) {
-                        var plcP = layoutAt(pd, trial, lvl);
+                    if (plcP !== null && (disp > bestD || (disp === bestD && lvl <= bestL))) {
                         for (k = 0; k < plcP.length; k++) {
                             var dyP = plcP[k].ny1 - plcP[k].slot.y1;
                             if (dyP > 0.5 || dyP < -0.5) { pen++; }
@@ -1577,6 +1689,7 @@
         // 9) FAZ 2 — sayfalar arası tekil takas (aynı bölüm+bölge+şekil)
         // -----------------------------------------------------
         var exchLog = [];
+        progress("Sayfalar arası takas…", true);
         if (chkXPage.value && mode !== "col") {
             for (var pass2 = 0; pass2 < 2; pass2++) {
                 var stuck = [];
@@ -1684,6 +1797,7 @@
             }
             return mx;
         }
+        progress("Tam sayfa takası…", true);
         if (chkBundle.value && mode !== "col") {
             var stillB = [];
             for (k = 0; k < allSlots.length; k++) {
@@ -1876,6 +1990,7 @@
         }
 
         // Yerleştir (mutlak konum; sayfa değişimi move ile)
+        progress("Sorular yerleştiriliyor…", true);
         var movedCount = 0, xPageMoves = 0;
         for (pi = 0; pi < pageData.length; pi++) {
             var plan = pagePlans[pi];
@@ -2001,17 +2116,21 @@
             }
             // v4.19: içerik × çizgi — A'da bu sayfadaki hiçbir soruyu kesmeyen bir çizgi
             // (sütun ayırıcı, bölüm çizgisi) taşınan bir sorunun içinden geçmemeli.
-            var compLineIds = {};
+            var compLineIds = {}, hasCompLines = false;
             for (q2 = 0; q2 < plan2.list.length; q2++) {
                 var cpl = plan2.list[q2].cont.comps || [];
-                for (var cl = 0; cl < cpl.length; cl++) { try { compLineIds[cpl[cl].it.id] = true; } catch (eCl) {} }
+                for (var cl = 0; cl < cpl.length; cl++) { try { compLineIds[cpl[cl].it.id] = true; hasCompLines = true; } catch (eCl) {} }
             }
-            var linesP = [];
-            try { linesP = pages[pi2].graphicLines; } catch (eLn) { linesP = []; }
+            var lnColl = null, linesP = [], linesB = [];
+            try { lnColl = pages[pi2].graphicLines; linesP = itemsOf(lnColl); linesB = boundsOf(lnColl, linesP); } catch (eLn) { linesP = []; }
             for (var ln = 0; ln < linesP.length; ln++) {
-                var lid = -1, lgb;
-                try { lid = linesP[ln].id; lgb = linesP[ln].geometricBounds; } catch (eLn2) { continue; }
-                if (compLineIds[lid]) { continue; }
+                var lgb = linesB[ln];
+                if (!lgb) { continue; }
+                if (hasCompLines) {
+                    var lid = -1;
+                    try { lid = linesP[ln].id; } catch (eLn2) {}
+                    if (compLineIds[lid]) { continue; }
+                }
                 var vert = (lgb[3] - lgb[1]) < 3, horz = (lgb[2] - lgb[0]) < 3;
                 if (!vert && !horz) { continue; }
                 var crosses = function (e) {
@@ -2033,8 +2152,7 @@
             var obsP = pageData[pi2].obstacles || [];
             for (var ca = 0; ca < contRects.length; ca++) {
                 for (var oo = 0; oo < obsP.length; oo++) {
-                    var ogb2;
-                    try { ogb2 = obsP[oo].it.geometricBounds; } catch (eOb) { ogb2 = obsP[oo].b; }
+                    var ogb2 = obsP[oo].b;   // engeller taşınmaz: envanterdeki sınır yeterli
                     if (dOv0(contRects[ca], ogb2)) {
                         log("KRİTİK: s." + pageData[pi2].name + " — " + contRects[ca][4] +
                             " sayfadaki görsel/şekil çerçevesine biniyor — sayfa A düzenine geri alındı.");
@@ -2158,8 +2276,10 @@
         // içerik alışverişi yapan tüm sayfalar KAPANIŞ KÜMESİ olarak birlikte
         // geri alınır. (Tek kanatlı iptal, karşı sayfada çift soru bırakıyordu.)
         var failed = {};
+        progress("Bindirme denetimi…", true);
         for (pi = 0; pi < pageData.length; pi++) {
             if (pagePlans[pi] === null) { continue; }
+            progress("Bindirme denetimi: " + (pi + 1) + " / " + pageData.length);
             if (!auditPage(pi)) { failed[pi] = true; }
         }
         var grew = true;
@@ -2294,6 +2414,7 @@
         // -----------------------------------------------------
         // bundle iptal olduysa bölümü yeniden numaralamaya gerek kalmayabilir;
         // yine de bundleSecs'te kalan bölümler için güvenli tam numaralama yapılır.
+        progress("Numaralar ve cevap anahtarı yazılıyor…", true);
         var mapping = [];
         function writeNum(contRec, newNum) {
             if (contRec.num === newNum) { return true; }
@@ -2551,6 +2672,7 @@
         doc.save();
 
     } catch (eMain) { hadError = eMain; }
+    progressClose();
 
     try {
         doc.viewPreferences.horizontalMeasurementUnits = oldH;
@@ -2565,6 +2687,6 @@
               "\n\nB dosyası yarım kalmış olabilir; orijinal A dosyanız diskte değişmedi.");
         return;
     }
-    alert("Kitapçık B v4.20 — Tamamlandı ✔\n" + summaryHead + LOG.join("\n"));
+    alert("Kitapçık B v4.21 — Tamamlandı ✔\n" + summaryHead + LOG.join("\n"));
 
 })();
