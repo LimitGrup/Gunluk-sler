@@ -5,8 +5,8 @@
     <key>CFBundleName</key><string>Kitapcik Eslestirici</string>
     <key>CFBundleDisplayName</key><string>Kitapçık Eşleştirici</string>
     <key>CFBundleIdentifier</key><string>com.limityayinlari.kitapcikeslestirici</string>
-    <key>CFBundleVersion</key><string>2.25</string>
-    <key>CFBundleShortVersionString</key><string>2.25</string>
+    <key>CFBundleVersion</key><string>2.26</string>
+    <key>CFBundleShortVersionString</key><string>2.26</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleExecutable</key><string>launcher</string>
     <key>CFBundleIconFile</key><string>app</string>

@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.25"
+SURUM = "2.26"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -1512,10 +1512,23 @@ def _okuma_sirasi(satirlar, genislikler, capa_sirasi, yukseklikler=None):
                        and (t == "F" or capa_sinif[id(x)] in ("F", t))]
                       + [1e9]) - 2
             bolgeler[id(c)] = (c["y0"] - 4, alt)
+        def numara_hizasinda(c, r):
+            """r, c numarasıyla aynı satırda mı? Üst üste kesir (315/2) ya da üs
+            satırı yukarı taşırsa satırın üst kenarı numaranın üstünde kalır;
+            yine de numaranın sağında ve onun hizasındaysa o sorunun ilk
+            satırıdır (bir önceki soruya yazılmamalı)."""
+            return (c["y0"] - 30 < r["y0"] < c["y0"] - 4
+                    and r["y1"] > c["y0"] + 2
+                    and r["x0"] >= c["x1"] - 2 and sutununda(c, r))
+
         atanan = {id(c): [] for c in capalar}
         yetim = []
         for r in sat:
             if id(r) in atanan:
+                continue
+            hizada = [c for c in capalar if numara_hizasinda(c, r)]
+            if hizada:
+                atanan[id(min(hizada, key=lambda c: r["x0"] - c["x1"]))].append(r)
                 continue
             uygun = [c for c in capalar
                      if bolgeler[id(c)][0] <= r["y0"] < bolgeler[id(c)][1]

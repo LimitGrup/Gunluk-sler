@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.25)
+# Kitapçık Eşleştirici (v2.26)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -84,7 +84,9 @@ Her kitapçık önce **kendi içinde**, sonra **A ile B karşılıklı** denetle
 
 Sayfa düzeni soru numaralarına göre çözülür. Her numaradan bir bölge başlar: soru tam
 genişlikse sayfa boyu, değilse kendi sütunu. Böylece aynı sayfada tam genişlik soru (yan yana
-A B C D şıklarıyla) ve iki sütun bir arada olsa da her satır kendi sorusunda kalır.
+A B C D şıklarıyla) ve iki sütun bir arada olsa da her satır kendi sorusunda kalır. Numaranın
+sağında ve onun hizasında duran satır, üst üste kesir (315/2) ya da büyük karakter yüzünden
+numaranın biraz üstünden başlasa da o sorunun ilk satırı sayılır.
 
 ### Rapor
 
@@ -183,6 +185,7 @@ pip install pymupdf numpy scipy openpyxl
 python3 testler/ornek_pdf_uret.py /tmp/ornek          # gerçek dizgiye benzeyen A/B PDF'leri
 python3 testler/eslestir_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/ornek /tmp/sonuc.json
 python3 testler/kontrol_sina.py  "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/ornek
+python3 testler/kesir_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/kesir  # ilk satır numaranın üstünden başlıyor: kaybolmamalı
 python3 testler/tire_sina.py     "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/tire   # A ve B'de farklı tire karakteri: sahte uyarı olmamalı
 ```
 
