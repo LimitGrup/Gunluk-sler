@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.21"
+SURUM = "2.22"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -1072,6 +1072,24 @@ def calistir(a_pdf, b_pdf, sinav, sablon, anah_a, anah_b, cikti, log,
                 a_s, b_s, u1, u2 = a2, b2, v1, v2
                 dok_a, dok_b = dok_a2, dok_b2
                 break
+    # TYT de AYT de uymuyorsa (ör. 10. sınıf kitapçığı TYT seçiliyken) yapı
+    # kitapçığın kendisinden çıkarılır
+    if sinav not in ("OTOMATİK", "ORTAOKUL") and len(u1) + len(u2) > 5:
+        try:
+            oto = yapi_cikar(a_pdf)
+            dok_a3, dok_b3 = {}, {}
+            a3, w1 = sorulari_ayikla(a_pdf, oto, "A", log, dokum=dok_a3)
+            b3, w2 = sorulari_ayikla(b_pdf, oto, "B", log, dokum=dok_b3)
+            if len(w1) + len(w2) < len(u1) + len(u2):
+                log("⚠ DİKKAT: Dosyalar TYT/AYT düzeninde değil; yapı kitapçıktan "
+                    "çıkarıldı (Lise/Ortaokul seçeneği gibi): " + " | ".join(
+                        f"{t['test']} ({sum(int(a) for _d, a in t['dersler'])})"
+                        for t in oto))
+                sinav, yapi = "OTOMATİK", oto
+                a_s, b_s, u1, u2 = a3, b3, w1, w2
+                dok_a, dok_b = dok_a3, dok_b3
+        except RuntimeError as h:
+            logla(f"Otomatik yapı denenemedi: {h}")
     log("Sorular eşleştiriliyor...")
     esl, u3 = eslestir(a_s, b_s, yapi)
     try:                      # bağımsız içerik doğrulaması (kesin yanlışı düzeltir)
@@ -1505,8 +1523,11 @@ def _kitapcik_bolumle(k, mobilya, log):
     capa_poz = [p for p, _b in capalar]
     kullanilan = {id(sira[p]) for p in capa_poz}
     tum_aday = [p for p, _n in aday_pozlar]
+    # Sırasız numara yalnızca sütun kenarına hizalı numaralarda aranır (sorunun
+    # içindeki numaralı madde ya da alt satıra kayan şık parçası sayılmaz)
+    kenar_adaylar = sorted({poz[id(satirlar[s])]: n for s, n in k["adaylar"]}.items())
     fazlalar = []
-    for p, n in aday_pozlar:
+    for p, n in kenar_adaylar:
         r = sira[p]
         if id(r) in kullanilan or p in baslik_poz or mob(r):
             continue
@@ -1856,7 +1877,10 @@ def _sekil_denetle(docA, docB, bolgelerA, bolgelerB, onbellek, durum, bildir):
                f"şekil/resim — eksik ya da fazla şekil olabilir, elle bakın.")
         return f"FARKLI ({len(ka)}↔{len(kb)})"
     for i, ((pa, ra), (pb, rb)) in enumerate(zip(ka, kb), 1):
-        if abs(ra.width - rb.width) > 3 or abs(ra.height - rb.height) > 3:
+        # Küçük boyut farkı (yakındaki bir çizginin kutuya katılması vb.) boyut
+        # hatası sayılmaz; ortak alan aşağıda görüntü olarak kıyaslanır
+        if (abs(ra.width - rb.width) > max(8, 0.12 * max(ra.width, rb.width)) or
+                abs(ra.height - rb.height) > max(8, 0.12 * max(ra.height, rb.height))):
             durum.append("ŞEKİL FARKI")
             bildir("UYARI", f"{i}. şeklin boyutu farklı: A {ra.width:.0f}×"
                    f"{ra.height:.0f}, B {rb.width:.0f}×{rb.height:.0f} pt — elle bakın.")
@@ -1869,6 +1893,14 @@ def _sekil_denetle(docA, docB, bolgelerA, bolgelerB, onbellek, durum, bildir):
         # puanı küçük/boş kutularda ve desenli dolgularda yanıltıcı olduğu için
         # kullanılmaz; gerçek kitapçıklardaki 222 aynı şekilde en yüksek 20 çıktı.)
         yerel = _yerel_fark(ia, ib)
+        if (yerel is not None and ia is not None and ib is not None
+                and ia.shape != ib.shape):
+            # Boyutlar biraz farklıysa fazlalık hangi kenardaysa ortak alan oraya
+            # göre hizalanır: üst-sol ve alt-sağ hizadan iyi olanı alınır
+            h_, w_ = min(ia.shape[0], ib.shape[0]), min(ia.shape[1], ib.shape[1])
+            alt = _yerel_fark(ia[-h_:, -w_:], ib[-h_:, -w_:])
+            if alt is not None:
+                yerel = min(yerel, alt)
         if yerel is not None and yerel > KONTROL_SEKIL_ESIK:
             durum.append("ŞEKİL FARKI")
             bildir("HATA", f"{i}. şekil/resim farklı görünüyor (en farklı bölge "
@@ -2591,6 +2623,7 @@ def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
         # Seçilen tür dosyaya uymuyorsa (EŞLEŞTİR'deki gibi) diğerini dene
         _s, u = sorulari_ayikla(a_pdf, yapi, "A", lambda _m: None)
         if len(u) > 5:
+            en_iyi = len(u)
             for aday_sinav, aday_yapi in YAPILAR.items():
                 if aday_sinav == sinav:
                     continue
@@ -2598,8 +2631,18 @@ def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
                 if len(u2) < len(u):
                     log(f"⚠ DİKKAT: Dosyalar '{aday_sinav}' düzeninde; sınav "
                         f"türü otomatik '{aday_sinav}' olarak düzeltildi.")
-                    sinav, yapi = aday_sinav, aday_yapi
+                    sinav, yapi, en_iyi = aday_sinav, aday_yapi, len(u2)
                     break
+            if en_iyi > 5:            # TYT de AYT de uymuyor: kitapçıktan çıkar
+                try:
+                    oto = yapi_cikar(a_pdf)
+                    _s3, u3 = sorulari_ayikla(a_pdf, oto, "A", lambda _m: None)
+                    if len(u3) < en_iyi:
+                        log("⚠ DİKKAT: Dosyalar TYT/AYT düzeninde değil; yapı "
+                            "kitapçıktan çıkarıldı (Lise/Ortaokul seçeneği gibi).")
+                        yapi, yapi_b = oto, yapi_cikar(b_pdf)
+                except RuntimeError as h:
+                    logla(f"Otomatik yapı denenemedi: {h}")
     sonuc, sorunlar = kontrol_et(a_pdf, b_pdf, yapi, log,
                                  anahtar_oku(anah_a, yapi),
                                  anahtar_oku(anah_b, yapi), yapi_b=yapi_b)

@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.21)
+# Kitapçık Eşleştirici (v2.22)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -31,6 +31,12 @@ Gerçek kitapçıklarda sonuç:
 | 8. sınıf Sayısal 1A ↔ 1B (40 soru) | 38/40 doğru (Matematik 17–18 yer değiştirmiş) | 40/40 |
 | TYT Deneme 1 A ↔ B (125 soru) | 125/125 | 125/125 |
 | AYT Deneme 1 A ↔ B (166 soru) | 166/166 | 166/166 |
+| 10. sınıf Deneme 2 A ↔ B (100 soru) | — | 100/100 |
+| 11. sınıf Deneme 2 A ↔ B (100 soru) | — | 100/100 |
+
+TYT ya da AYT seçili olup dosyalar o düzene uymuyorsa (ör. 10. sınıf kitapçığı varsayılan TYT
+seçiliyken çalıştırılırsa) önce diğer sınav türü denenir; o da uymazsa yapı kitapçığın kendisinden
+çıkarılır (Lise/Ortaokul seçeneği gibi) ve günlükte "DİKKAT" ile belirtilir.
 
 Örnek kitapçıklarda ana tablo (B numaraları) v2.18 ile aynıdır (`testler/eslestir_sina.py`).
 Değişen tek yer, doğrulanan eşlerin Kontrol sayfasındaki benzerlik yüzdesidir.
@@ -83,6 +89,21 @@ A B C D şıklarıyla) ve iki sütun bir arada olsa da her satır kendi sorusund
 - **İşaretli PDF:** Sorunlu yerler A ve B PDF'lerinin kopyasında çerçevelenir (kırmızı = hata,
   turuncu = elle bakılacak) ve not olarak açıklama eklenir. Sorun yoksa bu PDF oluşmaz.
 
+### Farklı şablonlar
+
+Uygulama belirli bir kitapçığa göre ayarlanmadı; genel kurallarla çalışır:
+- Soru numaraları sütun kenarına hizalı "12." biçiminde aranır, sıraları test test izlenir.
+- Testler numaranın 1'e dönmesinden, adları sayfa üstündeki başlıktan ("… TESTİ",
+  "… BÖLÜM - …"), ders dağılımı "Bu testte sırasıyla, Tarih (1-10), …" yönergesinden okunur.
+- Sayfa düzeni (tek sütun, iki sütun, ikisinin karışımı) her sayfada soru numaralarına göre
+  ayrıca çözülür.
+- Sayfa üst/alt bilgileri sabit metinden değil, sayfalarda aynı yerde tekrar etmelerinden tanınır.
+
+10. ve 11. sınıf kitapçıkları bu kurallarla ilk denemede tanındı; yalnızca iki genel kusur
+düzeltildi (alt satıra kayan şık parçasının soru numarası sanılması, yakın iki tablonun şekil
+kutusunda birleşmesi). Hiç görülmemiş bir şablonda yine de beklenmedik bir durum çıkabilir;
+öyle bir çiftte rapor şüpheli bir sonuç verirse o çift gönderilip kural genelleştirilmelidir.
+
 ### Bilinen sınırlar
 
 - PDF'te **seçilebilir metin** olmalı. Yazılar eğriye çevrilmişse (outline) ya da taranmışsa önce
@@ -99,6 +120,8 @@ A B C D şıklarıyla) ve iki sütun bir arada olsa da her satır kendi sorusund
 | Sayısal 1A ↔ 1B | 40 | 40/40 birebir eşleşme, 0 hata, 0 uyarı | ~25 sn |
 | TYT Deneme 1 A ↔ B | 125 | 125/125 birebir, 3 metin grubu aynı, 0 hata, 0 uyarı | ~35 sn |
 | AYT Deneme 1 A ↔ B | 166 | 166/166 birebir, 0 hata, 0 uyarı | ~5 sn |
+| 10. sınıf Deneme 2 A ↔ B | 100 | 100/100 birebir, 0 hata, 0 uyarı | ~14 sn |
+| 11. sınıf Deneme 2 A ↔ B | 100 | 100/100 birebir, 0 hata, 0 uyarı | ~4 sn |
 
 TYT'de B kitapçığı metne bağlı grubun sorularını ters sırayla diziyor (A 35-36 → B 38-37).
 Bu yayınevi düzeni hata sayılmaz; soruların yan yana ve aynı metnin altında olması denetlenir.
