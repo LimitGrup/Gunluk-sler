@@ -6,7 +6,7 @@
 Pencereli sürüm: A/B kitapçık PDF'lerini dosya seçiciyle seçin, EŞLEŞTİR'e
 basın; kazanım tablosu Excel'i otomatik oluşsun. Terminal bilgisi gerekmez.
 
-Çalıştırma: Kitapcik_Eslestirici.command dosyasına çift tıklayın
+Çalıştırma: "Kitapcik Eslestirici.app" uygulamasına çift tıklayın
             (veya terminalden: python3 kitapcik_eslestirici_app.py)
 ==============================================================================
 """
@@ -531,7 +531,8 @@ def sorulari_ayikla(pdf_yolu, yapi, etiket, log):
         logla(f"--- TANI ({etiket} kitapçığı, {Path(pdf_yolu).name}) ---")
         logla("Aday numara dizisi: " + " ".join(str(n) for _, n in adaylar))
         eksikler = [bp for bp in range(len(beklenen)) if bp not in eslesen]
-        onceki = max((bp for bp in eslesen if bp < eksikler[0]), default=None)
+        onceki = (max((bp for bp in eslesen if bp < eksikler[0]), default=None)
+                  if eksikler else None)
         bas = eslesen[onceki] if onceki is not None else 0
         logla("İlk eksik bölge çevresindeki ham satırlar:")
         for k in range(bas, min(bas + 30, len(satirlar))):
@@ -999,7 +1000,8 @@ def calistir(a_pdf, b_pdf, sinav, sablon, anah_a, anah_b, cikti, log,
         log("Yapı A kitapçığından çıkarılıyor...")
         yapi = yapi_cikar(a_pdf)
         log("  Bulunan yapı: " + " | ".join(
-            f"{t['test']} ({t['dersler'][0][1]} soru)" for t in yapi))
+            f"{t['test']} ({sum(int(a) for _d, a in t['dersler'])} soru)"
+            for t in yapi))
     else:
         yapi = YAPILAR[sinav]
     log("A kitapçığı okunuyor...")
