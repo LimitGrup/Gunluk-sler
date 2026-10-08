@@ -1468,6 +1468,23 @@ def _kitapcik_bolumle(k, mobilya, log):
             fazlalar.append({"poz": p, "no_yazan": n, "ti": beklenen[b_i][0],
                              "ders": beklenen[b_i][1]})
 
+    # Mükerrer numarada hangisi yanlış? Sıra 5, 7, 7, 8 ise (6 eksik) 6'nın
+    # yerinde duran ilk "7." yanlış numaralıdır; motor ilkini 7 saymışsa
+    # rolleri değiştir
+    capali = {(beklenen[b_][0], beklenen[b_][2]) for _p, b_ in capalar}
+    for f in fazlalar:
+        onceki = max(((p_, b_) for p_, b_ in capalar if p_ < f["poz"]), default=None)
+        if onceki is None:
+            continue
+        ti_, _d, no_ = beklenen[onceki[1]]
+        if ti_ != f["ti"] or no_ != f["no_yazan"] or no_ < 2 or \
+                (ti_, no_ - 1) in capali:
+            continue
+        capalar.remove(onceki)
+        capalar.append((f["poz"], onceki[1]))
+        f["poz"] = onceki[0]
+    capalar.sort()
+
     # --- soru bölümleri --------------------------------------------------------
     sinirlar = sorted([(p, ("S", b)) for p, b in capalar] +
                       [(f["poz"], ("F", j)) for j, f in enumerate(fazlalar)])

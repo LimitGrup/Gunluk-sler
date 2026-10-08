@@ -72,6 +72,11 @@ A B C D şıklarıyla) ve iki sütun bir arada olsa da her satır kendi sorusund
 | Sözel 1A ↔ 1B | 50 | 50/50 birebir eşleşme, 0 hata, 0 uyarı | ~2 sn |
 | Sayısal 1A ↔ 1B | 40 | 40/40 birebir eşleşme, 0 hata, 0 uyarı | ~25 sn |
 
+Sözel 1B'nin bir kopyasına üç hata eklendi: bir soru numarası değiştirildi, bir kelime silindi,
+bir soruya magenta cevap harfi kondu. Üçü de doğru soruda yakalandı ("6. soru bulunamadı" ile
+"'7.' yazıyor, beklenen numara büyük olasılıkla 6", "Metin farklı: «stratejik»", "Açık kalan
+cevap harfi: 'C'").
+
 ## Testler
 
 `testler/` klasöründeki betikler uygulamanın motorunu arayüzsüz çalıştırır:
