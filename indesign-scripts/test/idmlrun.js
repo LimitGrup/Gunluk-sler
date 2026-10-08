@@ -2,7 +2,7 @@
 // denetimlerle doğrular (çakışma, taşma, çizgi, hiza, test sınırı, numara, ortak metin, cevap anahtarı, A→B).
 // Kullanım: python3 -I indesign-scripts/test/idml2json.py <açılmış_idml_klasörü> belge.json
 //           node indesign-scripts/test/idmlrun.js indesign-scripts/kitapcik-b-olusturucu.jsx belge.json [--layout] [--page 4,5]
-//           Ortam: MODE=cross|col|rnd  SEED=n  OPT_OFF=Boşluk,Sayfalar,Tam
+//           Ortam: MODE=cross|col|rnd  SEED=n  OPT_OFF=Boşluk,Sayfalar,Tam  CSVOUT=rapor.csv (script CSV çıktısı)
 var fs = require("fs"), vm = require("vm");
 var scriptPath = process.argv[2], jsonPath = process.argv[3], QUIET = process.argv.indexOf("--quiet") > 0;
 var M = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
@@ -227,10 +227,12 @@ var ctx = {
     app: { documents: { length: 1 }, activeDocument: doc, scriptPreferences: { enableRedraw: true },
            get findGrepPreferences() { return grepPrefs; }, set findGrepPreferences(v) { if (v === "NOTHING") { grepPrefs.findWhat = ""; } },
            changeGrepPreferences: {}, open: function () { return doc; }, doScript: function () { return ""; } },
-    $: { os: "Macintosh OS 14" },
+    $: { os: "Macintosh OS 14", writeln: function (s) { console.log(s); } },
     Window: function () { var w = ctl(); w.show = function () { applyUi(); return 1; }; return w; },
-    File: function (p) { return { fsName: p, name: encodeURI(String(p).split("/").pop()), exists: false, open: function () { return true; },
-                                  write: function () {}, writeln: function () {}, close: function () {} }; },
+    File: function (p) { var buf = [];   // CSVOUT=dosya: script'in yazdığı CSV'yi diske al
+                         return { fsName: p, name: encodeURI(String(p).split("/").pop()), exists: false, open: function () { return true; },
+                                  write: function (t) { buf.push(String(t)); }, writeln: function (t) { buf.push(String(t) + "\n"); },
+                                  close: function () { if (process.env.CSVOUT && /\.csv$/.test(String(p))) { fs.writeFileSync(process.env.CSVOUT, buf.join("")); } } }; },
     Folder: function () {}, ScriptLanguage: {}, MeasurementUnits: { POINTS: 0 }, RulerOrigin: { PAGE_ORIGIN: 0 },
     NothingEnum: { NOTHING: "NOTHING" }, alert: function (m) { alerts.push(m); }, confirm: function () { return true; },
     decodeURI: decodeURI, encodeURI: encodeURI
@@ -307,9 +309,16 @@ Object.keys(STORIES).forEach(function (sid) {
 var secA = doc.sections.filter(function (x) { return /(^|[^\w])A([^\w]|$)/.test(String(x.marker)); });
 if (secA.length) { issue("BÖLÜM İŞARETİ B'de hâlâ A: " + secA.map(function (x) { return x.marker; }).join(",")); }
 // 2) SAYFA DIŞINA TAŞMA
+//    Soru: kenar boşluğu ya da A'da o sayfada bir sorunun indiği en alt nokta (altbilgi bandına
+//    konmuş "TESTİ BİTTİ" gibi sabit çerçeveler soru sınırını aşağı çekmez). Diğer öğeler: eski kural.
+var qaBot = {};
+questionsAt(A, true).forEach(function (q) { if (!(qaBot[q.pg] >= q.gb[2])) { qaBot[q.pg] = q.gb[2]; } });
 moved.forEach(function (r) {
     var p = M.pages[r.pg], bot = H - (p.margin ? p.margin.Bottom : 0);
-    A.forEach(function (x) { if (x.pg === r.pg && x.kind !== "GraphicLine" && x.gb[2] > bot && x.gb[2] < H) { bot = x.gb[2]; } });
+    var isQ = (r.it.parentStory ? [r.it] : r.it.allPageItems.filter(function (k) { return k.parentStory; }))
+              .some(function (tf) { return aNum[tf.parentStory.id] !== undefined; });
+    if (isQ) { if (qaBot[r.pg] > bot) { bot = qaBot[r.pg]; } }
+    else { A.forEach(function (x) { if (x.pg === r.pg && x.kind !== "GraphicLine" && x.gb[2] > bot && x.gb[2] < H) { bot = x.gb[2]; } }); }
     if (r.gb[2] > bot + 2) { issue("TAŞMA s." + pages[r.pg].name + ": " + label(r.it) + " alt=" + Math.round(r.gb[2]) + " > " + Math.round(bot)); }
     if (r.gb[1] < -1 || r.gb[3] > W + 1) { issue("YATAY TAŞMA s." + pages[r.pg].name + ": " + label(r.it)); }
 });
@@ -410,7 +419,7 @@ pages.forEach(function (p, i) {
     });
 });
 var summary = LOG.filter(function (l) { return /Bölüm işareti|Master üst bant|A içeren|B kopyası|Sorusuz sayfada|YER DEĞİŞTİREN|KRİTİK|UYARI|Ortak metne|kilitlendi|taşınacak|Envanter|Ders bölgeleri|Geri alınan|Tam sayfa|İkinci deneme|Yerinde kalanlar|HATA|Ortaokul/.test(l); });
-console.log("################ " + M.name + "  (" + (dt / 1000).toFixed(1) + " sn)");
+console.log("################ " + M.name + "  (" + (dt / 1000).toFixed(3) + " sn)");
 if (alerts.length > 1 || /HATA/.test(alerts[0] || "")) { console.log(alerts.join("\n----\n")); }
 (QUIET ? summary.filter(function (l) { return /YER DEĞİŞTİREN|KRİTİK|Ortak metne|Envanter|Geri alınan|HATA/.test(l); }) : summary).forEach(function (l) { console.log("  LOG| " + l); });
 console.log("  Denetim: " + (issues.length ? issues.length + " sorun" : "TEMİZ") + "  (" + KEYINFO + "; " + GROUPINFO + "; " + nAlign + " satır hizası)");
