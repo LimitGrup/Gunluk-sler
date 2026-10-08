@@ -27,8 +27,12 @@ def calistir(m, klasor, ad, sinav, a, b, dogru=None, ayrinti=False):
     yapi_b = None if sinav in m.YAPILAR else m.yapi_cikar(str(klasor / b))
     sonuc, sorunlar = m.kontrol_et(str(klasor / a), str(klasor / b), yapi,
                                    loglar.append, yapi_b=yapi_b)
-    m.kontrol_raporu_yaz(sonuc, sorunlar, str(cikti))
+    kart = m.kart_yolu(cikti)
+    m.kontrol_raporu_yaz(sonuc, sorunlar, str(cikti),
+                         kartlar=kart if sorunlar else None)
     m.kontrol_pdf_isaretle(sonuc, sorunlar, klasor)
+    if sorunlar:                     # her sorun için A/B görüntü kartı
+        m.kontrol_kartlari_yaz(sonuc, sorunlar, kart)
     hata = [s for s in sorunlar if s["onem"] == "HATA"]
     uyari = [s for s in sorunlar if s["onem"] == "UYARI"]
     es = sonuc["eslesmeler"]
@@ -49,8 +53,8 @@ def calistir(m, klasor, ad, sinav, a, b, dogru=None, ayrinti=False):
               + (f"  YANLIŞ: {yanlis}" if yanlis else ""))
     if ayrinti or hata or uyari:
         for s in hata + uyari:
-            print(f"  {s['onem']:5} [{s['kitapcik']}] {s['test']} | {s['soru']} | "
-                  f"{s['aciklama'][:150]}")
+            print(f"  {s['sira']:>2}. {s['onem']:5} [{s['kitapcik']}] {s['test']} | "
+                  f"{s['soru']} | {m._sorun_yeri(s)} | {s['aciklama'][:150]}")
     return sonuc, sorunlar
 
 

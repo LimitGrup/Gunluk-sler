@@ -1,11 +1,11 @@
-# Kitapçık Eşleştirici (v2.23)
+# Kitapçık Eşleştirici (v2.24)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
 | Düğme | Ne yapar | Çıktı |
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
-| **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.xlsx` + işaretli PDF'ler |
+| **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.xlsx` + sorunlu soruların A/B görüntüleri (PDF) |
 
 ## EŞLEŞTİR'deki düzeltmeler (v2.21)
 
@@ -84,12 +84,28 @@ A B C D şıklarıyla) ve iki sütun bir arada olsa da her satır kendi sorusund
 
 ### Rapor
 
-- **Özet:** Her kontrol için TEMİZ / HATA / KONTROL ET.
-- **Sorunlar:** Her sorun için önem, kitapçık, test, ders, soru, sayfa ve açıklama.
+- **Özet:** Her kontrol için TEMİZ / HATA / KONTROL ET. Altında **"NEREYE BAKMALI?"** listesi:
+  her sorun sıra numarası, testi, soru numarası (A-7 / B-2), **A ve B sayfası** ve ne bulunduğuyla.
+  Liste kitapçıktaki sıraya göredir (önce hatalar, sonra uyarılar).
+- **Sorun kartları PDF'i** (`kitapcik_kontrol_raporu_sorunlar.pdf`): Her sorun için bir sayfa.
+  Üstte ne bulunduğu ve sayfası, altta sorunun **A ve B kitapçığındaki görüntüsü yan yana**:
+  - farklı kelimeler sarıyla boyanır;
+  - farklı şekil kırmızı çerçeveyle, en farklı küçük bölgesi ayrıca işaretlenir;
+  - açık kalan cevap harfi çerçevelenir;
+  - bulunamayan sorunun yerine önceki ve sonraki soru gösterilir.
+
+  İlk sayfa tıklanır içindekiler listesidir. Böylece her uyarı PDF'leri açıp aramadan,
+  birkaç saniyede doğrulanır. Sorun yoksa bu dosya oluşmaz; önceki kontrolden kalan eski dosya
+  da silinir.
+- **Sorunlar:** Her sorun için sıra no, önem, kitapçık, test, ders, soru, sayfa ve açıklama.
 - **Soru Eşleşmesi:** A no → B no, metin %, şekil/resim durumu, cevaplar ve durum.
 - **Metne Bağlı Gruplar:** A grubu → B karşılığı, parça benzerliği ve durum.
 - **İşaretli PDF:** Sorunlu yerler A ve B PDF'lerinin kopyasında çerçevelenir (kırmızı = hata,
-  turuncu = elle bakılacak) ve not olarak açıklama eklenir. Sorun yoksa bu PDF oluşmaz.
+  turuncu = elle bakılacak), farklı kelimeler vurgulanır ve not olarak açıklama eklenir. Sorun
+  yoksa bu PDF oluşmaz.
+
+Uygulamada kontrol bitince "Excel ve görüntüler açılsın mı?" sorusuna Evet denirse ikisi birlikte
+açılır. Günlükte de her sorun sayfasıyla yazılır.
 
 ### Farklı şablonlar
 
