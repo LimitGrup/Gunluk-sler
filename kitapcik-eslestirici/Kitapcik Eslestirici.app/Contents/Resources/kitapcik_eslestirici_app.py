@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.18"
+SURUM = "2.19"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -350,7 +350,7 @@ def _adaylari_bul(satirlar):
     return adaylar, yedekler
 
 
-def sorulari_ayikla(pdf_yolu, yapi, etiket, log):
+def sorulari_ayikla(pdf_yolu, yapi, etiket, log, dokum=None):
     satirlar, kolonlar = satirlari_al(pdf_yolu)
     adaylar, yedekler = _adaylari_bul(satirlar)
 
@@ -537,6 +537,9 @@ def sorulari_ayikla(pdf_yolu, yapi, etiket, log):
         logla("İlk eksik bölge çevresindeki ham satırlar:")
         for k in range(bas, min(bas + 30, len(satirlar))):
             logla(f"  [{k}] {satirlar[k]['metin'][:70]}")
+    if dokum is not None:   # yalnızca A–B KONTROL kullanır; EŞLEŞTİR'i etkilemez
+        dokum.update(satirlar=satirlar, adaylar=adaylar, yedekler=yedekler,
+                     eslesen=eslesen, beklenen=beklenen)
     log(f"  {etiket} kitapçığı: {len(sorular)} soru bulundu.")
     return sorular, uyarilar
 
@@ -1084,6 +1087,1057 @@ def calistir(a_pdf, b_pdf, sinav, sablon, anah_a, anah_b, cikti, log,
 
 
 # ----------------------------------------------------------------------------
+# A–B KONTROL: B kitapçığını A'ya göre denetler (her A sorusu B'de var mı,
+# metin/şık/cevap/görsel aynı mı, metne bağlı gruplar ve numaralar düzgün mü).
+# EŞLEŞTİR akışından bağımsızdır; yalnızca PDF okuma ve soru bulma motorunu
+# (satirlari_al, sorulari_ayikla) ortak kullanır, onları değiştirmez.
+# ----------------------------------------------------------------------------
+SECENEK_SATIRI_RE = re.compile(r"^\s*([A-E])\s*(?:\)|\.(?=\s*\S))")
+KONTROL_DUR_RE = re.compile(r"^\s*Bu\s+testte\s+\d+\s+soru|"
+                            r"^\s*Cevaplar\S*\s+cevap\s+k|TEST[İI]NE\s+GEÇ",
+                            re.IGNORECASE)
+GRUP_NUMARA_RE = re.compile(
+    r"(?<![\d.])(\d{1,3}(?:\s*\.?\s*(?:ve|ile|-|–|—|,)\s*\d{1,3})*)"
+    r"\s*\.?\s*soru(?:lar|yu)", re.IGNORECASE)
+KONTROL_GORSEL_ESIK = 0.80     # soru görüntüsü örtüşmesi bunun altındaysa uyar
+KONTROL_YEREL_ESIK = 28.0      # küçük bir bölgedeki gri ton farkı (şekil değişimi)
+KONTROL_METIN_YOK = 0.50       # metin benzerliği bunun altındaysa "B'de yok"
+
+
+def _grup_basligi_coz(metin, devam=""):
+    """'14 ve 15. soruları', '1-4. soruları', '5, 6 ve 7. soruları',
+    '12. ve 13. soruları', '9. soruyu' ... → [numaralar]; başlık değilse None."""
+    m = GRUP_NUMARA_RE.search(metin)
+    if not m or m.start() > 80:
+        return None
+    if "cevaplay" not in (metin + " " + devam).casefold():
+        return None
+    nums, tire = [], False
+    for t in re.findall(r"\d{1,3}|[-–—]", m.group(1)):
+        if t in "-–—":
+            tire = True
+            continue
+        n = int(t)
+        if tire and nums and n > nums[-1]:
+            nums.extend(range(nums[-1] + 1, n + 1))
+        else:
+            nums.append(n)
+        tire = False
+    if not nums or len(nums) > 12 or nums != sorted(set(nums)) or nums[-1] > 60:
+        return None
+    return nums
+
+
+def _renkli_isaret_mi(metin, renk):
+    """Magenta cevap harfi ya da soru kodu parçası mı (metinden çıkarılır)."""
+    t = metin.strip()
+    if not t or not renkli_mi(renk):
+        return False
+    if re.fullmatch(r"[A-E]", t):
+        return True
+    t = t.replace(" ", "")
+    return bool(re.fullmatch(r"[A-Za-z0-9ÇĞİÖŞÜçğıöşü]+", t)
+                and re.search(r"\d", t))
+
+
+def _sik_harfi(satir):
+    m = SECENEK_SATIRI_RE.match(satir["metin"])
+    return m.group(1) if m else None
+
+
+def _temiz_satir(satir, ilk=False):
+    m = "".join(t for t, rk in satir.get("spanlar", [])
+                if not _renkli_isaret_mi(t, rk)).strip()
+    if ilk:
+        mm = SORU_BASI_RE.match(m)
+        if mm:
+            m = mm.group(2).strip()
+    return m
+
+
+def _mobilya_anahtari(satir):
+    m = unicodedata.normalize("NFC", satir["metin"]).casefold().strip()
+    # Sayfa numarası/kitapçık kodu tek anahtarda toplanır ("12." soru numarası
+    # noktalı olduğu için buraya girmez)
+    return "#" if re.fullmatch(r"[\d\s/–-]+", m) else re.sub(r"\s+", " ", m)
+
+
+def _kenar_bolgesi(satir, sayfa_yuk, sayfa_gen):
+    return (satir["y1"] < 0.12 * sayfa_yuk or satir["y0"] > 0.90 * sayfa_yuk
+            or satir["x1"] < 0.08 * sayfa_gen or satir["x0"] > 0.92 * sayfa_gen)
+
+
+def _mobilya_kumesi(kitapciklar):
+    """Sayfa üst/alt bilgisi, kenar kodu gibi tekrar eden satırlar
+    (karşılaştırma metninden çıkarılır; A ve B'de simetrik). Yalnızca konuma
+    bakılır — soru numarası ya da kalıp soru kökü gibi sık geçen içerik
+    satırları sayfa bilgisi sayılmaz:
+      1) kenar boşluğunda (üst %12, alt %10, yanlar %8) en az iki sayfada aynı
+         yükseklikte duran satır (rakamları farklı olabilir: sayfa no vb.;
+         "9." gibi soru numarası satırları hariç)
+      2) sayfanın her yerinde, sayfaların yarısında birebir aynı yerde duran satır."""
+    kume = set()
+    for k in kitapciklar:
+        satirlar, yuk, gen = k["satirlar"], k["yukseklikler"], k["genislikler"]
+        sayfa_say = 1 + max((r["sayfa"] for r in satirlar), default=0)
+        kenar, sabit = {}, {}
+        for r in satirlar:
+            if SECENEK_SATIRI_RE.match(r["metin"]):
+                continue                     # şıklar asla sayfa bilgisi değildir
+            m = _mobilya_anahtari(r)
+            if (_kenar_bolgesi(r, yuk[r["sayfa"]], gen[r["sayfa"]])
+                    and not SORU_BASI_RE.match(r["metin"])):
+                kaba = re.sub(r"\d+", "#", m)
+                kenar.setdefault((kaba, round(r["y0"] / 3)), set()).add(r["sayfa"])
+            sabit.setdefault((m, round(r["x0"] / 3), round(r["y0"] / 3)),
+                             set()).add(r["sayfa"])
+        kume |= {("kenar", k_[0]) for k_, s_ in kenar.items() if len(s_) >= 2}
+        kume |= {("sabit", k_) for k_, s_ in sabit.items()
+                 if len(s_) >= max(3, 0.5 * sayfa_say)}
+    return kume
+
+
+def _mobilya_mi(satir, kume, sayfa_yuk, sayfa_gen):
+    if SECENEK_SATIRI_RE.match(satir["metin"]):
+        return False
+    m = _mobilya_anahtari(satir)
+    if ("sabit", (m, round(satir["x0"] / 3), round(satir["y0"] / 3))) in kume:
+        return True
+    return (("kenar", re.sub(r"\d+", "#", m)) in kume
+            and not SORU_BASI_RE.match(satir["metin"])
+            and _kenar_bolgesi(satir, sayfa_yuk, sayfa_gen))
+
+
+def _okuma_sirasi(satirlar, genislikler, capa_sirasi=None):
+    """Sayfa düzenine göre okuma sırası. İki sütunlu sayfada tam genişlik
+    satırları (metin, başlık) bant ayırır, her bantta önce sol sonra sağ sütun
+    okunur; tek sütunlu sayfada satırlar yukarıdan aşağı, soldan sağa okunur
+    (2x2 dizilmiş şıklar kendi sorusunda kalır). capa_sirasi {id(satır): sıra}
+    verilirse, soru numaraları bu düzende sıraya uymayan sayfada motorun kendi
+    satır sırasına dönülür."""
+    sayfalar = {}
+    for r in satirlar:
+        sayfalar.setdefault(r["sayfa"], []).append(r)
+    sira, sinif, iki_sutun, geri_donulen = [], {}, {}, []
+    for pno in sorted(sayfalar):
+        sat = sayfalar[pno]
+        orta = genislikler[pno] / 2
+        for r in sat:
+            # Tam genişlik: orta çizginin iki yanına da belirgin taşan satır
+            # (sütun kenarını birkaç punto aşan satır sütununda kalır)
+            if orta - r["x0"] > 40 and r["x1"] - orta > 40:
+                sinif[id(r)] = "F"
+            else:
+                sinif[id(r)] = "L" if (r["x0"] + r["x1"]) / 2 < orta else "R"
+        # İki sütunlu sayfada sağ sütunda soru gövdesi (şık olmayan uzun satır)
+        # bulunur; tek sütunlu sayfada sağ yarıda çoğunlukla yalnızca B)/D) şıkları
+        uzun = [r for r in sat if len(r["metin"]) >= 25]
+        f_orani = (sum(1 for r in uzun if sinif[id(r)] == "F") / len(uzun)
+                   if uzun else 1.0)
+        sag = [r for r in sat if sinif[id(r)] == "R" and len(r["metin"]) >= 15]
+        sag_sik = sum(1 for r in sag if SECENEK_SATIRI_RE.match(r["metin"]))
+        iki = ((len(sag) - sag_sik >= 3 and len(sag) - sag_sik >= sag_sik)
+               or f_orani < 0.2)
+        iki_sutun[pno] = iki
+        sayfa_sira = []
+        if iki:
+            bant = []
+
+            def bosalt():
+                for taraf in ("L", "R"):
+                    sayfa_sira.extend(sorted(
+                        (r for r in bant if sinif[id(r)] == taraf),
+                        key=lambda r: (round(r["y0"], 1), r["x0"])))
+                bant.clear()
+            for r in sorted(sat, key=lambda r: (round(r["y0"], 1), r["x0"])):
+                if sinif[id(r)] == "F":
+                    bosalt()
+                    sayfa_sira.append(r)
+                else:
+                    bant.append(r)
+            bosalt()
+        else:
+            satir_gruplari = []
+            for r in sorted(sat, key=lambda r: r["y0"]):
+                if satir_gruplari and abs(r["y0"] - satir_gruplari[-1][0]) <= 3:
+                    satir_gruplari[-1][1].append(r)
+                else:
+                    satir_gruplari.append([r["y0"], [r]])
+            for _y, grup in satir_gruplari:
+                sayfa_sira.extend(sorted(grup, key=lambda r: r["x0"]))
+        if capa_sirasi:
+            dizi = [capa_sirasi[id(r)] for r in sayfa_sira if id(r) in capa_sirasi]
+            if dizi != sorted(dizi):
+                sayfa_sira = list(sat)           # motorun sayfa içi sırası
+                geri_donulen.append(pno + 1)
+        sira.extend(sayfa_sira)
+    return sira, sinif, iki_sutun, geri_donulen
+
+
+def _kitapcik_oku(pdf, yapi, etiket, log):
+    dokum = {}
+    sorular, uyarilar = sorulari_ayikla(pdf, yapi, etiket, log, dokum=dokum)
+    doc = fitz.open(pdf)
+    genislikler = [p.rect.width for p in doc]
+    yukseklikler = [p.rect.height for p in doc]
+    doc.close()
+    dokum.update(pdf=pdf, etiket=etiket, sorular=sorular, uyarilar=uyarilar,
+                 genislikler=genislikler, yukseklikler=yukseklikler)
+    return dokum
+
+
+def _kitapcik_bolumle(k, mobilya, log):
+    """Soruları okuma sırasına göre böler; her sorunun temiz metnini (gövde +
+    şıklar), bölgesini, metne bağlı grup başlıklarını ve numarası beklenen
+    sıraya uymayan şıklı soru başlangıçlarını çıkarır."""
+    satirlar, beklenen = k["satirlar"], k["beklenen"]
+    capa_sirasi = {id(satirlar[s]): b for b, s in k["eslesen"].items()}
+    sira, sinif, iki_sutun, geri = _okuma_sirasi(satirlar, k["genislikler"],
+                                                 capa_sirasi)
+    if geri:
+        logla(f"{k['etiket']}: şu sayfalarda motorun satır sırası kullanıldı: "
+              f"{geri}")
+
+    def mob(r):
+        return _mobilya_mi(r, mobilya, k["yukseklikler"][r["sayfa"]],
+                           k["genislikler"][r["sayfa"]])
+    poz = {id(r): i for i, r in enumerate(sira)}
+    capalar = sorted((poz[id(satirlar[s])], b) for b, s in k["eslesen"].items())
+
+    def secenekli(bas, son):
+        return any(SECENEK_SATIRI_RE.match(sira[j]["metin"])
+                   for j in range(bas, min(son, len(sira))))
+
+    # --- metne bağlı grup başlıkları -----------------------------------------
+    basliklar = []
+    for i, r in enumerate(sira):
+        devam = " ".join(x["metin"] for x in sira[i + 1:i + 3]
+                         if x["sayfa"] == r["sayfa"])
+        nums = _grup_basligi_coz(r["metin"], devam)
+        if nums:
+            bitis = i            # başlık cümlesi alt satıra taştıysa onu da al
+            if "cevaplay" not in r["metin"].casefold():
+                bitis = next((j for j in range(i + 1, min(i + 3, len(sira)))
+                              if "cevaplay" in sira[j]["metin"].casefold()), i)
+            basliklar.append({"poz": i, "bitis": bitis, "satir": r,
+                              "nolar": nums})
+    baslik_poz = {b["poz"] for b in basliklar}
+    aday_pozlar = sorted({poz[id(satirlar[s])]: n for s, n in
+                          k["adaylar"] + k["yedekler"]}.items())
+    # Motor "12. ve 13. soruları ..." başlık satırını 12. sorunun çapası
+    # saymışsa gerçek "12." satırına kaydır (başlık + parça soruya karışmasın)
+    duzeltilmis = []
+    for i, (p, b_i) in enumerate(capalar):
+        if p in baslik_poz:
+            no = beklenen[b_i][2]
+            sinir = capalar[i + 1][0] if i + 1 < len(capalar) else len(sira)
+            gercek = next((q for q, n in aday_pozlar
+                           if p < q < sinir and n == no), None)
+            if gercek is not None:
+                p = gercek
+        duzeltilmis.append((p, b_i))
+    capalar = duzeltilmis
+
+    # --- numarası beklenene uymayan şıklı soru başlangıçları ------------------
+    capa_poz = [p for p, _b in capalar]
+    kullanilan = {id(sira[p]) for p in capa_poz}
+    tum_aday = [p for p, _n in aday_pozlar]
+    fazlalar = []
+    for p, n in aday_pozlar:
+        r = sira[p]
+        if id(r) in kullanilan or p in baslik_poz or mob(r):
+            continue
+        onceki = max((q for q in capa_poz if q < p), default=None)
+        if onceki is None:
+            continue
+        sonraki = min([q for q in tum_aday if q > p] + [len(sira)])
+        if secenekli(onceki, p) and secenekli(p, sonraki):
+            b_i = next(b for q, b in capalar if q == onceki)
+            fazlalar.append({"poz": p, "no_yazan": n, "ti": beklenen[b_i][0],
+                             "ders": beklenen[b_i][1]})
+
+    # --- soru bölümleri --------------------------------------------------------
+    sinirlar = sorted([(p, ("S", b)) for p, b in capalar] +
+                      [(f["poz"], ("F", j)) for j, f in enumerate(fazlalar)])
+    ogeler = []
+    for s_i, (p, (tur, deg)) in enumerate(sinirlar):
+        son = sinirlar[s_i + 1][0] if s_i + 1 < len(sinirlar) else len(sira)
+        bolum = sira[p:son]
+        kes = len(bolum)
+        for j in range(1, len(bolum)):
+            if p + j in baslik_poz or KONTROL_DUR_RE.search(bolum[j]["metin"]):
+                kes = j
+                break
+        bolum = bolum[:kes]
+        sec_idx = [j for j, r in enumerate(bolum)
+                   if SECENEK_SATIRI_RE.match(r["metin"])]
+        if sec_idx:
+            son_sec = sec_idx[-1]
+            adimlar = sorted(bolum[a + 1]["y0"] - bolum[a]["y0"]
+                             for a in range(sec_idx[0], son_sec)
+                             if bolum[a + 1]["y0"] > bolum[a]["y0"])
+            tipik = adimlar[len(adimlar) // 2] if adimlar else 14
+            j = son_sec + 1
+            while (j < len(bolum) and bolum[j]["sayfa"] == bolum[j - 1]["sayfa"]
+                   and 0 <= bolum[j]["y0"] - bolum[j - 1]["y0"] < 1.8 * tipik):
+                j += 1                   # son şıkkın devam satırları
+            bolum = bolum[:j]
+        tutulan = [(j, r) for j, r in enumerate(bolum)
+                   if j == 0 or not mob(r)]
+        parcalar = [_temiz_satir(r, ilk=(j == 0)) for j, r in tutulan]
+        metin = "\n".join(x for x in parcalar if x)
+        cmp = re.sub(r"\s+", " ", re.sub(r"(\w)[-\u00ad]\n(\w)", r"\1\2",
+                                         metin)).strip()
+        norm = normalize(metin)
+        bas = sira[p]
+        if tur == "S":
+            ti, ders, no = beklenen[deg]
+            etiket_no = str(no)
+        else:
+            f = fazlalar[deg]
+            ti, ders, no = f["ti"], f["ders"], None
+            etiket_no = f"'{f['no_yazan']}.' (numara hatalı)"
+        ogeler.append({
+            "ti": ti, "ders": ders, "no": no, "etiket_no": etiket_no,
+            "poz": p, "sayfa": bas["sayfa"], "metin": metin, "cmp": cmp,
+            "norm": norm, "tri": {norm[i:i + 3] for i in range(len(norm) - 2)},
+            "a_sayisi": sum(1 for _j, r in tutulan if _sik_harfi(r) == "A"),
+            "bolge": _kontrol_bolge(bas, [r for _j, r in tutulan], sinif,
+                                    iki_sutun, satirlar),
+            "cevap": (k["sorular"].get((ti, no)) or {}).get("cevap") if no else None,
+            "kod": (k["sorular"].get((ti, no)) or {}).get("kod") if no else None,
+        })
+
+    # --- başlıkların altındaki sorular ve parça metni ---------------------------
+    for b in basliklar:
+        sonrakiler = [o for o in ogeler if o["poz"] > b["poz"]][:len(b["nolar"])]
+        b["sorular"] = sonrakiler
+        ilk_poz = sonrakiler[0]["poz"] if sonrakiler else len(sira)
+        parca = [r for r in sira[b["bitis"] + 1:ilk_poz]
+                 if not mob(r)
+                 and not KONTROL_DUR_RE.search(r["metin"])]
+        b["metin"] = "\n".join(_temiz_satir(r) for r in parca)
+        b["cmp"] = re.sub(r"\s+", " ", b["metin"]).strip()
+        b["ti"] = sonrakiler[0]["ti"] if sonrakiler else None
+        b["sayfa"] = b["satir"]["sayfa"]
+        bas_sat = [x for x in sira[b["poz"]:b["bitis"] + 1]
+                   if x["sayfa"] == b["sayfa"]]
+        b["baslik_bolge"] = (b["sayfa"], min(x["x0"] for x in bas_sat) - 4,
+                             min(x["y0"] for x in bas_sat) - 3,
+                             max(x["x1"] for x in bas_sat) + 4,
+                             max(x["y1"] for x in bas_sat) + 3)
+        ilk_soru = sira[ilk_poz] if ilk_poz < len(sira) else None
+        # Başlık satırı kısa olsa da parça tam genişlikse bölge de tam genişlik
+        tam = any(sinif.get(id(r)) == "F" for r in parca
+                  if r["sayfa"] == b["sayfa"])
+        # Görsel bölge başlığın altından başlar (başlıktaki numaralar A ile
+        # B'de doğal olarak farklıdır; onlar ayrıca denetleniyor)
+        ilk_parca = next((r for r in parca if r["sayfa"] == b["sayfa"]), None)
+        b["bolge"] = _kontrol_bolge(ilk_parca or b["satir"], parca, sinif,
+                                    iki_sutun, satirlar, bitis=ilk_soru,
+                                    taraf=("F" if tam else
+                                           sinif.get(id(b["satir"]), "F")))
+    k.update(sira=sira, ogeler=ogeler, basliklar=basliklar, fazlalar=fazlalar)
+    return k
+
+
+def _kontrol_bolge(bas, tutulan, sinif, iki_sutun, satirlar, bitis=None,
+                   taraf=None):
+    """Sorunun (ya da parçanın) ilk sayfadaki dikdörtgeni: (sayfa,x0,y0,x1,y1)."""
+    pno = bas["sayfa"]
+    sayfa_sat = [r for r in satirlar if r["sayfa"] == pno]
+    taraf = taraf or sinif.get(id(bas), "F")
+    if iki_sutun.get(pno) and taraf in ("L", "R"):
+        ayni = [r for r in tutulan if r["sayfa"] == pno
+                and sinif.get(id(r)) == taraf]
+        # Bölge sütun metninin sol kenarından başlar, genişliği iki sütunda
+        # aynıdır: A'da solda, B'de sağda duran aynı soru üst üste oturur
+        # (kısa satırlar — sayfa no, cevap harfi — ve kenarı taşan tek tük
+        # satırlar sütun sınırını bozmasın diye yüzdelik kullanılır)
+        kenarlar = {}
+        for r in sayfa_sat:
+            t_ = sinif.get(id(r))
+            if t_ in ("L", "R") and len(r["metin"]) >= 12:
+                kenarlar.setdefault(t_, ([], []))
+                kenarlar[t_][0].append(r["x0"])
+                kenarlar[t_][1].append(r["x1"])
+
+        def yuzdelik(d, q):
+            d = sorted(d)
+            return d[min(len(d) - 1, int(q * len(d)))]
+        sinirlar = {t_: (yuzdelik(a, 0.1), yuzdelik(b, 0.9))
+                    for t_, (a, b) in kenarlar.items()}
+        if taraf not in sinirlar:
+            sinirlar[taraf] = (bas["x0"], max(r["x1"] for r in ayni or [bas]))
+        gen = max(b - a for a, b in sinirlar.values())
+        x0 = sinirlar[taraf][0] - 2
+        x1 = x0 + gen + 4
+    else:
+        ayni = [r for r in tutulan if r["sayfa"] == pno]
+        x0 = min(r["x0"] for r in sayfa_sat) - 2
+        x1 = max(r["x1"] for r in sayfa_sat) + 2
+    # Yatay hiza şıkların girintisine göre: soru numarası ve magenta harf
+    # dışarıda kalır, A'da solda B'de sağda duran soru birebir üst üste biner
+    sik = next((r for r in ayni if _sik_harfi(r)), None)
+    if sik is not None and sik["x0"] - 2 > x0:
+        x0 = sik["x0"] - 2
+    y1 = max([r["y1"] for r in ayni] + [bas["y1"]]) + 3
+    if (bitis is not None and bitis["sayfa"] == pno and bitis["y0"] > bas["y1"]
+            and (taraf == "F" or sinif.get(id(bitis)) == taraf
+                 or not iki_sutun.get(pno))):
+        y1 = bitis["y0"] - 3             # parça: ilk soruya kadar (tablo/şekil dahil)
+    return (pno, x0, bas["y0"] - 3, x1, y1)
+
+
+def _kontrol_kupur(doc, bolge, onbellek, anahtar, yukseklik=None, olcek=0.8):
+    """Bölgenin gri tonlamalı görüntüsü; magenta cevap harfi/kodu beyazlatılır
+    (baskı PDF'inde olmadıkları için karşılaştırmayı bozmasınlar)."""
+    if anahtar in onbellek:
+        return onbellek[anahtar]
+    pno, x0, y0, x1, y1 = bolge
+    if yukseklik is not None:
+        y1 = min(y1, y0 + yukseklik)
+    y1 = min(y1, y0 + 500)
+    sayfa = doc[pno]
+    r = fitz.Rect(x0, y0, x1, y1) & sayfa.rect
+    sonuc = None
+    if not r.is_empty and r.width >= 20 and r.height >= 12:
+        pix = sayfa.get_pixmap(clip=r, matrix=fitz.Matrix(olcek, olcek),
+                               colorspace=fitz.csGRAY, alpha=False)
+        a = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
+            pix.height, pix.width).astype(np.float32)
+        isaretler = onbellek.setdefault(("isaret", id(doc), pno), [
+            fitz.Rect(sp["bbox"])
+            for blk in sayfa.get_text("dict").get("blocks", [])
+            for ln in blk.get("lines", []) for sp in ln.get("spans", [])
+            if _renkli_isaret_mi(sp.get("text", ""), sp.get("color", 0))])
+        for ir in isaretler:
+            kes = ir & r
+            if kes.is_empty:
+                continue
+            ya, yb = int((kes.y0 - r.y0) * olcek), int((kes.y1 - r.y0) * olcek) + 1
+            xa, xb = int((kes.x0 - r.x0) * olcek), int((kes.x1 - r.x0) * olcek) + 1
+            a[max(0, ya):yb, max(0, xa):xb] = 255.0
+        if a.shape[0] > 4 and a.shape[1] > 4:
+            b = a.copy()
+            b[1:-1, 1:-1] = (a[:-2, :-2] + a[:-2, 1:-1] + a[:-2, 2:] +
+                             a[1:-1, :-2] + a[1:-1, 1:-1] + a[1:-1, 2:] +
+                             a[2:, :-2] + a[2:, 1:-1] + a[2:, 2:]) / 9.0
+            a = b
+        sonuc = a
+    onbellek[anahtar] = sonuc
+    return sonuc
+
+
+def _kupur_cifti(docA, docB, bolgeA, bolgeB, onbellek):
+    """İki bölgeyi aynı yükseklik ve genişlikte (kısa/dar olanınki) keser."""
+    h = round(min(bolgeA[4] - bolgeA[2], bolgeB[4] - bolgeB[2]), 1)
+    ga, gb = bolgeA[3] - bolgeA[1], bolgeB[3] - bolgeB[1]
+    if h < 12 or abs(ga - gb) > 0.25 * max(ga, gb):
+        return None, None            # düzen farklı (sütun/tam genişlik): kıyas yok
+    w = round(min(ga, gb), 1)        # aynı genişlik → aynı ölçek
+    bolgeA = bolgeA[:3] + (bolgeA[1] + w, bolgeA[4])
+    bolgeB = bolgeB[:3] + (bolgeB[1] + w, bolgeB[4])
+    return (_kontrol_kupur(docA, bolgeA, onbellek, ("A", bolgeA, h), h),
+            _kontrol_kupur(docB, bolgeB, onbellek, ("B", bolgeB, h), h))
+
+
+def _gorsel_puan(docA, docB, bolgeA, bolgeB, onbellek):
+    """Genel örtüşme puanı (0-1)."""
+    return _gorsel_benzerlik(*_kupur_cifti(docA, docB, bolgeA, bolgeB, onbellek))
+
+
+def _yerel_fark(a, b, kare=12):
+    """En iyi hizada, 12x12 piksellik karelerin en büyük ortalama gri farkı.
+    Genel puanın yakalayamadığı küçük şekil/tablo değişikliklerini gösterir."""
+    if a is None or b is None:
+        return None
+    h, w = min(a.shape[0], b.shape[0]), min(a.shape[1], b.shape[1])
+    en_iyi = None
+    for dy in range(-2, 3):
+        for dx in (-1, 0, 1):
+            aa = a[max(0, dy):h, max(0, dx):w]
+            bb = b[max(0, -dy):h, max(0, -dx):w]
+            hh = min(aa.shape[0], bb.shape[0]) // kare * kare
+            ww = min(aa.shape[1], bb.shape[1]) // kare * kare
+            if hh < kare or ww < kare:
+                continue
+            d = np.abs(aa[:hh, :ww] - bb[:hh, :ww]).reshape(
+                hh // kare, kare, ww // kare, kare).mean(axis=(1, 3))
+            v = float(d.max())
+            en_iyi = v if en_iyi is None else min(en_iyi, v)
+    return en_iyi
+
+
+def _gorsel_olc(docA, docB, bolgeA, bolgeB, onbellek):
+    """(genel puan, yerel fark) — ikisi de None olabilir (kıyas yapılamadı)."""
+    ka, kb = _kupur_cifti(docA, docB, bolgeA, bolgeB, onbellek)
+    return _gorsel_benzerlik(ka, kb), _yerel_fark(ka, kb)
+
+
+def _gorsel_yazi(puan, yerel):
+    p = f"örtüşme %{puan * 100:.0f}" if puan is not None else "örtüşme ?"
+    return f"({p}, en farklı bölge {yerel:.0f}/255)" if yerel is not None else f"({p})"
+
+
+def _gorsel_farkli_mi(puan, yerel):
+    return ((puan is not None and puan < KONTROL_GORSEL_ESIK)
+            or (yerel is not None and yerel > KONTROL_YEREL_ESIK))
+
+
+def _fark_ozeti(a, b, azami=3):
+    """İki metin arasındaki ilk farkları kelime düzeyinde özetler."""
+    ka, kb = a.split(), b.split()
+    sm = difflib.SequenceMatcher(None, ka, kb, autojunk=False)
+    parcalar = []
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        if op == "equal":
+            continue
+        sa = " ".join(ka[i1:i2])[:60] or "—"
+        sb = " ".join(kb[j1:j2])[:60] or "—"
+        parcalar.append(f"A: «{sa}» → B: «{sb}»")
+        if len(parcalar) >= azami:
+            break
+    return "; ".join(parcalar)
+
+
+def _benzerlik_orani(a, b):
+    if not a and not b:
+        return 1.0
+    return difflib.SequenceMatcher(None, a, b, autojunk=False).ratio()
+
+
+def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
+               yapi_b=None):
+    """A ve B kitapçığını denetler. Dönen: (sonuc sözlüğü, sorunlar listesi)."""
+    cevap_a, cevap_b = cevap_a or {}, cevap_b or {}
+    sorunlar = []
+
+    def sorun(onem, kitapcik, aciklama, test="", ders="", soru="", yerler=()):
+        sorunlar.append({"onem": onem, "kitapcik": kitapcik, "test": test,
+                         "ders": ders, "soru": soru, "aciklama": aciklama,
+                         "yerler": list(yerler)})
+
+    log("A kitapçığı okunuyor...")
+    A = _kitapcik_oku(a_pdf, yapi, "A", log)
+    log("B kitapçığı okunuyor...")
+    B = _kitapcik_oku(b_pdf, yapi, "B", log)
+    for kk in (A, B):
+        if not kk["sorular"]:
+            raise RuntimeError(
+                f"'{Path(kk['pdf']).name}' içinde hiç soru bulunamadı. Soru "
+                f"kitapçığı PDF'ini seçtiğinizden emin olun.")
+    mobilya = _mobilya_kumesi([A, B])
+    log("Sayfa düzeni çözümleniyor...")
+    _kitapcik_bolumle(A, mobilya, log)
+    _kitapcik_bolumle(B, mobilya, log)
+    test_adi = lambda ti: yapi[ti]["test"] if ti is not None and ti < len(yapi) else ""
+    yer = lambda kk, o: (kk["etiket"], o["bolge"])
+
+    # --- 1) Yapı karşılaştırması (otomatik yapıda) -------------------------------
+    if yapi_b is not None:
+        ozet = lambda y: [(normalize(t["test"]),
+                           sum(int(a) for _d, a in t["dersler"])) for t in y]
+        if ozet(yapi) != ozet(yapi_b):
+            sorun("HATA", "A-B", "Test yapısı farklı. A: " + " | ".join(
+                f"{t['test']} ({sum(int(a) for _d, a in t['dersler'])})"
+                for t in yapi) + "  —  B: " + " | ".join(
+                f"{t['test']} ({sum(int(a) for _d, a in t['dersler'])})"
+                for t in yapi_b))
+
+    # --- 2) Numaralandırma (her kitapçık kendi içinde) ------------------------
+    numara_ozet = {}
+    for kk in (A, B):
+        bulunan = {(o["ti"], o["no"]) for o in kk["ogeler"] if o["no"]}
+        eksik_say = 0
+        for ti, ders, no in kk["beklenen"]:
+            if (ti, no) not in bulunan:
+                eksik_say += 1
+                sorun("HATA", kk["etiket"], f"{no}. soru bulunamadı "
+                      f"(numara atlanmış, yanlış yazılmış ya da soru basılmamış).",
+                      test_adi(ti), ders, str(no))
+        for f in kk["fazlalar"]:
+            o = next(x for x in kk["ogeler"] if x["poz"] == f["poz"])
+            onceki = max((x for x in kk["ogeler"] if x["no"] and x["poz"] < o["poz"]
+                          and x["ti"] == o["ti"]), key=lambda x: x["poz"],
+                         default=None)
+            tahmin = ""
+            if onceki and (o["ti"], onceki["no"] + 1) not in bulunan:
+                tahmin = f" Beklenen numara büyük olasılıkla {onceki['no'] + 1}."
+            sorun("HATA", kk["etiket"], f"Numarası sıraya uymayan şıklı soru: "
+                  f"'{f['no_yazan']}.' yazıyor (mükerrer/yanlış numara ya da "
+                  f"fazladan soru).{tahmin}", test_adi(f["ti"]), f["ders"],
+                  o["etiket_no"], [yer(kk, o)])
+            o["_sorun"] = sorunlar[-1]
+        for o in kk["ogeler"]:
+            if o["no"] and o["a_sayisi"] >= 2:
+                sorun("HATA", kk["etiket"], f"{o['no']}. sorunun içinde ikinci "
+                      f"bir şık takımı var — numarasız ya da numarası okunamayan "
+                      f"bir soru olabilir.", test_adi(o["ti"]), o["ders"],
+                      str(o["no"]), [yer(kk, o)])
+            elif o["no"] and o["a_sayisi"] == 0 and o["norm"]:
+                sorun("UYARI", kk["etiket"], f"{o['no']}. soruda şık (A) …) "
+                      f"bulunamadı — şıklar görsel olabilir, elle bakın.",
+                      test_adi(o["ti"]), o["ders"], str(o["no"]), [yer(kk, o)])
+        numara_ozet[kk["etiket"]] = (len(bulunan), len(kk["beklenen"]),
+                                     eksik_say, len(kk["fazlalar"]))
+        # Grup başlığı numaraları altındaki sorularla aynı mı?
+        for b in kk["basliklar"]:
+            alt = [o["no"] if o["no"] else o["etiket_no"] for o in b["sorular"]]
+            if alt != b["nolar"]:
+                sorun("HATA", kk["etiket"], "Metne bağlı grup başlığı "
+                      f"{_nolar_yazi(b['nolar'])}. soruları gösteriyor ama "
+                      f"altındaki sorular: {', '.join(map(str, alt)) or 'yok'}.",
+                      test_adi(b["ti"]), "", _nolar_yazi(b["nolar"]),
+                      [(kk["etiket"], b["baslik_bolge"])])
+
+    # --- 3) A ↔ B soru eşleştirmesi (her test kendi içinde, dersler arası) -----
+    docA, docB = fitz.open(a_pdf), fitz.open(b_pdf)
+    onbellek = {}
+    eslesmeler = []          # (oa, ob, metin_orani, gorsel)
+    testler = sorted({o["ti"] for o in A["ogeler"]} | {o["ti"] for o in B["ogeler"]})
+    for ti in testler:
+        la = [o for o in A["ogeler"] if o["ti"] == ti]
+        lb = [o for o in B["ogeler"] if o["ti"] == ti]
+        if not la or not lb:
+            continue
+        kod_a = {}
+        for o in la:
+            if o["kod"]:
+                kod_a.setdefault(o["kod"], []).append(o)
+        kod_b = {}
+        for o in lb:
+            if o["kod"]:
+                kod_b.setdefault(o["kod"], []).append(o)
+        M = np.zeros((len(la), len(lb)))
+        for i, oa in enumerate(la):
+            for j, ob in enumerate(lb):
+                if len(oa["norm"]) < 40 or len(ob["norm"]) < 40:
+                    p = _gorsel_puan(docA, docB, oa["bolge"], ob["bolge"],
+                                     onbellek)
+                    s_ = p if p is not None else 0.0
+                else:
+                    u = oa["tri"] | ob["tri"]
+                    s_ = len(oa["tri"] & ob["tri"]) / len(u) if u else 0.0
+                if (oa["kod"] and oa["kod"] == ob["kod"]
+                        and len(kod_a[oa["kod"]]) == 1
+                        and len(kod_b[ob["kod"]]) == 1):
+                    s_ += 1.0                       # tekil soru kodu: kesin eş
+                ca_ = cevap_a.get((ti, oa["no"])) or oa["cevap"]
+                cb_ = cevap_b.get((ti, ob["no"])) or ob["cevap"]
+                if ca_ and cb_:
+                    s_ += 0.03 if ca_ == cb_ else -0.03
+                M[i, j] = s_
+        sat, sut = linear_sum_assignment(-M)
+        alinan_a, alinan_b = set(), set()
+        for i, j in zip(sat, sut):
+            oa, ob = la[i], lb[j]
+            oran = _benzerlik_orani(oa["cmp"], ob["cmp"])
+            if oran < KONTROL_METIN_YOK and max(len(oa["norm"]), len(ob["norm"])) >= 40:
+                continue                     # gerçek eş değil; aşağıda raporlanır
+            alinan_a.add(i)
+            alinan_b.add(j)
+            gorsel = _gorsel_olc(docA, docB, oa["bolge"], ob["bolge"], onbellek)
+            eslesmeler.append((oa, ob, oran, gorsel))
+        for i, oa in enumerate(la):
+            if i in alinan_a:
+                continue
+            en_iyi = max(lb, key=lambda ob: len(oa["tri"] & ob["tri"]) /
+                         (len(oa["tri"] | ob["tri"]) or 1))
+            sorun("HATA", "A-B", f"A-{oa['etiket_no']} sorusu B kitapçığında "
+                  f"bulunamadı (en yakın: B-{en_iyi['etiket_no']}, metin "
+                  f"%{_benzerlik_orani(oa['cmp'], en_iyi['cmp']) * 100:.0f}).",
+                  test_adi(ti), oa["ders"], f"A-{oa['etiket_no']}",
+                  [yer(A, oa)])
+        for j, ob in enumerate(lb):
+            if j not in alinan_b:
+                sorun("HATA", "A-B", f"B-{ob['etiket_no']} sorusunun A "
+                      f"kitapçığında karşılığı yok.", test_adi(ti), ob["ders"],
+                      f"B-{ob['etiket_no']}", [yer(B, ob)])
+
+    # Eşleşen çiftlerin denetimi
+    a_b, cift_satirlari = {}, []
+    for oa, ob, oran, gorsel in eslesmeler:
+        ti = oa["ti"]
+        etiket = f"A-{oa['etiket_no']} / B-{ob['etiket_no']}"
+        yerler = [yer(A, oa), yer(B, ob)]
+        durum = []
+        if oa["no"]:
+            a_b[(ti, oa["no"])] = ob
+        for o_, karsi in ((oa, f"B-{ob['etiket_no']}"), (ob, f"A-{oa['etiket_no']}")):
+            if o_.get("_sorun"):         # numarası hatalı sorunun karşılığını yaz
+                o_["_sorun"]["aciklama"] += f" İçerik {karsi} ile aynı soru."
+        if oa["cmp"] == ob["cmp"]:
+            pass
+        elif oa["norm"] == ob["norm"]:
+            durum.append("NOKTALAMA")
+            sorun("UYARI", "A-B", "Noktalama/boşluk farkı: "
+                  + _fark_ozeti(oa["cmp"], ob["cmp"]), test_adi(ti),
+                  oa["ders"], etiket, yerler)
+        else:
+            durum.append("METİN FARKI")
+            sorun("HATA", "A-B", f"Metin farklı (%{oran * 100:.0f}): "
+                  + _fark_ozeti(oa["cmp"], ob["cmp"]), test_adi(ti),
+                  oa["ders"], etiket, yerler)
+        if oa["ders"] != ob["ders"]:
+            durum.append("DERS FARKLI")
+            sorun("HATA", "A-B", f"Soru B'de başka dersin aralığında: A'da "
+                  f"{oa['ders']}, B'de {ob['ders']}.", test_adi(ti), oa["ders"],
+                  etiket, yerler)
+        ca_ = cevap_a.get((ti, oa["no"])) or oa["cevap"] or ""
+        cb_ = cevap_b.get((ti, ob["no"])) or ob["cevap"] or ""
+        if ca_ and cb_ and ca_ != cb_:
+            durum.append("CEVAP FARKLI")
+            sorun("HATA", "A-B", f"Cevap farklı: A'da {ca_}, B'de {cb_}.",
+                  test_adi(ti), oa["ders"], etiket, yerler)
+        if oa["kod"] and ob["kod"] and oa["kod"] != ob["kod"]:
+            durum.append("KOD FARKLI")
+            sorun("UYARI", "A-B", f"Soru kodu farklı: A {oa['kod']}, "
+                  f"B {ob['kod']}.", test_adi(ti), oa["ders"], etiket, yerler)
+        puan, yerel = gorsel
+        if _gorsel_farkli_mi(puan, yerel):
+            durum.append("GÖRSEL FARK")
+            sorun("UYARI", "A-B", "Görüntüde fark var " + _gorsel_yazi(puan, yerel)
+                  + " — şekil/tablo/dizgi farkı olabilir, elle bakın.",
+                  test_adi(ti), oa["ders"], etiket, yerler)
+        cift_satirlari.append((oa, ob, oran, puan, ca_, cb_, durum))
+
+    # Aynı soru bir kitapçıkta iki kez basılmış mı?
+    for kk in (A, B):
+        og = [o for o in kk["ogeler"] if len(o["norm"]) >= 40]
+        for i in range(len(og)):
+            for j in range(i + 1, len(og)):
+                x, y = og[i], og[j]
+                if x["ti"] != y["ti"]:
+                    continue
+                u = x["tri"] | y["tri"]
+                if u and len(x["tri"] & y["tri"]) / len(u) >= 0.8 and \
+                        _benzerlik_orani(x["cmp"], y["cmp"]) >= 0.9:
+                    sorun("HATA", kk["etiket"], f"Aynı soru iki kez basılmış: "
+                          f"{x['etiket_no']}. ve {y['etiket_no']}. sorular.",
+                          test_adi(x["ti"]), x["ders"],
+                          f"{x['etiket_no']} / {y['etiket_no']}",
+                          [yer(kk, x), yer(kk, y)])
+
+    # --- 4) Metne bağlı gruplar A ↔ B -------------------------------------------
+    grup_satirlari = []
+    b_baslik_bul = {}
+    for b in B["basliklar"]:
+        for o in b["sorular"]:
+            b_baslik_bul.setdefault(o["poz"], b)
+    kullanilan_b_baslik = set()
+    for ga in A["basliklar"]:
+        ti = ga["ti"]
+        a_nolar = [o["no"] for o in ga["sorular"] if o["no"]]
+        karsilik = [a_b.get((ti, n)) for n in a_nolar]
+        b_nolar = [ob["no"] if ob and ob["no"] else None for ob in karsilik]
+        durum, parca_oran, parca_gorsel, gb = [], None, None, None
+        etiket = f"A {_nolar_yazi(ga['nolar'])}"
+        if not a_nolar or None in karsilik:
+            durum.append("SORU EKSİK")
+        else:
+            gb = next((b_baslik_bul[ob["poz"]] for ob in karsilik
+                       if ob["poz"] in b_baslik_bul), None)
+            gecerli = [n for n in b_nolar if n is not None]
+            if len(gecerli) != len(b_nolar):
+                durum.append("B'DE NUMARA HATALI")   # ayrıntı numaralandırmada
+            if len(gecerli) == len(b_nolar):
+                if gecerli != list(range(gecerli[0], gecerli[0] + len(gecerli))):
+                    if sorted(gecerli) == list(range(min(gecerli),
+                                                     min(gecerli) + len(gecerli))):
+                        durum.append("SIRA DEĞİŞMİŞ")
+                        sorun("UYARI", "A-B", f"Metne bağlı grubun soruları B'de "
+                              f"farklı sırada: A {_nolar_yazi(a_nolar)} → B "
+                              f"{', '.join(map(str, gecerli))}.", test_adi(ti),
+                              "", etiket, [(A["etiket"], ga["bolge"])])
+                    else:
+                        durum.append("GRUP DAĞILMIŞ")
+                        sorun("HATA", "A-B", f"Metne bağlı grup B'de dağılmış: A "
+                              f"{_nolar_yazi(a_nolar)} → B "
+                              f"{', '.join(map(str, gecerli))} (yan yana değil).",
+                              test_adi(ti), "", etiket,
+                              [(A["etiket"], ga["bolge"])] +
+                              [yer(B, ob) for ob in karsilik])
+            if gb is None or not ({id(ob) for ob in karsilik} <=
+                                  {id(o) for o in gb["sorular"]}):
+                durum.append("B'DE METİN/BAŞLIK YOK")
+                sorun("HATA", "A-B", f"A {_nolar_yazi(a_nolar)} metne bağlı "
+                      f"grubunun karşılığı B'de bir grup başlığı/metin altında "
+                      f"değil (B {', '.join(map(str, b_nolar))}).", test_adi(ti),
+                      "", etiket, [yer(B, ob) for ob in karsilik])
+                gb = None
+            if gb is not None:
+                kullanilan_b_baslik.add(id(gb))
+                if None not in b_nolar and gb["nolar"] != b_nolar:
+                    durum.append("B BAŞLIĞI YANLIŞ")   # ayrıntı numaralandırmada
+                parca_oran = _benzerlik_orani(ga["cmp"], gb["cmp"])
+                parca_gorsel, parca_yerel = _gorsel_olc(
+                    docA, docB, ga["bolge"], gb["bolge"], onbellek)
+                if ga["cmp"] != gb["cmp"]:
+                    if normalize(ga["cmp"]) == normalize(gb["cmp"]):
+                        durum.append("NOKTALAMA")
+                        sorun("UYARI", "A-B", "Parça metninde noktalama/boşluk "
+                              "farkı: " + _fark_ozeti(ga["cmp"], gb["cmp"]),
+                              test_adi(ti), "", etiket,
+                              [(A["etiket"], ga["bolge"]), (B["etiket"], gb["bolge"])])
+                    else:
+                        durum.append("PARÇA FARKLI")
+                        sorun("HATA", "A-B", f"Parça metni farklı "
+                              f"(%{parca_oran * 100:.0f}): "
+                              + _fark_ozeti(ga["cmp"], gb["cmp"]), test_adi(ti),
+                              "", etiket,
+                              [(A["etiket"], ga["bolge"]), (B["etiket"], gb["bolge"])])
+                if _gorsel_farkli_mi(parca_gorsel, parca_yerel):
+                    durum.append("GÖRSEL FARK")
+                    sorun("UYARI", "A-B", "Parça görüntüsünde fark var "
+                          + _gorsel_yazi(parca_gorsel, parca_yerel)
+                          + " — tablo/şekil farkı olabilir, elle bakın.",
+                          test_adi(ti), "", etiket,
+                          [(A["etiket"], ga["bolge"]), (B["etiket"], gb["bolge"])])
+        grup_satirlari.append((ti, ga, gb, a_nolar, b_nolar, parca_oran,
+                               parca_gorsel, durum))
+    for gb in B["basliklar"]:
+        if id(gb) not in kullanilan_b_baslik:
+            nolar = [o["no"] for o in gb["sorular"] if o["no"]]
+            karsi = [k for k, ob in a_b.items()
+                     if ob["no"] in nolar and ob["ti"] == gb["ti"]]
+            sorun("HATA", "B", f"B'deki {_nolar_yazi(gb['nolar'])}. soruların "
+                  f"metne bağlı grup başlığının A'da karşılığı yok "
+                  f"(A karşılıkları: {', '.join(str(k[1]) for k in sorted(karsi)) or '—'}).",
+                  test_adi(gb["ti"]), "", f"B {_nolar_yazi(gb['nolar'])}",
+                  [(B["etiket"], gb["bolge"])])
+    docA.close()
+    docB.close()
+
+    sonuc = {"A": A, "B": B, "yapi": yapi, "eslesmeler": cift_satirlari,
+             "gruplar": grup_satirlari, "numara": numara_ozet,
+             "cevap_var": (sum(1 for o in A["ogeler"] if o["cevap"]),
+                           sum(1 for o in B["ogeler"] if o["cevap"]))}
+    return sonuc, sorunlar
+
+
+def _nolar_yazi(nolar):
+    nolar = [n for n in nolar if isinstance(n, int)]
+    if not nolar:
+        return "?"
+    if len(nolar) > 2 and nolar == list(range(nolar[0], nolar[-1] + 1)):
+        return f"{nolar[0]}-{nolar[-1]}"
+    return ", ".join(map(str, nolar))
+
+
+def kontrol_raporu_yaz(sonuc, sorunlar, cikti):
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+    KIRMIZI = PatternFill("solid", fgColor="F8CBAD")
+    SARI = PatternFill("solid", fgColor="FFE699")
+    YESIL = PatternFill("solid", fgColor="C6EFCE")
+    KALIN = Font(name="Tahoma", bold=True)
+    yapi = sonuc["yapi"]
+    test_adi = lambda ti: yapi[ti]["test"] if ti is not None and ti < len(yapi) else ""
+
+    wb = openpyxl.Workbook()
+    oz = wb.active
+    oz.title = "Özet"
+    hata = sum(1 for s in sorunlar if s["onem"] == "HATA")
+    uyari = sum(1 for s in sorunlar if s["onem"] == "UYARI")
+    es = sonuc["eslesmeler"]
+    ayni = sum(1 for e in es if not e[6])
+    toplam_a = sonuc["numara"]["A"][1]
+    oz.append(["A–B KİTAPÇIK KONTROL RAPORU", f"Motor sürümü {SURUM}"])
+    oz.append(["A kitapçığı", Path(sonuc["A"]["pdf"]).name])
+    oz.append(["B kitapçığı", Path(sonuc["B"]["pdf"]).name])
+    oz.append([])
+    oz.append(["Kontrol", "Sonuç", "Durum"])
+    for c in oz[5]:
+        c.font = KALIN
+    satirlar = [
+        ("Genel sonuç", f"{hata} hata, {uyari} uyarı",
+         "TEMİZ" if not hata and not uyari else ("HATA" if hata else "UYARI")),
+    ]
+    for et in ("A", "B"):
+        bul, bek, eks, faz = sonuc["numara"][et]
+        satirlar.append((f"{et} kitapçığı numaralandırma",
+                         f"{bul}/{bek} soru yerinde, {eks} eksik, {faz} sırasız numara",
+                         "TEMİZ" if not eks and not faz else "HATA"))
+    eslesen_a = sum(1 for e in es if e[0]["no"])
+    satirlar.append(("A'daki her soru B'de var mı?",
+                     f"{eslesen_a}/{toplam_a} soru B'de bulundu",
+                     "TEMİZ" if eslesen_a == toplam_a else "HATA"))
+    satirlar.append(("Soru metni + şıklar birebir",
+                     f"{ayni}/{len(es)} çift tamamen aynı",
+                     "TEMİZ" if ayni == len(es) else "KONTROL ET"))
+    ca, cb = sonuc["cevap_var"]
+    cevap_fark = sum(1 for e in es if "CEVAP FARKLI" in e[6])
+    satirlar.append(("Cevap harfleri", f"{cevap_fark} farklı (A'da {ca}, B'de {cb} "
+                     f"renkli cevap okundu)" + ("" if cb else " — B'de cevap yok, "
+                                               "kıyas yapılamadı"),
+                     "TEMİZ" if not cevap_fark else "HATA"))
+    gr = sonuc["gruplar"]
+    gr_ok = sum(1 for g in gr if not g[7])
+    satirlar.append(("Metne bağlı gruplar", f"{gr_ok}/{len(gr)} grup B'de aynı",
+                     "TEMİZ" if gr_ok == len(gr) else "HATA"))
+    gorsel_dusuk = sum(1 for e in es if "GÖRSEL FARK" in e[6])
+    satirlar.append(("Görsel örtüşme (şekil/tablo)",
+                     f"{gorsel_dusuk} soruda düşük örtüşme",
+                     "TEMİZ" if not gorsel_dusuk else "KONTROL ET"))
+    for s in satirlar:
+        oz.append(list(s))
+        c = oz.cell(row=oz.max_row, column=3)
+        c.fill = YESIL if s[2] == "TEMİZ" else (KIRMIZI if s[2] == "HATA" else SARI)
+    oz.column_dimensions["A"].width = 34
+    oz.column_dimensions["B"].width = 60
+    oz.column_dimensions["C"].width = 14
+
+    ws = wb.create_sheet("Sorunlar")
+    ws.append(["Önem", "Kitapçık", "Test", "Ders", "Soru", "Sayfa", "Açıklama"])
+    sira_onem = {"HATA": 0, "UYARI": 1}
+    for s in sorted(sorunlar, key=lambda s: (sira_onem[s["onem"]], s["test"])):
+        sayfa = ", ".join(f"{k} s.{b[0] + 1}" for k, b in s["yerler"])
+        ws.append([s["onem"], s["kitapcik"], s["test"], s["ders"], s["soru"],
+                   sayfa, s["aciklama"]])
+        ws.cell(row=ws.max_row, column=1).fill = (
+            KIRMIZI if s["onem"] == "HATA" else SARI)
+    if not sorunlar:
+        ws.append(["", "", "", "", "", "", "Sorun bulunamadı."])
+    for col, gen in zip("ABCDEFG", (8, 9, 26, 18, 22, 14, 110)):
+        ws.column_dimensions[col].width = gen
+
+    se = wb.create_sheet("Soru Eşleşmesi")
+    se.append(["Test", "Ders (A)", "A No", "B No", "Ders (B)", "Metin %",
+               "Görsel %", "A Cevap", "B Cevap", "A Sayfa", "B Sayfa", "Durum"])
+    for oa, ob, oran, gorsel, ca_, cb_, durum in sorted(
+            es, key=lambda e: (e[0]["ti"], e[0]["no"] or 999)):
+        se.append([test_adi(oa["ti"]), oa["ders"], oa["etiket_no"], ob["etiket_no"],
+                   ob["ders"], round(oran * 100, 1),
+                   round(gorsel * 100, 1) if gorsel is not None else "",
+                   ca_, cb_, oa["sayfa"] + 1, ob["sayfa"] + 1,
+                   ", ".join(durum) or "OK"])
+        se.cell(row=se.max_row, column=12).fill = (
+            YESIL if not durum else
+            (SARI if set(durum) <= {"NOKTALAMA", "GÖRSEL FARK", "KOD FARKLI"}
+             else KIRMIZI))
+
+    gs = wb.create_sheet("Metne Bağlı Gruplar")
+    gs.append(["Test", "A Başlığı", "A Sorular", "B Başlığı", "B Karşılıkları",
+               "Parça Metni %", "Parça Görsel %", "Durum"])
+    for ti, ga, gb, a_nolar, b_nolar, p_oran, p_gorsel, durum in gr:
+        gs.append([test_adi(ti), _nolar_yazi(ga["nolar"]), _nolar_yazi(a_nolar),
+                   _nolar_yazi(gb["nolar"]) if gb else "—",
+                   ", ".join(str(n) if n else "?" for n in b_nolar),
+                   round(p_oran * 100, 1) if p_oran is not None else "",
+                   round(p_gorsel * 100, 1) if p_gorsel is not None else "",
+                   ", ".join(durum) or "OK"])
+        gs.cell(row=gs.max_row, column=8).fill = YESIL if not durum else KIRMIZI
+    for sayfa in (se, gs):
+        for c in sayfa[1]:
+            c.font = KALIN
+        sayfa.freeze_panes = "A2"
+    for c in ws[1]:
+        c.font = KALIN
+    ws.freeze_panes = "A2"
+    for row in ws.iter_rows(min_row=2):
+        row[6].alignment = Alignment(wrap_text=True, vertical="top")
+    wb.save(cikti)
+
+
+def kontrol_pdf_isaretle(sonuc, sorunlar, klasor):
+    """Sorunlu soruların üzerine kırmızı çerçeve + açıklama notu koyar."""
+    yazilan = []
+    for et in ("A", "B"):
+        isler = [(s, b) for s in sorunlar for k, b in s["yerler"] if k == et]
+        if not isler:
+            continue
+        kaynak = sonuc[et]["pdf"]
+        doc = fitz.open(kaynak)
+        for s, (pno, x0, y0, x1, y1) in isler:
+            sayfa = doc[pno]
+            r = fitz.Rect(x0, y0, x1, y1) & sayfa.rect
+            if r.is_empty:
+                continue
+            renk = (0.9, 0.1, 0.1) if s["onem"] == "HATA" else (0.95, 0.6, 0.0)
+            a = sayfa.add_rect_annot(r)
+            a.set_colors(stroke=renk)
+            a.set_border(width=1.5)
+            a.set_info(title=f"{s['onem']} — {s['soru']}", content=s["aciklama"])
+            a.update()
+        hedef = Path(klasor) / (Path(kaynak).stem + "_kontrol.pdf")
+        doc.save(str(hedef), garbage=1, deflate=True)
+        doc.close()
+        yazilan.append(str(hedef))
+    return yazilan
+
+
+def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
+                     yol_sor=None):
+    log(f"Motor sürümü: {SURUM} — A–B KONTROL")
+    yapi_b = None
+    if sinav in ("OTOMATİK", "ORTAOKUL"):
+        log("Yapı A ve B kitapçıklarından çıkarılıyor...")
+        yapi = yapi_cikar(a_pdf)
+        yapi_b = yapi_cikar(b_pdf)
+        log("  A yapısı: " + " | ".join(
+            f"{t['test']} ({sum(int(a) for _d, a in t['dersler'])} soru)"
+            for t in yapi))
+    else:
+        yapi = YAPILAR[sinav]
+        # Seçilen tür dosyaya uymuyorsa (EŞLEŞTİR'deki gibi) diğerini dene
+        _s, u = sorulari_ayikla(a_pdf, yapi, "A", lambda _m: None)
+        if len(u) > 5:
+            for aday_sinav, aday_yapi in YAPILAR.items():
+                if aday_sinav == sinav:
+                    continue
+                _s2, u2 = sorulari_ayikla(a_pdf, aday_yapi, "A", lambda _m: None)
+                if len(u2) < len(u):
+                    log(f"⚠ DİKKAT: Dosyalar '{aday_sinav}' düzeninde; sınav "
+                        f"türü otomatik '{aday_sinav}' olarak düzeltildi.")
+                    sinav, yapi = aday_sinav, aday_yapi
+                    break
+    sonuc, sorunlar = kontrol_et(a_pdf, b_pdf, yapi, log,
+                                 anahtar_oku(anah_a, yapi),
+                                 anahtar_oku(anah_b, yapi), yapi_b=yapi_b)
+    hedef = cikti
+    while True:
+        try:
+            kontrol_raporu_yaz(sonuc, sorunlar, hedef)
+            break
+        except OSError as h:
+            log(f"\n⚠ '{hedef}' konumuna yazılamadı ({h}).")
+            yeni = yol_sor(hedef) if yol_sor else None
+            if not yeni:
+                raise RuntimeError("Rapor kaydedilemedi. Çıktı konumunu "
+                                   "Seç... düğmesiyle belirleyin.") from h
+            hedef = yeni
+    try:
+        pdfler = kontrol_pdf_isaretle(sonuc, sorunlar, Path(hedef).parent)
+    except Exception as h:              # işaretli PDF isteğe bağlıdır
+        logla(f"İşaretli PDF yazılamadı: {h}")
+        pdfler = []
+    hata = [s for s in sorunlar if s["onem"] == "HATA"]
+    uyari = [s for s in sorunlar if s["onem"] == "UYARI"]
+    log(f"\n✓ Kontrol raporu: {hedef}")
+    for p in pdfler:
+        log(f"  İşaretli PDF: {p}")
+    for et in ("A", "B"):
+        bul, bek, eks, faz = sonuc["numara"][et]
+        log(f"  {et} kitapçığı: {bul}/{bek} soru yerinde"
+            + (f", {eks} eksik" if eks else "") + (f", {faz} sırasız numara" if faz else ""))
+    es = sonuc["eslesmeler"]
+    log(f"  A→B eşleşen soru: {sum(1 for e in es if e[0]['no'])}/"
+        f"{sonuc['numara']['A'][1]}  |  metin birebir: "
+        f"{sum(1 for e in es if not e[6])}/{len(es)}")
+    gr = sonuc["gruplar"]
+    log(f"  Metne bağlı gruplar: {sum(1 for g in gr if not g[7])}/{len(gr)} sorunsuz")
+    if not sorunlar:
+        log("  ✓ Hiç sorun bulunmadı: A'daki her soru B'de aynen var.")
+    else:
+        log(f"  {len(hata)} HATA, {len(uyari)} UYARI:")
+        for s in hata + uyari:
+            log(f"  {'✗' if s['onem'] == 'HATA' else '⚠'} [{s['kitapcik']}] "
+                f"{s['test']} {s['soru']}: {s['aciklama']}")
+    return hedef
+
+
+# ----------------------------------------------------------------------------
 # ARAYÜZ (tkinter)
 # ----------------------------------------------------------------------------
 def gui_baslat():
@@ -1323,9 +2377,20 @@ def gui_baslat():
                             "dosyaları Seç... düğmeleriyle ekleyin (tam işlevlidir).",
                   foreground="#8a6d00").pack(anchor="w", pady=(4, 0))
 
-    buton = ttk.Button(ana, text="EŞLEŞTİR",
+    alt_cerceve = ttk.Frame(ana)
+    alt_cerceve.pack(side="bottom", pady=(6, 2))
+    buton = ttk.Button(alt_cerceve, text="EŞLEŞTİR",
                        command=lambda: calistir_tikla())
-    buton.pack(side="bottom", pady=(6, 2), ipadx=30, ipady=6)
+    buton.pack(side="left", padx=6, ipadx=30, ipady=6)
+    kontrol_buton = ttk.Button(alt_cerceve, text="A–B KONTROL",
+                               command=lambda: kontrol_tikla())
+    kontrol_buton.pack(side="left", padx=6, ipadx=18, ipady=6)
+    ttk.Label(ana, text="A–B KONTROL: B kitapçığını A'ya göre denetler — eksik/"
+                        "fazla soru, numara sırası, metin ve şık farkı, cevap, "
+                        "şekil, metne bağlı gruplar. Rapor Excel + işaretli PDF "
+                        "olarak çıktı klasörüne yazılır.",
+              foreground="#666666", wraplength=740,
+              justify="left").pack(side="bottom", anchor="w")
 
     log_kutusu = scrolledtext.ScrolledText(ana, height=16, state="disabled",
                                            font=("Menlo", 11))
@@ -1344,7 +2409,7 @@ def gui_baslat():
         while not kuyruk.empty():
             oge = kuyruk.get()
             if isinstance(oge, tuple) and oge and oge[0] == "BITTI":
-                bitti(oge[1])
+                bitti(*oge[1:])
                 continue
             if isinstance(oge, tuple) and oge and oge[0] == "KAYIT":
                 messagebox.showinfo(
@@ -1365,10 +2430,11 @@ def gui_baslat():
             log_kutusu.configure(state="disabled")
         pencere.after(150, kuyrugu_isle)
 
-    def bitti(cikti_yolu):
+    def bitti(cikti_yolu, mesaj="Tablo hazır."):
         buton.configure(state="normal")
+        kontrol_buton.configure(state="normal")
         if cikti_yolu and messagebox.askyesno(
-                "Tamamlandı", "Tablo hazır.\nExcel dosyası şimdi açılsın mı?",
+                "Tamamlandı", f"{mesaj}\nExcel dosyası şimdi açılsın mı?",
                 parent=pencere):
             subprocess.run(["open", cikti_yolu])
 
@@ -1381,6 +2447,7 @@ def gui_baslat():
         cikti = yollar["cikti"].get().strip() or str(
             Path(a).with_name("kazanim_tablosu.xlsx"))
         buton.configure(state="disabled")
+        kontrol_buton.configure(state="disabled")
         log_kutusu.configure(state="normal")
         log_kutusu.delete("1.0", "end")
         log_kutusu.configure(state="disabled")
@@ -1394,6 +2461,34 @@ def gui_baslat():
                                cikti, log, yol_sor=yol_sor)
                 kuyruk.put(("BITTI", yol))
             except Exception as h:
+                log(f"\nHATA: {h}")
+                kuyruk.put(("BITTI", None))
+
+        threading.Thread(target=is_parcasi, daemon=True).start()
+
+    def kontrol_tikla():
+        a, b = yollar["a"].get().strip(), yollar["b"].get().strip()
+        if not a or not b:
+            messagebox.showwarning("Eksik", "A ve B kitapçık PDF'lerini seçin.",
+                                   parent=pencere)
+            return
+        klasor = Path(yollar["cikti"].get().strip() or a).parent
+        cikti = str(klasor / "kitapcik_kontrol_raporu.xlsx")
+        buton.configure(state="disabled")
+        kontrol_buton.configure(state="disabled")
+        log_kutusu.configure(state="normal")
+        log_kutusu.delete("1.0", "end")
+        log_kutusu.configure(state="disabled")
+
+        def is_parcasi():
+            try:
+                yol = kontrol_calistir(a, b, sinav.get(),
+                                       yollar["anah_a"].get().strip() or None,
+                                       yollar["anah_b"].get().strip() or None,
+                                       cikti, log, yol_sor=yol_sor)
+                kuyruk.put(("BITTI", yol, "Kontrol raporu hazır."))
+            except Exception as h:
+                logla("KONTROL HATASI:\n" + traceback.format_exc())
                 log(f"\nHATA: {h}")
                 kuyruk.put(("BITTI", None))
 
