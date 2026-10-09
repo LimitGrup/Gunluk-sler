@@ -16,7 +16,8 @@ var STORIES = {};
 function mkStory(sid) {
     var src = M.stories[sid] || { paras: [["", ""]], anchored: [] };
     var paras = src.paras.map(function (p) { return { _t: p[0], appliedParagraphStyle: { name: p[1] || "" } }; });
-    var st = { id: sid, _p: paras, textContainers: [], pageItems: [] };
+    var st = { id: sid, _p: paras, textContainers: [], _anch: [] };
+    Object.defineProperty(st, "pageItems", { get: function () { return idColl(st._anch); } });
     paras.forEach(function (p) {
         Object.defineProperty(p, "contents", { get: function () { return p._t; }, set: function (v) { p._t = v; } });
         p.findGrep = function () {
@@ -36,7 +37,7 @@ function mkStory(sid) {
         var res = [], re = new RegExp(grepPrefs.findWhat, "g"), txt = whole(), m;
         while ((m = re.exec(txt)) !== null) {
             (function (idx, len) {
-                res.push({ get contents() { return whole().substr(idx, len); },
+                res.push({ index: idx, insertionPoints: [{ index: idx }], get contents() { return whole().substr(idx, len); },
                            set contents(v) { var t = whole(); t = t.substr(0, idx) + v + t.substr(idx + len);
                                              var parts = t.split("\r"); for (var i = 0; i < paras.length; i++) { paras[i]._t = parts[i]; } } });
             })(m.index, m[0].length);
@@ -91,8 +92,23 @@ function mkItem(src, pg, spread, parent) {
     }
     if (src.graphic) { it.allGraphics = [{}]; } else { it.allGraphics = []; }
     Object.defineProperty(it, "allPageItems", { get: function () { var out = []; (function rec(x) { x._kids.forEach(function (k) { out.push(k); rec(k); }); })(it); return out; } });
-    Object.defineProperty(it, "pageItems", { get: function () { return it._kids.slice(0); } });
+    Object.defineProperty(it, "pageItems", { get: function () { return idColl(it._kids); } });
     return it;
+}
+// InDesign'da pageItems koleksiyonu öğeleri GENEL "PageItem" türünde döndürür; gerçek tür (TextFrame,
+// Group, Rectangle...) yalnız everyItem().getElements() ya da öğenin getElements() ile alınır.
+function idColl(list) {
+    var arr = list.map(function (k) {
+        var g = { constructor: { name: "PageItem" }, id: k.id, getElements: function () { return [k]; },
+                  move: function (a, b) { return k.move(a, b); } };
+        Object.defineProperty(g, "geometricBounds", { get: function () { return k.geometricBounds; }, set: function (v) { k.geometricBounds = v; } });
+        Object.defineProperty(g, "parent", { get: function () { return k.parent; } });
+        Object.defineProperty(g, "allPageItems", { get: function () { return k.allPageItems || []; } });
+        return g;
+    });
+    arr.everyItem = function () { return { getElements: function () { return list.slice(0); },
+                                           get geometricBounds() { return list.length === 1 ? list[0].geometricBounds : list.map(function (k) { return k.geometricBounds; }); } }; };
+    return arr;
 }
 function setPage(it, pg) { it.pg = pg; it._kids.forEach(function (k) { setPage(k, pg); }); }
 
@@ -102,7 +118,8 @@ M.pages.forEach(function (p, i) {
     var pg = { _isPage: true, name: p.name, id: "PG" + i, idx: i, bounds: [0, 0, H, W],
                marginPreferences: { bottom: p.margin ? p.margin.Bottom : 0, top: p.margin ? p.margin.Top : 0,
                                     left: p.margin ? p.margin.Left : 0, right: p.margin ? p.margin.Right : 0 } };
-    function top(kind) { return ALLTOP.filter(function (x) { return x.pg === pg && x.constructor.name === kind; }); }
+    // ORDER=rev: InDesign'ın koleksiyon sırası (z-sırası) IDML sırasından farklı olabilir; sonuç sıradan bağımsız olmalı
+    function top(kind) { var r = ALLTOP.filter(function (x) { return x.pg === pg && x.constructor.name === kind; }); return process.env.ORDER === "rev" ? r.reverse() : r; }
     ["TextFrame", "Group", "Rectangle", "Polygon", "Oval", "GraphicLine"].forEach(function (k) {
         var prop = { TextFrame: "textFrames", Group: "groups", Rectangle: "rectangles", Polygon: "polygons", Oval: "ovals", GraphicLine: "graphicLines" }[k];
         Object.defineProperty(pg, prop, { get: function () { return top(k); } });
@@ -118,14 +135,21 @@ M.pages.forEach(function (p, i) {
 });
 M.spreads.forEach(function (s, si) {
     var sp = { idx: si };
-    Object.defineProperty(sp, "pageItems", { get: function () { return ALLTOP.filter(function (x) { return x.spread === sp; }); } });
+    Object.defineProperty(sp, "pageItems", { get: function () { return idColl(ALLTOP.filter(function (x) { return x.spread === sp; })); } });
     spreads.push(sp);
     s.items.forEach(function (src) {
         var pg = (src.pageIdx === null) ? null : pages[src.pageIdx];
         var it = mkItem(src, pg, sp, null);
         ALLTOP.push(it);
     });
-    s.pages.forEach(function (pi) { pages[pi].parent = sp; });
+    s.pages.forEach(function (pi, k) {
+        pages[pi].parent = sp;
+        // InDesign (PAGE_ORIGIN, karşılıklı sayfa): öğelerin geometricBounds'u sayfa koordinatında
+        // gelir ama Page.bounds yayılımın sol kenarına göre bildirilir; yayılımın 2. (sağ) sayfası
+        // [0, W, H, 2W] döner. v4.25'e kadar betik bu yüzden sağ sayfaları tek sütun sanıyordu.
+        // PAGE_BOUNDS=page: eski (ideal) davranış.
+        if (process.env.PAGE_BOUNDS !== "page" && k > 0) { pages[pi].bounds = [0, k * W, H, (k + 1) * W]; }
+    });
 });
 // çapalı nesneler: hikâyenin pageItems'ı; konumu taşıyıcı çerçevenin içinde varsayılır
 Object.keys(STORIES).forEach(function (sid) {
@@ -143,7 +167,7 @@ Object.keys(STORIES).forEach(function (sid) {
             if (process.env.ANCHOR_SHIFT && c.pg && M.pages[c.pg.idx].sb[1] > -1 && M.facing) { return [g[0], g[1] + W, g[2], g[3] + W]; }
             return g;
         } });
-        st.pageItems.push(a);
+        st._anch.push(a);
     });
 });
 
@@ -201,23 +225,25 @@ function keyTokens() {
 var KEY_A = keyTokens();
 // A'daki ortak metin grupları (bağımsız: yalnız sayfada duran, soru olmayan çerçevelerdeki yönergeler)
 var DIR_RE = /(\d{1,3})\s*[-–]\s*(\d{1,3})\.?\s*sorular|(\d{1,3})\s*(?:,\s*\d{1,3}\s*)*(?:ve|ile)\s*(\d{1,3})\s*\.\s*sorular/i;
-var DIR_EN_RE = /questions?\s+(\d{1,3})\s*(?:(?:-|–|—|to|and|,)\s*\d{1,3}\s*)*(?:-|–|—|to|and|,)\s*(\d{1,3})/i;
+var DIR_EN_RE = /questions?\s+[(\[]?\s*(\d{1,3})\s*(?:(?:-|–|—|to|and|,)\s*\d{1,3}\s*)*(?:-|–|—|to|and|,)\s*(\d{1,3})/i;
 var GROUPS_A = [];
+// yönerge metninden aralık (yönerge değilse null)
+function dirRange(t) {
+    if (QRE.test(t) && !/^\s*\d+\s*\.?\s*(ve|,|-|–)/.test(t)) { return null; }
+    var m = DIR_RE.exec(t);
+    if (m && /g[öo]re/i.test(t)) { return { lo: +(m[1] || m[3]), hi: +(m[2] || m[4]) }; }
+    // İngilizce: "Answer the questions 8-10 according to ...", "questions (2-3) ...", "Questions 4 to 6 are based on"
+    var e = DIR_EN_RE.exec(t);
+    if (!e || !/according\s+to|based\s+on|answer|read/i.test(t)) { return null; }
+    return { lo: +e[1], hi: +e[2] };
+}
 ALLTOP.forEach(function (x) {
     if (!x.pg) { return; }
     var tfs = x.parentStory ? [x] : x.allPageItems.filter(function (k) { return k.parentStory; });
     tfs.forEach(function (tf) {
         var t = tf.parentStory._p.map(function (p) { return p._t; }).join(" ");
-        if (QRE.test(t) && !/^\s*\d+\s*\.?\s*(ve|,|-|–)/.test(t)) { return; }
-        var m = DIR_RE.exec(t), lo, hi;
-        if (m && /g[öo]re/i.test(t)) { lo = +(m[1] || m[3]); hi = +(m[2] || m[4]); }
-        else {
-            // İngilizce: "Answer the questions 8-10 according to ...", "questions 8 and 9 ...", "Questions 4 to 6 are based on"
-            var e = DIR_EN_RE.exec(t);
-            if (!e || !/according\s+to|based\s+on|answer|read/i.test(t)) { return; }
-            lo = +e[1]; hi = +e[2];
-        }
-        GROUPS_A.push({ pg: x.pg.idx, lo: lo, hi: hi });
+        var r = dirRange(t);
+        if (r) { GROUPS_A.push({ pg: x.pg.idx, lo: r.lo, hi: r.hi, tf: tf, top: x, y1: tf.geometricBounds[0] }); }
     });
 });
 
@@ -253,6 +279,12 @@ var ctx = {
 // "aktif belgeyi kullan" kutusu işaretli olmalı: ilk checkbox
 var src = fs.readFileSync(scriptPath, "utf8").replace(/^#target.*$/m, "");
 vm.createContext(ctx);
+// ExtendScript'in Array.sort'u kararlı değildir: eşit anahtarlı öğelerin sırası korunmaz.
+// Varsayılan olarak eşitlikler girdinin TERSİ sırasında döner (SORT=stable: kararlı V8 sırası).
+if (process.env.SORT !== "stable") {
+    vm.runInContext("(function () { var os = Array.prototype.sort; Array.prototype.sort = function (c) {" +
+                    " if (typeof c !== 'function') { return os.call(this); } this.reverse(); return os.call(this, c); }; })();", ctx);
+}
 var t0 = Date.now();
 vm.runInContext(src, ctx, { filename: scriptPath, timeout: 600000 });
 var dt = Date.now() - t0;
@@ -397,6 +429,14 @@ if (M.origGroups) {
             if (b.pg !== g.pg) { bad = true; }
         });
         an.sort(function (x, y) { return x - y; }); bn.sort(function (x, y) { return x - y; });
+        // v4.26: grubun yönergesi B'de aynı miktarda yeniden numaralandıysa (bant takası) kayma beklenir
+        if (an.length) {
+            GROUPS_A.forEach(function (gd) {
+                if (gd.pg !== g.pg || gd.lo !== an[0] || gd.hi !== an[an.length - 1]) { return; }
+                var rD = dirRange(gd.tf.parentStory._p.map(function (p) { return p._t; }).join(" "));
+                if (rD && rD.lo !== gd.lo) { var dl = rD.lo - gd.lo; an = an.map(function (v) { return v + dl; }); }
+            });
+        }
         if (bad || an.join(",") !== bn.join(",")) { issue("ORTAK METİN (özgün) s." + pages[g.pg].name + ": A " + an.join(",") + " → B " + bn.join(",") + (bad ? " (sayfa dışı)" : "")); }
     });
 }
@@ -421,24 +461,33 @@ if (KEY_A && KEY_B) {
     KEYINFO = "anahtar " + KEY_B.length + " girdi denetlendi";
 } else { KEYINFO = "anahtar bloğu yok"; }
 // 6) ORTAK METİN GRUPLARI: gruptaki sorular aynı sayfada, A'daki grup slotlarında ve grup numaralarında
+// v4.26: yönerge B'de yeniden numaralanmış olabilir (ortak metin bandı sayfa içinde yer değiştirdi):
+// grup B'deki yönerge metnine göre denetlenir; sorular yönergenin ALTINDA, A'daki grup sütunlarında olmalı.
+var dirMoved = 0;
 GROUPS_A.forEach(function (g) {
+    var tB = g.tf.parentStory._p.map(function (p) { return p._t; }).join(" ");
+    var rB = dirRange(tB);
+    if (!rB) { issue("ORTAK METİN s." + pages[g.pg].name + " grup " + g.lo + "-" + g.hi + ": B'de yönerge okunamadı"); return; }
+    if (rB.lo - g.lo !== rB.hi - g.hi) { issue("ORTAK METİN s." + pages[g.pg].name + " grup " + g.lo + "-" + g.hi + ": yönerge tutarsız güncellendi → " + rB.lo + "-" + rB.hi); }
+    if (rB.lo !== g.lo) { dirMoved++; }
+    var bpg = g.top.pg ? g.top.pg.idx : g.pg, dirY = g.tf.geometricBounds[0];
     var aq = qa.filter(function (q) { return q.pg === g.pg && q.num >= g.lo && q.num <= g.hi; });
     aq.forEach(function (q) {
         var b = qb.filter(function (x) { return x.sid === q.sid; })[0];
         if (!b) { return; }
-        var slotOk = aq.some(function (o) { return Math.abs(o.gb[1] - b.gb[1]) < 1 && b.gb[0] >= Math.min.apply(null, aq.map(function (z) { return z.gb[0]; })) - 1; });
-        if (b.pg !== g.pg || b.num < g.lo || b.num > g.hi || !slotOk) {
-            issue("ORTAK METİN s." + pages[g.pg].name + " grup " + g.lo + "-" + g.hi + ": A" + q.num + " → s." + pages[b.pg].name + " no " + b.num + (slotOk ? "" : " (grup slotu dışında)"));
+        var slotOk = aq.some(function (o) { return Math.abs(o.gb[1] - b.gb[1]) < 1; }) && b.gb[0] >= dirY - 1;
+        if (b.pg !== bpg || b.num < rB.lo || b.num > rB.hi || !slotOk) {
+            issue("ORTAK METİN s." + pages[g.pg].name + " grup " + rB.lo + "-" + rB.hi + ": A" + q.num + " → s." + pages[b.pg].name + " no " + b.num + (slotOk ? "" : " (grup slotu dışında / yönergenin üstünde)"));
         }
     });
     // gruba dışarıdan soru girmiş mi?
     qb.forEach(function (b) {
-        if (b.pg !== g.pg || b.num < g.lo || b.num > g.hi) { return; }
+        if (b.pg !== bpg || b.num < rB.lo || b.num > rB.hi) { return; }
         var a = qa.filter(function (x) { return x.sid === b.sid; })[0];
-        if (a && (a.pg !== g.pg || a.num < g.lo || a.num > g.hi)) { issue("ORTAK METİN s." + pages[g.pg].name + " grup " + g.lo + "-" + g.hi + ": dışarıdan A" + a.num + " (s." + pages[a.pg].name + ") girdi"); }
+        if (a && (a.pg !== g.pg || a.num < g.lo || a.num > g.hi)) { issue("ORTAK METİN s." + pages[g.pg].name + " grup " + rB.lo + "-" + rB.hi + ": dışarıdan A" + a.num + " (s." + pages[a.pg].name + ") girdi"); }
     });
 });
-GROUPINFO = GROUPS_A.length + " ortak metin grubu denetlendi";
+GROUPINFO = GROUPS_A.length + " ortak metin grubu denetlendi" + (dirMoved ? " (" + dirMoved + " yönerge yeniden numaralandı)" : "");
 // 7) HİZA: (a) sayfanın ilk sorusu A'daki yükseklikte, (b) A'da aynı satırdaki iki sütun
 //    slotu B'de de aynı satırda, (c) dikey ayırıcı çizgi ilk satırla hizalı
 var nAlign = 0;
@@ -446,6 +495,13 @@ pages.forEach(function (p, i) {
     var aq = qa.filter(function (q) { return q.pg === i; }), bq = qb.filter(function (q) { return q.pg === i; });
     if (!aq.length || !bq.length) { return; }
     var aMin = Math.min.apply(null, aq.map(function (q) { return q.gb[0]; })), bMin = Math.min.apply(null, bq.map(function (q) { return q.gb[0]; }));
+    // v4.26: ortak metin bandı sayfanın başına geçtiyse sayfanın ilk öğesi yönergedir
+    GROUPS_A.forEach(function (g) {
+        if (g.pg !== i) { return; }
+        var gA = g.top.geometricBounds ? g.top._src.gb[0] : g.y1, gB = g.top.geometricBounds[0];
+        if (gA < aMin) { aMin = gA; }
+        if (gB < bMin) { bMin = gB; }
+    });
     if (Math.abs(aMin - bMin) > 0.5) { issue("SAYFA BAŞI s." + p.name + ": ilk soru A'da y=" + aMin.toFixed(1) + ", B'de y=" + bMin.toFixed(1)); }
     function colList(list, c) { return list.filter(function (q) { return (q.gb[3] - q.gb[1]) < W * 0.55 && colOf(q.gb) === c; }).sort(function (x, y) { return x.gb[0] - y.gb[0]; }); }
     var aL = colList(aq, 0), aR = colList(aq, 1), bL = colList(bq, 0), bR = colList(bq, 1);
