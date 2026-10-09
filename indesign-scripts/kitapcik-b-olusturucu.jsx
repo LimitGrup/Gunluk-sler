@@ -1623,6 +1623,31 @@
             if (overlapWarn > 0) {
                 log("UYARI: " + overlapWarn + " soru birden çok havuz tanımına uydu — ilk tanım geçerli sayıldı.");
             }
+            // v4.26: havuz bir ders bölgesini (Din 16-20, Felsefe 21-25 …) ya da ortak metin grubunu
+            // bölüyorsa (bölgenin bir kısmı havuz dışında kaldıysa) kullanıcı uyarılır: iki taraf
+            // birbirine karışamaz, dışarıda tek kalan soru yerinde kalabilir.
+            for (var pW = 1; pW <= poolIdx; pW++) {
+                var seenZ = {};
+                for (var sW = 0; sW < allSlots.length; sW++) {
+                    var rW = allSlots[sW];
+                    if (rW.pool !== pW || !(rW.zone > 0) || rW.sec < 0) { continue; }
+                    var kW = rW.sec + "|" + rW.zone;
+                    if (seenZ[kW]) { continue; }
+                    seenZ[kW] = true;
+                    var outW = [];
+                    for (var tW = 0; tW < allSlots.length; tW++) {
+                        var oW = allSlots[tW];
+                        if (oW.sec === rW.sec && oW.zone === rW.zone && oW.pool !== pW) {
+                            outW.push("S" + oW.num + " (s." + pageData[oW.pdIdx].name + ")");
+                        }
+                    }
+                    if (outW.length === 0) { continue; }
+                    var zW = secZones[rW.sec][rW.zone - 1];
+                    log("UYARI: Özel havuz " + pW + ", Test " + (rW.sec + 1) + "'nin " + zW.lo + "-" + zW.hi +
+                        (zW.link ? " ortak metin grubunu" : " bölgesini") + " bölüyor: " + outW.join(", ") +
+                        " havuzun dışında kaldı; iki taraf birbiriyle karışmaz. Sayfa aralığını kontrol edin (ör. \u201Csayfa 18-20\u201D).");
+                }
+            }
         })();
 
         // -----------------------------------------------------

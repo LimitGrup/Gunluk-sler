@@ -259,6 +259,8 @@ function applyUi() {
             c.value = (mode === "cross" && /Çapraz/.test(c._label)) || (mode === "col" && /Sütun içi/.test(c._label)) || (mode === "rnd" && /Rastgele/.test(c._label));
         }
         if (c._type === "edittext" && /^\d+$/.test(c.text) && process.env.SEED) { c.text = process.env.SEED; }
+        // POOLS="sayfa 18 ve 19 soru 16-25; ...": özel havuz kutusu (çok satırlı metin alanı)
+        if (c._type === "edittext" && c.text === "" && process.env.POOLS) { c.text = process.env.POOLS; }
         if (c._type === "checkbox" && process.env.OPT_OFF && process.env.OPT_OFF.split(",").some(function (o) { return c._label.indexOf(o) === 0; })) { c.value = false; }
     });
 }
