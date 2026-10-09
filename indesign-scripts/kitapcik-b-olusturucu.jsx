@@ -2989,7 +2989,7 @@
             var t = String(txt), off = 0, n = t.length;
             while (off <= n) {
                 var e = off;
-                while (e < n) { var ch = t.charAt(e); if (ch === "\r" || ch === "\n" || ch === " ") { break; } e++; }
+                while (e < n) { var ch = t.charAt(e); if (ch === "\r" || ch === "\n" || ch === "\u2029") { break; } e++; }
                 var ds = linkDirectives(t.substring(off, e));
                 for (var d9 = 0; d9 < ds.length; d9++) {
                     if (ds[d9].lo === lo && ds[d9].hi === hi && ds[d9].at >= 0 && ds[d9].end > ds[d9].at) { return { s: off + ds[d9].at, e: off + ds[d9].end }; }

@@ -278,6 +278,16 @@ var ctx = {
 };
 // "aktif belgeyi kullan" kutusu işaretli olmalı: ilk checkbox
 var src = fs.readFileSync(scriptPath, "utf8").replace(/^#target.*$/m, "");
+// ExtendScript (ES3) metin içindeki U+2028/U+2029'u satır sonu sayar: script InDesign'da hiç açılmaz
+// (Node bunu kabul ettiği için model fark etmezdi). Böyle bir karakter varsa test hemen durur.
+(function () {
+    var mLT = /[\u2028\u2029]/.exec(src);
+    if (mLT) {
+        console.log("HATA: script'te görünmez satır ayırıcı (U+" + src.charCodeAt(mLT.index).toString(16).toUpperCase() + ") var, satır " +
+                    src.substr(0, mLT.index).split("\n").length + " — ExtendScript'te sözdizimi hatası olur; \\u2029 kaçışıyla yazın.");
+        process.exit(1);
+    }
+})();
 vm.createContext(ctx);
 // ExtendScript'in Array.sort'u kararlı değildir: eşit anahtarlı öğelerin sırası korunmaz.
 // Varsayılan olarak eşitlikler girdinin TERSİ sırasında döner (SORT=stable: kararlı V8 sırası).

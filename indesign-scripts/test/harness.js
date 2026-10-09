@@ -122,6 +122,16 @@ ctx.Window = function () { var w = origCtl(); var add0 = w.add; w.add = function
     var c = add0.apply(w, arguments); var a1 = c.add; c.add = function (t2, b2, txt2, o2) { var cc = a1.apply(c, arguments); if (o2 && o2.multiline) { poolsBox = cc; } return cc; }; return c; };
     w.show = function () { if (meta.pools && poolsBox) { poolsBox.text = meta.pools; } return 1; }; return w; };
 var src = fs.readFileSync(scriptPath, "utf8").replace(/^#target.*$/m, "");
+// ExtendScript (ES3) metin içindeki U+2028/U+2029'u satır sonu sayar: script InDesign'da hiç açılmaz
+// (Node bunu kabul ettiği için model fark etmezdi). Böyle bir karakter varsa test hemen durur.
+(function () {
+    var mLT = /[\u2028\u2029]/.exec(src);
+    if (mLT) {
+        console.log("HATA: script'te görünmez satır ayırıcı (U+" + src.charCodeAt(mLT.index).toString(16).toUpperCase() + ") var, satır " +
+                    src.substr(0, mLT.index).split("\n").length + " — ExtendScript'te sözdizimi hatası olur; \\u2029 kaçışıyla yazın.");
+        process.exit(1);
+    }
+})();
 vm.createContext(ctx);
 vm.runInContext(src, ctx, { filename: scriptPath });
 
