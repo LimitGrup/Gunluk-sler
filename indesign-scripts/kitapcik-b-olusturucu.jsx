@@ -67,7 +67,10 @@
 //   GÖNDERME — "bu …den / yukarıdaki …" kelime kelime aranır (ExtendScript düzenli ifadesi yarım
 //   kelimede yanlış eşleşip gönderme yapmayan soruları kilitliyordu). İngilizce "(2-3)" parantezli
 //   yönerge tanınır. ORTAK METİN BANDI TAKASI — ortak metin grubu (yönerge + metin + soruları) ile
-//   diğer sorular sayfa içinde bant olarak yer değiştirebilir; yönergedeki numaralar güncellenir.)
+//   diğer sorular sayfa içinde bant olarak yer değiştirebilir; yönergedeki numaralar güncellenir.
+//   ÖZEL HAVUZ — sayfanın bütün soruları aynı havuzdaysa sayfa içi blok/bant/sütun takası ve iki
+//   sayfanın blok takası havuzlu sayfalarda da yapılır (havuz sınırı korunur); havuz bir ders
+//   bölgesini (Din 16-20, Felsefe 21-25 …) ya da ortak metin grubunu bölüyorsa uyarı verilir.)
 //  Limit Yayınları — A kitapçığından otomatik B kitapçığı üretimi
 //  (Lise AYT/TYT + Ortaokul 5-8. sınıf denemeleri)
 // -------------------------------------------------------------
@@ -2398,7 +2401,8 @@
             var sec = qs[0].sec, zn = qs[0].zone, top = qs[0].y1, bot = qs[0].y2;
             if (zn !== 0 && isLinkZone(sec, zn)) { return null; }
             for (var q = 0; q < qs.length; q++) {
-                if (qs[q].sec !== sec || qs[q].zone !== zn || qs[q].grup !== 0 || qs[q].pool !== 0) { return null; }
+                // v4.26: özel havuz — sayfanın tüm soruları AYNI havuzdaysa (ya da hiçbiri havuzda değilse) blok taşınabilir
+                if (qs[q].sec !== sec || qs[q].zone !== zn || qs[q].grup !== 0 || qs[q].pool !== qs[0].pool) { return null; }
                 if (asg[qs[q].slotKey].noXPage) { return null; }
                 if (qs[q].y1 < top) { top = qs[q].y1; }
                 if (qs[q].y2 > bot) { bot = qs[q].y2; }
@@ -2420,7 +2424,7 @@
                 var b3 = plcB[q2].ny1 + plcB[q2].cont.h;
                 if (b3 > aBot) { aBot = b3; }
             }
-            return { sec: sec, zone: zn, top: top, bot: bot, aBot: aBot, aH: aBot - top,
+            return { sec: sec, zone: zn, pool: qs[0].pool, top: top, bot: bot, aBot: aBot, aH: aBot - top,
                      qs: qs, tail: tail, pdi: pdi, plc: plcB };
         }
         function tailFits(info, newBot) {
@@ -2549,7 +2553,7 @@
                     if (j === Sb2.pdIdx || pageData[j].bundleWith >= 0) { continue; }
                     var infT = pageBundleInfo(j);
                     // yalnız aynı branş: aynı test ve aynı ders bölgesi
-                    if (infT === null || infT.sec !== infS.sec || infT.zone !== infS.zone) { continue; }
+                    if (infT === null || infT.sec !== infS.sec || infT.zone !== infS.zone || infT.pool !== infS.pool) { continue; }
                     if (!sameBranchPages(Sb2.pdIdx, j)) { continue; }   // v4.25: üst bant branşı
                     if (!bundleRenumberSafe(infS, infT)) { continue; }
                     if (isMiddleSchool) {
@@ -2771,7 +2775,7 @@
         // konumlarını koruyarak yer değiştirir (satır hizası korunur, ayırıcı yerinde kalır).
         // Sütunlarda soru dışı öğe yalnız sütunun en altında olabilir ve takastan sonra çakışmamalı.
         function columnSwapLayout(pdC, asC) {
-            var regC = null, nReg = 0, b8, c8, k8;
+            var regC = null, nReg = 0, b8, c8, k8, pool8 = null;
             for (b8 = 0; b8 < pdC.blocks.length; b8++) {
                 if (pdC.blocks[b8].type !== "REG") { continue; }
                 var hasQ8 = false;
@@ -2785,7 +2789,8 @@
                 for (k8 = 0; k8 < regC.cols[c8].length; k8++) {
                     var it8 = regC.cols[c8][k8];
                     if (it8.kind !== "soru") { continue; }
-                    if (it8.grup !== 0 || it8.pool !== 0) { return null; }
+                    if (pool8 === null) { pool8 = it8.pool; }
+                    if (it8.grup !== 0 || it8.pool !== pool8) { return null; }
                     if (bx[c8][0] === null || it8.x1 < bx[c8][0]) { bx[c8][0] = it8.x1; }
                     if (bx[c8][1] === null || it8.x2 > bx[c8][1]) { bx[c8][1] = it8.x2; }
                     if (qBot8 === null || it8.y2 > qBot8) { qBot8 = it8.y2; }
@@ -2867,7 +2872,7 @@
                 var asO = assigns[pi], stO = 0, okO = true, fnO = finalNumsOf(pi);
                 for (k = 0; k < slO.length; k++) {
                     if (asO[slO[k].slotKey].num === fnO[k]) { stO++; }
-                    if (slO[k].sec !== slO[0].sec || slO[k].zone !== slO[0].zone || slO[k].grup !== 0 || slO[k].pool !== 0) { okO = false; }
+                    if (slO[k].sec !== slO[0].sec || slO[k].zone !== slO[0].zone || slO[k].grup !== 0 || slO[k].pool !== slO[0].pool) { okO = false; }
                 }
                 if (stO === 0 || !okO) { continue; }
                 var numsC = fnO.slice(0);
@@ -3234,7 +3239,7 @@
                 var asE = assigns[pi], fnE = finalNumsOf(pi), stE = 0, okE = true, hasLinkE = false;
                 for (k = 0; k < slE.length; k++) {
                     if (asE[slE[k].slotKey].num === fnE[k]) { stE++; }
-                    if (slE[k].sec !== slE[0].sec || slE[k].sec < 0 || slE[k].pool !== 0 || slE[k].grup >= 600000) { okE = false; }
+                    if (slE[k].sec !== slE[0].sec || slE[k].sec < 0 || slE[k].pool !== slE[0].pool || slE[k].grup >= 600000) { okE = false; }
                     if (isLinkZone(slE[k].sec, slE[k].zone)) { hasLinkE = true; }
                 }
                 if (stE === 0 || !okE || !hasLinkE) { continue; }
