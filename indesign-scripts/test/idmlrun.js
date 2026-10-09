@@ -565,6 +565,19 @@ if (pgArg > 0 && process.argv[pgArg + 1] !== "ALL") {
         });
     });
 }
+// GEOMOUT=dosya: B'deki tüm çerçevelerin sayfa, konum ve metin başı (sürümler arası birebir karşılaştırma için)
+if (process.env.GEOMOUT) {
+    var gl = [];
+    (function walkG(list, depth) {
+        list.forEach(function (x) {
+            var g = x.geometricBounds || [0, 0, 0, 0], t = "";
+            try { if (x.parentStory) { t = x.parentStory._p.map(function (pp) { return pp._t; }).join("¶").substr(0, 40); } } catch (eG) {}
+            gl.push([x.pg ? x.pg.name : "-", x.id, x.constructor.name, g.map(function (v) { return v.toFixed(1); }).join(","), depth, t].join("|"));
+            walkG(x._kids || [], depth + 1);
+        });
+    })(ALLTOP, 0);
+    fs.writeFileSync(process.env.GEOMOUT, gl.sort().join("\n"));
+}
 // RENDER=klasör: A/B sayfa çizimleri (görsel denetim)
 if (process.env.RENDER) { require("./render.js")(process.env.RENDER, { A: A, B: B, M: M, W: W, H: H, aNum: aNum }); }
 
