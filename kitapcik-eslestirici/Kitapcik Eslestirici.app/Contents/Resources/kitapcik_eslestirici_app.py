@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.32"
+SURUM = "2.33"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -1702,8 +1702,9 @@ def _kayip_testleri_bul(k):
             kullanilan.add(s_)
         kaymis = sorted((d_, y_, s_) for s_, y_, d_ in eslem if y_ != d_)
         parca = []
-        for d_, y_, s_ in kaymis + [None]:
-            if parca and (d_ is None or d_ != parca[-1][0] + 1 or y_ - d_ != parca[-1][1] - parca[-1][0]):
+        for d_, y_, s_ in kaymis + [(None, None, None)]:
+            if parca and (d_ is None or d_ != parca[-1][0] + 1
+                          or y_ - d_ != parca[-1][1] - parca[-1][0]):
                 kaymalar.append({"ti": ti_, "ders": beklenen[b_of[parca[0][0]]][1],
                                  "dogru": (parca[0][0], parca[-1][0]),
                                  "yazan": (parca[0][1], parca[-1][1]),

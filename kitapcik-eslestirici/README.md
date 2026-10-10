@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.32)
+# Kitapçık Eşleştirici (v2.33)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -191,7 +191,7 @@ Her kitapçık önce **kendi içinde**, sonra **A ile B karşılıklı** denetle
 2. **Numaralar branş branş düzgün mü (A ve B ayrı ayrı):** Her testte 1'den N'e eksiksiz gidiyor
    mu? Atlanan numara, mükerrer numara ("8." iki kez) ya da sırasız numaralı şıklı soru varsa
    yerini ve büyük olasılıkla doğru numarayı yazar. Bir sorunun içinde ikinci şık takımı varsa
-   (numarası düşmüş soru) onu da bildirir. v2.32'de eklenenler:
+   (numarası düşmüş soru) onu da bildirir. v2.33'te eklenenler:
    - **Okuma sırası:** Her numara var olsa bile sayfada sıra bozuksa HATA verilir ("12. soru 11.
      sorudan önce basılmış"). Bu, yer değiştirmiş numarayı ya da yanlış yere konmuş soruyu yakalar.
    - **Kaymış numaralar:** Bir noktadan sonra numaralar bir fazla basılmışsa bu açıkça yazılır: "Bu
