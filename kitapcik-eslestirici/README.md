@@ -59,6 +59,8 @@ Gerçek kitapçıklarda sonuç:
 | AYT LEK 1. Deneme A ↔ B (166 soru, cevaplı) | 166/166, cevap 166/166 · 166/166 | 166/166, cevap 166/166 · 166/166 |
 | 7. sınıf Limit Deneme 1 A ↔ B (90 soru, cevaplı) | 90/90, cevap 85/90 · 86/90; Din soruları "SOSYAL BİLGİLER", Türkçe "Bölüm 1" | 90/90, cevap 90/90 · 90/90, 6 branş doğru adla |
 | 8. sınıf Limit Sayısal 1 A ↔ B (40 soru, cevaplı) | 38/40, cevap 39/40 (1 yanlış) · 38/40; Matematik "Bölüm 1" | 40/40, cevap 40/40 · 40/40 |
+| 7. sınıf Limit Sözel 1 A ↔ B (50 soru, cevaplı) | 48/50, cevap 47/50 · 48/50; Din soruları "SOSYAL BİLGİLER" | 50/50, cevap 50/50 · 50/50, 4 branş doğru adla |
+| Finale Doğru Kurs TYT Deneme 1 A ↔ B (125 soru, cevaplı) | 125/125, cevap 125/125 · 125/125 | 125/125, cevap 125/125 · 125/125 |
 
 TYT ya da AYT seçili olup dosyalar o düzene uymuyorsa (ör. 10. sınıf kitapçığı varsayılan TYT
 seçiliyken çalıştırılırsa) önce diğer sınav türü denenir; o da uymazsa yapı kitapçığın kendisinden
@@ -189,6 +191,8 @@ sorudaki toplam şekil mürekkebi kıyaslanır; yalnızca belirgin fark varsa (%
 | 7. sınıf MOBESE Sayısal 1 A ↔ B (cevaplı) | 40 | 40/40 birebir, 2 metin grubu aynı, 0 hata (yalnız "cevaplar açık" uyarısı) | ~20 sn |
 | 8. sınıf MOBESE Sayısal 1 A ↔ B (cevaplı) | 40 | 40/40 birebir, 0 hata (yalnız "cevaplar açık" uyarısı) | ~20 sn |
 | AYT LEK 1. Deneme A ↔ B (cevaplı) | 166 | 166/166 birebir, 0 hata (yalnız "cevaplar açık" uyarısı) | ~60 sn |
+| 7. sınıf Limit Sözel 1 A ↔ B (cevaplı) | 50 | 50/50 birebir, 4 metin grubu aynı, 0 hata | ~15 sn |
+| Finale Doğru Kurs TYT Deneme 1 A ↔ B (cevaplı) | 125 | 124/125 birebir, 3 metin grubu aynı, **1 gerçek fark yakalandı** (Türkçe A-11 / B-10: V. deyim A'da "kolları sıvamak", B'de "kol gezmek") | ~60 sn |
 
 TYT'de B kitapçığı metne bağlı grubun sorularını ters sırayla diziyor (A 35-36 → B 38-37).
 Bu yayınevi düzeni hata sayılmaz; soruların yan yana ve aynı metnin altında olması denetlenir.
