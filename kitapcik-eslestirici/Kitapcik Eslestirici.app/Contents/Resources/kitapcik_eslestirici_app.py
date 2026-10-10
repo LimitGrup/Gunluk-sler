@@ -1622,10 +1622,72 @@ def _kitapcik_oku(pdf, yapi, etiket, log, hazir=None):
     return dokum
 
 
+def _kayip_testleri_bul(k):
+    """Motor bir testin başını bulamazsa (ör. Sosyal 1–10 yerine 21–30
+    basılmış) sonraki testlerin numaralarını da kaybedebilir: o sayfalarda okuma
+    sırası çapasız kalır, sorular "fazla" sayılır, tek bir numara hatası onlarca
+    "metin farklı / karşılığı yok" hatasına dönüşür. Testler sırayla, kendi
+    yerlerinde yeniden aranır: testin baştaki eksik numaraları kadar sütun
+    kenarındaki numara satırı, testin olması gereken yerde ilk sırada
+    duruyor ve numaraları ya tam beklenen numaralar (motorun kaybettiği doğru
+    numaralar: sessizce yerine oturur) ya da ardışık ama kaymış numaralarsa
+    (önceki testin numarası devam ettirilmiş: raporda bir kez HATA) bunlar o
+    testin soruları sayılır. Temiz kitapçıkta her test bulunduğu için değişen
+    bir şey olmaz. k["eslesen"] kopyalanarak değiştirilir (EŞLEŞTİR'in
+    okumasına dokunulmaz); k["kaymalar_s"] yazılır."""
+    satirlar, beklenen = k["satirlar"], k["beklenen"]
+    eslesen = dict(k["eslesen"])
+    kenar = sorted(set(k["adaylar"]))       # sütun kenarındaki numara satırları
+    kullanilan = set(eslesen.values())
+    kaymalar = []
+    for ti_ in sorted({t for t, _d, _n in beklenen}):
+        bek_ti = sorted((n, b_i) for b_i, (t, _d, n) in enumerate(beklenen) if t == ti_)
+        capali_no = {beklenen[b_][2] for b_ in eslesen if beklenen[b_][0] == ti_}
+        bas_eksik = []
+        for n, b_i in bek_ti:
+            if n in capali_no:
+                break
+            bas_eksik.append((n, b_i))
+        if not bas_eksik:
+            continue
+        once = [s_ for b_, s_ in eslesen.items() if beklenen[b_][0] < ti_]
+        sonra = [s_ for b_, s_ in eslesen.items() if beklenen[b_][0] >= ti_]
+        alt, ust = max(once, default=-1), min(sonra, default=len(satirlar))
+        dizi = [(s_, n) for s_, n in kenar
+                if alt < s_ < ust and s_ not in kullanilan][:len(bas_eksik)]
+        if len(dizi) != len(bas_eksik):
+            continue
+        yazan = [n for _s, n in dizi]
+        dogru = [n for n, _b in bas_eksik]
+        # Parçalar: aynı farkla ardışık giden numaralar (fark 0: doğru numara,
+        # başka fark: kaymış parça). En çok iki kaymış parça kabul edilir
+        # (Tarih 41–45 basılmış, Coğrafya 6'dan doğru devam ediyor gibi).
+        parcalar = []
+        for i, (yn, dn) in enumerate(zip(yazan, dogru)):
+            if parcalar and parcalar[-1][0] == yn - dn:
+                parcalar[-1][1].append(i)
+            else:
+                parcalar.append((yn - dn, [i]))
+        if sum(1 for fark, _i in parcalar if fark) > 2:
+            continue
+        for (s_, _n), (_d, b_i) in zip(dizi, bas_eksik):
+            eslesen[b_i] = s_
+            kullanilan.add(s_)
+        for fark, idx in parcalar:
+            if fark:
+                kaymalar.append({"ti": ti_, "ders": beklenen[bas_eksik[idx[0]][1]][1],
+                                 "dogru": (dogru[idx[0]], dogru[idx[-1]]),
+                                 "yazan": (yazan[idx[0]], yazan[idx[-1]]),
+                                 "yazan_no": {dizi[i][0]: yazan[i] for i in idx}})
+    k["eslesen"] = eslesen
+    k["kaymalar_s"] = kaymalar
+
+
 def _kitapcik_bolumle(k, mobilya, log):
     """Soruları okuma sırasına göre böler; her sorunun temiz metnini (gövde +
     şıklar), bölgesini, metne bağlı grup başlıklarını ve numarası beklenen
     sıraya uymayan şıklı soru başlangıçlarını çıkarır."""
+    _kayip_testleri_bul(k)
     satirlar, beklenen = k["satirlar"], k["beklenen"]
     capa_sirasi = {id(satirlar[s]): b for b, s in k["eslesen"].items()}
     sira, sinif, capa_sinif, iki_sutun, geri = _okuma_sirasi(
@@ -1683,6 +1745,28 @@ def _kitapcik_bolumle(k, mobilya, log):
         duzeltilmis.append((p, b_i))
     capalar = duzeltilmis
 
+    # Motor bir numarayı sütun kenarında bulamayıp soru içindeki bir satırdan
+    # almışsa ("11. ay" gibi grafik etiketi) ve bu numara okuma sırasına
+    # uymuyorsa çapa sayılmaz: numara "bulunamadı" diye bildirilir, yanlış
+    # yerden bölünen soru başka (metin/şekil) hatalarına yol açmaz
+    kenar_satir = {id(satirlar[s]) for s, _n in k["adaylar"]}
+    dusen = set()
+    for ti_ in {beklenen[b_][0] for _p, b_ in capalar}:
+        dizi = sorted((p_, b_) for p_, b_ in capalar if beklenen[b_][0] == ti_)
+        for i, (p_, b_) in enumerate(dizi):
+            no = beklenen[b_][2]
+            onceki = beklenen[dizi[i - 1][1]][2] if i else None
+            sonraki = beklenen[dizi[i + 1][1]][2] if i + 1 < len(dizi) else None
+            if id(sira[p_]) not in kenar_satir and (
+                    (onceki is not None and no < onceki)
+                    or (sonraki is not None and no > sonraki)):
+                dusen.add((p_, b_))
+    if dusen:
+        logla(f"{k['etiket']}: okuma sırasına uymayan kenar dışı numara çapa "
+              f"sayılmadı: " + ", ".join(f"{beklenen[b_][2]} ({sira[p_]['metin'][:20]!r})"
+                                         for p_, b_ in sorted(dusen)))
+        capalar = [c for c in capalar if c not in dusen]
+
     # --- numarası beklenene uymayan şıklı soru başlangıçları ------------------
     capa_poz = [p for p, _b in capalar]
     kullanilan = {id(sira[p]) for p in capa_poz}
@@ -1720,6 +1804,15 @@ def _kitapcik_bolumle(k, mobilya, log):
         capalar.append((f["poz"], onceki[1]))
         f["poz"] = onceki[0]
     capalar.sort()
+
+    # Kaybolan testlerin yeniden bulunan çapaları (_kayip_testleri_bul):
+    # kaymış numaralar raporda bir kez bildirilir
+    yazan_no = {poz[id(satirlar[s_])]: n for kay in k["kaymalar_s"]
+                for s_, n in kay["yazan_no"].items()}
+    kaymalar = [{"ti": kay["ti"], "ders": kay["ders"], "dogru": kay["dogru"],
+                 "yazan": kay["yazan"],
+                 "pozlar": [poz[id(satirlar[s_])] for s_ in kay["yazan_no"]]}
+                for kay in k["kaymalar_s"]]
 
     # --- soru bölümleri --------------------------------------------------------
     sinirlar = sorted([(p, ("S", b)) for p, b in capalar] +
@@ -1759,7 +1852,8 @@ def _kitapcik_bolumle(k, mobilya, log):
         bas = sira[p]
         if tur == "S":
             ti, ders, no = beklenen[deg]
-            etiket_no = str(no)
+            etiket_no = (f"{no} ('{yazan_no[p]}.' yazıyor)" if p in yazan_no
+                         else str(no))
         else:
             f = fazlalar[deg]
             ti, ders, no = f["ti"], f["ders"], None
@@ -1811,7 +1905,8 @@ def _kitapcik_bolumle(k, mobilya, log):
                                     iki_sutun, satirlar, bitis=ilk_soru,
                                     taraf=("F" if tam else
                                            sinif.get(id(b["satir"]), "F")))
-    k.update(sira=sira, ogeler=ogeler, basliklar=basliklar, fazlalar=fazlalar)
+    k.update(sira=sira, ogeler=ogeler, basliklar=basliklar, fazlalar=fazlalar,
+             kaymalar=kaymalar)
     return k
 
 
@@ -3007,13 +3102,53 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                           and x["ti"] == o["ti"]), key=lambda x: x["poz"],
                          default=None)
             tahmin = ""
-            if onceki and (o["ti"], onceki["no"] + 1) not in bulunan:
+            bek_ti = [n for t, _d, n in kk["beklenen"] if t == f["ti"]]
+            eksik_ti = [n for n in bek_ti if (f["ti"], n) not in bulunan]
+            if onceki and (o["ti"], onceki["no"] + 1) not in bulunan \
+                    and onceki["no"] + 1 in bek_ti:
                 tahmin = f" Beklenen numara büyük olasılıkla {onceki['no'] + 1}."
+            elif bek_ti and f["no_yazan"] == max(bek_ti) + 1 and len(eksik_ti) == 1:
+                tahmin = (f" Bu test {len(bek_ti)} soruluk ve {eksik_ti[0]}. soru yok: "
+                          f"{eksik_ti[0]}. sorudan itibaren numaralar bir fazla basılmış "
+                          f"(kaymış) olabilir.")
+            elif eksik_ti:
+                tahmin = (f" Bu testte bulunamayan numara: "
+                          f"{', '.join(map(str, eksik_ti[:6]))}"
+                          + (" …" if len(eksik_ti) > 6 else "") + ".")
             sorun("HATA", kk["etiket"], f"Numarası sıraya uymayan şıklı soru: "
                   f"'{f['no_yazan']}.' yazıyor (mükerrer/yanlış numara ya da "
                   f"fazladan soru).{tahmin}", test_adi(f["ti"]), f["ders"],
                   o["etiket_no"], [yer(kk, o)])
             o["_sorun"] = sorunlar[-1]
+        # Test 1'den başlamıyor (önceki testin numarası devam ettirilmiş)
+        sirasiz_ek = 0                       # özet: yanlış/sırasız numara sayısına
+        for kay in kk.get("kaymalar", []):
+            sirasiz_ek += len(kay["pozlar"])
+            sorular_ = [x for x in kk["ogeler"] if x["poz"] in kay["pozlar"]]
+            (d0, d1), (y0, y1) = kay["dogru"], kay["yazan"]
+            if d0 == d1:
+                mesaj = f"Numara yanlış: bu testin {d0}. sorusu '{y0}.' diye numaralanmış."
+                yeri = f"{d0} ('{y0}.' yazıyor)"
+            else:
+                mesaj = (f"Numaralar yanlış: bu testin {d0}–{d1}. soruları '{y0}.'–'{y1}.' "
+                         f"diye numaralanmış" + (f" (numaralar {d0}'den başlamıyor; önceki "
+                         f"testin numarası devam ettirilmiş olabilir)." if d0 == 1 else "."))
+                yeri = f"{d0}–{d1} ('{y0}.'–'{y1}.' yazıyor)"
+            sorun("HATA", kk["etiket"], mesaj, test_adi(kay["ti"]), kay["ders"], yeri,
+                  [yer(kk, x) for x in sorular_[:1] + sorular_[-1:]])
+        # Okuma sırasında numaralar artmalı: yer değiştirmiş numara ya da
+        # yanlış yere konmuş soru (her numara var olsa bile)
+        for ti_ in sorted({o["ti"] for o in kk["ogeler"] if o["no"]}):
+            dizi = sorted((o for o in kk["ogeler"] if o["no"] and o["ti"] == ti_),
+                          key=lambda o: o["poz"])
+            for x, y in zip(dizi, dizi[1:]):
+                if y["no"] < x["no"]:
+                    sirasiz_ek += 1
+                    sorun("HATA", kk["etiket"], f"Numaralar sırasız: {x['no']}. soru "
+                          f"{y['no']}. sorudan önce basılmış — iki sorunun numarası "
+                          f"yer değiştirmiş ya da soru yanlış yere konmuş olabilir.",
+                          test_adi(ti_), x["ders"], f"{x['no']} ↔ {y['no']}",
+                          [yer(kk, x), yer(kk, y)])
         for o in kk["ogeler"]:
             if o["no"] and o["a_sayisi"] >= 2:
                 sorun("HATA", kk["etiket"], f"{o['no']}. sorunun içinde ikinci "
@@ -3025,7 +3160,7 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                       f"bulunamadı — şıklar görsel olabilir, elle bakın.",
                       test_adi(o["ti"]), o["ders"], str(o["no"]), [yer(kk, o)])
         numara_ozet[kk["etiket"]] = (len(bulunan), len(kk["beklenen"]),
-                                     eksik_say, len(kk["fazlalar"]))
+                                     eksik_say, len(kk["fazlalar"]) + sirasiz_ek)
         # Grup başlığı numaraları altındaki sorularla aynı mı?
         for b in kk["basliklar"]:
             alt = [o["no"] if o["no"] else o["etiket_no"] for o in b["sorular"]]

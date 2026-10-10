@@ -191,7 +191,19 @@ Her kitapçık önce **kendi içinde**, sonra **A ile B karşılıklı** denetle
 2. **Numaralar branş branş düzgün mü (A ve B ayrı ayrı):** Her testte 1'den N'e eksiksiz gidiyor
    mu? Atlanan numara, mükerrer numara ("8." iki kez) ya da sırasız numaralı şıklı soru varsa
    yerini ve büyük olasılıkla doğru numarayı yazar. Bir sorunun içinde ikinci şık takımı varsa
-   (numarası düşmüş soru) onu da bildirir.
+   (numarası düşmüş soru) onu da bildirir. v2.32'de eklenenler:
+   - **Okuma sırası:** Her numara var olsa bile sayfada sıra bozuksa HATA verilir ("12. soru 11.
+     sorudan önce basılmış"). Bu, yer değiştirmiş numarayı ya da yanlış yere konmuş soruyu yakalar.
+   - **Kaymış numaralar:** Bir noktadan sonra numaralar bir fazla basılmışsa bu açıkça yazılır: "Bu
+     test 20 soruluk ve 11. soru yok: 11. sorudan itibaren numaralar bir fazla basılmış".
+   - **1'den başlamayan test:** Bir testin numaraları önceki testten devam ediyorsa (Sosyal 1–10
+     yerine 21–30) tek bir HATA verilir: "bu testin 1–10. soruları '21.'–'30.' diye numaralanmış".
+     Önceden motor bu durumda sonraki bütün testleri kaybediyordu ve rapora 100'e yakın yan hata
+     düşüyordu. Şimdi testler kendi yerlerinde yeniden bulunur. Numaraları doğru olan testler
+     sessizce yerine oturur.
+   - **Grafik/tablo etiketi numara sanılmaz:** Sütun kenarında durmayan ve sıraya uymayan bir
+     "numara" soru başlangıcı sayılmaz. Örneğin bir grafikteki "11. ay" etiketi 11. soru sayılmaz.
+     Gerçek soru numarası yanlış yazılmışsa rapor yalnız asıl hatayı gösterir.
 3. **Metne bağlı grup başlıkları (A ve B ayrı ayrı):** "14 ve 15. soruları…", "1-4. soruları…",
    "12. ve 13. soruları…" gibi başlıklardaki numaralar altındaki sorularla aynı mı?
 4. **A'daki her soru B'de var mı?** Soru metni ve şıklarıyla birlikte aranır. LGS düzeninde
@@ -334,6 +346,7 @@ python3 testler/duzen_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/ki
 python3 testler/cevap_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/ornek  # EŞLEŞTİR: cevap harfi ve B numarası gerçek değerle aynı mı
 python3 testler/kesir_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/kesir  # ilk satır numaranın üstünden başlıyor: kaybolmamalı
 python3 testler/tire_sina.py     "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/tire   # A ve B'de farklı tire karakteri: sahte uyarı olmamalı
+python3 testler/numara_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A_baski.pdf B_baski.pdf OTOMATİK /tmp/numara  # B'de numaraları 7 biçimde bozar: her biri doğru yerde HATA olmalı
 python3 testler/baski_kopya_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/kopya  # gerçek cevaplı çiftten baskı kopyası: siyah ve eğri cevap yakalanmalı
 ```
 
