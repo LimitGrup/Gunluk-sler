@@ -75,17 +75,27 @@ denetimi (temiz baskı, bilerek açık bırakılmış renkli, siyah ve eğri cev
 değerle karşılaştırılır.
 
 `testler/baski_kopya_sina.py` aynı denetimi gerçek bir cevaplı çiftte yapar. Renkli cevapları
-silerek A ve B'nin baskı kopyasını üretir. Ardından B'den iki kopya daha çıkarır:
+silerek A ve B'nin baskı kopyasını üretir. Ardından B'den üç kopya daha çıkarır:
 
 - **karışık kopya:** bir sorunun cevabı siyah metin, başka bir sorununki eğri olarak bırakılır;
 - **şekilsiz kopya:** tek şekilli bir sorunun şekli ve çok şekilli bir sorunun bir şekli silinir
-  (resim ya da çizim silinir, yazısı kalır).
+  (resim ya da çizim silinir, yazısı kalır);
+- **stil kopyası:** 21 soruda cevap farklı biçimde bırakılır:
+  - renk: magenta, kırmızı, mavi, camgöbeği, yeşil, gri, siyah, lacivert;
+  - biçim: "C)", "C.";
+  - yazı tipi ve boy: italik, Times, 7 pt, 13 pt;
+  - konum: 8 pt sağa kaymış;
+  - metin olmayan: magenta ve siyah eğri;
+  - magenta sayı "12";
+  - beyaz harf.
 
 Beklenenler:
 
 - temiz kopyada hiç açık cevap bildirilmez;
 - karışık kopyada tam o iki soru HATA olur;
-- şekilsiz kopyada tam o sorular "şekil/resim eksik" HATA'sı olur.
+- şekilsiz kopyada tam o sorular "şekil/resim eksik" HATA'sı olur;
+- stil kopyasında her biri beklenen önemle bildirilir: siyah eğri ve magenta sayı UYARI, beyaz
+  harf hiç bildirilmez (basılmaz), geri kalanlar HATA; başka hiçbir yerde yeni sorun çıkmaz.
 
 Elimizdeki yedi gerçek cevaplı çiftte sonuç:
 
@@ -98,6 +108,8 @@ Elimizdeki yedi gerçek cevaplı çiftte sonuç:
 | 7. sınıf Limit sözel 1 | 0 sorun | TÜRKÇE 17 ✓ | DİN KÜLTÜRÜ 4 ✓ | DİN 6 (1/1) ✓, İNG 6 (1/2) ✓ |
 | AYT LEK 1 | 0 sorun | Coğrafya-2 16 ✓ | Matematik 25 ✓ | Mat 38 (1/1) ✓, Fizik 10 (1/4) ✓ |
 | Finale TYT 1 | yalnız çiftteki gerçek metin farkı (Türkçe A-11/B-10) | Tarih 2 ✓ | Temel Matematik 19 ✓ | TM 32 (1/1) ✓, TM 24 (1/2) ✓ |
+
+Stil kopyasında 7 çiftin hepsinde 21/21 doğru çıktı (147 durum).
 
 Ayrıca her çiftte üç ayrı soruda şekil tek tek silinerek denendi. 21 durumun 21'i de doğru soruda
 HATA verdi. Mürekkep farkı tek şekli silinen soruda %100, çok şekilliden biri silinende %14–66
