@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.31"
+SURUM = "2.32"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -2142,13 +2142,29 @@ def _sekil_denetle(docA, docB, bolgelerA, bolgelerB, onbellek, durum, bildir):
         tb = sum(onbellek.get(_murekkep_anahtari(docB, p, r), 0) for p, r in kb)
         if abs(ta - tb) <= max(60, 0.06 * max(ta, tb)):
             return f"aynı ({len(ka)}↔{len(kb)} parça)"
-        durum.append("ŞEKİL FARKI")
         oran = (tb - ta) / max(ta, 1) * 100
+        yerler = [("A", (p, *r)) for p, r in ka] + [("B", (p, *r)) for p, r in kb]
+        # Belirgin fark (≥ %10 ya da bir tarafta hiç şekil yok) baskı hatasıdır:
+        # unutulmuş / silinmiş ya da fazladan konmuş şekil. Gerçek kitapçıklarda
+        # aynı şekiller arasında bu yol hiç tetiklenmedi; tek şekli silinmiş
+        # sorularda fark %14–100 çıktı.
+        if not ka or not kb or abs(oran) >= 10:
+            durum.append("ŞEKİL EKSİK" if oran < 0 else "ŞEKİL FAZLA")
+            if oran < 0:
+                bildir("HATA", f"B'de şekil/resim eksik: A'da {len(ka)}, B'de {len(kb)} "
+                       f"şekil parçası; B'de şekil mürekkebi %{abs(oran):.0f} az — "
+                       f"şekil unutulmuş ya da silinmiş olabilir.", yerler)
+            else:
+                bildir("HATA", f"B'de fazla şekil/resim: A'da {len(ka)}, B'de {len(kb)} "
+                       f"şekil parçası; B'de şekil mürekkebi "
+                       + (f"%{oran:.0f} fazla" if ka else "var, A'da yok")
+                       + " — A'da olmayan şekil eklenmiş olabilir.", yerler)
+            return f"{'EKSİK' if oran < 0 else 'FAZLA'} ({len(ka)}↔{len(kb)})"
+        durum.append("ŞEKİL FARKI")                 # küçük fark: elle bakılacak
         bildir("UYARI", f"Şekil/resim içeriği farklı: B'de şekil mürekkebi A'ya göre "
                f"%{abs(oran):.0f} {'fazla' if oran > 0 else 'az'} (A'da {len(ka)}, "
                f"B'de {len(kb)} şekil parçası) — eksik ya da fazla şekil olabilir, "
-               f"elle bakın.",
-               [("A", (p, *r)) for p, r in ka] + [("B", (p, *r)) for p, r in kb])
+               f"elle bakın.", yerler)
         return f"FARKLI ({len(ka)}↔{len(kb)})"
     for i, ((pa, ra), (pb, rb)) in enumerate(zip(ka, kb), 1):
         ia = _kontrol_kupur(docA, (pa, ra.x0, ra.y0, ra.x1, ra.y1), onbellek,
@@ -2168,7 +2184,7 @@ def _sekil_denetle(docA, docB, bolgelerA, bolgelerB, onbellek, durum, bildir):
             if alt is not None:
                 yerel = min(yerel, alt)
         if yerel is not None and yerel > KONTROL_SEKIL_ESIK:
-            durum.append("ŞEKİL FARKI")
+            durum.append("ŞEKİL DEĞİŞMİŞ")
             bildir("HATA", f"{i}. şekil/resim farklı görünüyor (en farklı bölge "
                    f"{yerel:.0f}/255) — elle bakın.",
                    [("A", (pa, *ra)), ("B", (pb, *rb))]
@@ -3196,7 +3212,8 @@ def kontrol_raporu_yaz(sonuc, sorunlar, cikti, kartlar=None):
     hata = sum(1 for s in sorunlar if s["onem"] == "HATA")
     uyari = sum(1 for s in sorunlar if s["onem"] == "UYARI")
     es = sonuc["eslesmeler"]
-    ayni = sum(1 for e in es if not e[6])
+    metin_farki = lambda d: "METİN FARKI" in d or "NOKTALAMA" in d
+    ayni = sum(1 for e in es if not metin_farki(e[6]))     # yalnız metin ve şıklar
     toplam_a = sonuc["numara"]["A"][1]
     ekle(oz, ["A–B KİTAPÇIK KONTROL RAPORU", f"Motor sürümü {SURUM}"])
     ekle(oz, ["A kitapçığı", Path(sonuc["A"]["pdf"]).name])
@@ -3221,7 +3238,8 @@ def kontrol_raporu_yaz(sonuc, sorunlar, cikti, kartlar=None):
                      "TEMİZ" if eslesen_a == toplam_a else "HATA"))
     satirlar.append(("Soru metni + şıklar birebir",
                      f"{ayni}/{len(es)} çift tamamen aynı",
-                     "TEMİZ" if ayni == len(es) else "KONTROL ET"))
+                     "TEMİZ" if ayni == len(es) else
+                     ("HATA" if any("METİN FARKI" in e[6] for e in es) else "KONTROL ET")))
     ca, cb = sonuc["cevap_var"]
     cevap_fark = sum(1 for e in es if "CEVAP FARKLI" in e[6])
     satirlar.append(("Cevap harfleri", f"{cevap_fark} farklı (A'da {ca}, B'de {cb} "
@@ -3232,11 +3250,13 @@ def kontrol_raporu_yaz(sonuc, sorunlar, cikti, kartlar=None):
     gr_ok = sum(1 for g in gr if not g[7])
     satirlar.append(("Metne bağlı gruplar", f"{gr_ok}/{len(gr)} grup B'de aynı",
                      "TEMİZ" if gr_ok == len(gr) else "HATA"))
-    sekil_fark = sum(1 for e in es if "ŞEKİL FARKI" in e[6]) + \
-        sum(1 for g in gr if "ŞEKİL FARKI" in g[7])
+    sekil_fark = sum(1 for e in es if any(d.startswith("ŞEKİL") for d in e[6])) + \
+        sum(1 for g in gr if any(d.startswith("ŞEKİL") for d in g[7]))
+    sekil_hata = any(d in ("ŞEKİL EKSİK", "ŞEKİL FAZLA", "ŞEKİL DEĞİŞMİŞ")
+                     for e in list(es) + list(gr) for d in e[-1])
     satirlar.append(("Şekil, resim, tablo çizimleri",
                      f"{sekil_fark} soru/metinde fark",
-                     "TEMİZ" if not sekil_fark else "KONTROL ET"))
+                     "TEMİZ" if not sekil_fark else ("HATA" if sekil_hata else "KONTROL ET")))
     for et in ("A", "B"):
         acik = sonuc["acik_cevap"][et]
         satirlar.append((f"Açık kalan cevap ({et})",
@@ -3643,11 +3663,12 @@ def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
     es = sonuc["eslesmeler"]
     log(f"  A→B eşleşen soru: {sum(1 for e in es if e[0]['no'])}/"
         f"{sonuc['numara']['A'][1]}  |  metin birebir: "
-        f"{sum(1 for e in es if not e[6])}/{len(es)}")
+        f"{sum(1 for e in es if 'METİN FARKI' not in e[6] and 'NOKTALAMA' not in e[6])}"
+        f"/{len(es)}")
     gr = sonuc["gruplar"]
     if gr:
         log(f"  Metne bağlı gruplar: {sum(1 for g in gr if not g[7])}/{len(gr)} sorunsuz")
-    sekil = sum(1 for e in es if "ŞEKİL FARKI" in e[6])
+    sekil = sum(1 for e in es if any(d.startswith("ŞEKİL") for d in e[6]))
     log(f"  Şekil/resim farkı: {sekil} soruda" if sekil else
         "  Şekil/resimler: farksız")
     ac = sonuc["acik_cevap"]

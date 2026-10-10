@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.31)
+# Kitapçık Eşleştirici (v2.32)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -64,23 +64,33 @@ denetimi (temiz baskı, bilerek açık bırakılmış renkli, siyah ve eğri cev
 değerle karşılaştırılır.
 
 `testler/baski_kopya_sina.py` aynı denetimi gerçek bir cevaplı çiftte yapar. Renkli cevapları
-silerek A ve B'nin baskı kopyasını üretir. Ardından B'de bir sorunun cevabını siyah metin, başka
-bir sorununkini eğri olarak bırakır. Bu kopyalarda iki şey beklenir:
+silerek A ve B'nin baskı kopyasını üretir. Ardından B'den iki kopya daha çıkarır:
+
+- **karışık kopya:** bir sorunun cevabı siyah metin, başka bir sorununki eğri olarak bırakılır;
+- **şekilsiz kopya:** tek şekilli bir sorunun şekli ve çok şekilli bir sorunun bir şekli silinir
+  (resim ya da çizim silinir, yazısı kalır).
+
+Beklenenler:
 
 - temiz kopyada hiç açık cevap bildirilmez;
-- karışık kopyada tam o iki soru HATA olur.
+- karışık kopyada tam o iki soru HATA olur;
+- şekilsiz kopyada tam o sorular "şekil/resim eksik" HATA'sı olur.
 
 Elimizdeki yedi gerçek cevaplı çiftte sonuç:
 
-| Çift | Temiz baskı | Siyah cevap | Eğri cevap |
-|---|---|---|---|
-| 7. sınıf MOBESE sayısal | 0 sorun | MATEMATİK 14 ✓ | FEN 7 ✓ |
-| 8. sınıf MOBESE sayısal | 0 sorun | MATEMATİK 14 ✓ | FEN 7 ✓ |
-| 7. sınıf Limit 1 | 0 sorun | DİN KÜLTÜRÜ 1 ✓ | MATEMATİK 11 ✓ |
-| 8. sınıf Limit sayısal 1 | 0 sorun | MATEMATİK 14 ✓ | FEN 7 ✓ |
-| 7. sınıf Limit sözel 1 | 0 sorun | TÜRKÇE 17 ✓ | DİN KÜLTÜRÜ 4 ✓ |
-| AYT LEK 1 | 0 sorun | Coğrafya-2 16 ✓ | Matematik 25 ✓ |
-| Finale TYT 1 | yalnız çiftteki gerçek metin farkı (Türkçe A-11/B-10) | Tarih 2 ✓ | Temel Matematik 19 ✓ |
+| Çift | Temiz baskı | Siyah cevap | Eğri cevap | Silinen şekil |
+|---|---|---|---|---|
+| 7. sınıf MOBESE sayısal | 0 sorun | MATEMATİK 14 ✓ | FEN 7 ✓ | MAT 18 (1/1) ✓, MAT 10 (1/3) ✓ |
+| 8. sınıf MOBESE sayısal | 0 sorun | MATEMATİK 14 ✓ | FEN 7 ✓ | MAT 17 (1/2) ✓ |
+| 7. sınıf Limit 1 | 0 sorun | DİN KÜLTÜRÜ 1 ✓ | MATEMATİK 11 ✓ | MAT 7 (1/1) ✓, MAT 16 (1/3) ✓ |
+| 8. sınıf Limit sayısal 1 | 0 sorun | MATEMATİK 14 ✓ | FEN 7 ✓ | MAT 18 (1/1) ✓, FEN 4 (1/3) ✓ |
+| 7. sınıf Limit sözel 1 | 0 sorun | TÜRKÇE 17 ✓ | DİN KÜLTÜRÜ 4 ✓ | DİN 6 (1/1) ✓, İNG 6 (1/2) ✓ |
+| AYT LEK 1 | 0 sorun | Coğrafya-2 16 ✓ | Matematik 25 ✓ | Mat 38 (1/1) ✓, Fizik 10 (1/4) ✓ |
+| Finale TYT 1 | yalnız çiftteki gerçek metin farkı (Türkçe A-11/B-10) | Tarih 2 ✓ | Temel Matematik 19 ✓ | TM 32 (1/1) ✓, TM 24 (1/2) ✓ |
+
+Ayrıca her çiftte üç ayrı soruda şekil tek tek silinerek denendi. 21 durumun 21'i de doğru soruda
+HATA verdi. Mürekkep farkı tek şekli silinen soruda %100, çok şekilliden biri silinende %14–66
+çıktı.
 
 ## EŞLEŞTİR'deki düzeltmeler (v2.21, v2.27–v2.29)
 
@@ -174,7 +184,11 @@ Her kitapçık önce **kendi içinde**, sonra **A ile B karşılıklı** denetle
    - Cevap harfi aynı mı? (cevap açık PDF'lerde)
    - Şekil ve resimler aynı mı? Sorudaki resim ve çizimler "şekil kutuları"na toplanır, her şekil
      kendi kutusunda görüntü olarak kıyaslanır. Satır aralığı ya da konum değişse de yalnızca
-     gerçekten değişen şekil yakalanır.
+     gerçekten değişen şekil yakalanır. Değişen şekil HATA olur. Soru B'ye alınırken şekli ya da
+     resmi unutulmuşsa da HATA olur (v2.32): "B'de şekil/resim eksik: A'da 1, B'de 0 şekil
+     parçası". Aynı kural metne bağlı grupların ortak şekillerine ve B'ye fazladan konan şekle de
+     uygulanır. Parça sayısı farklıyken şekil mürekkebi yalnızca %6–10 farklıysa sarı UYARI
+     verilir, elle bakılması gerekir.
 6. **Metne bağlı gruplar A ↔ B:** A'daki grubun soruları B'de yine yan yana ve aynı başlık altında
    mı? Metin aynı mı? B'de bir grubun metni başka grubun sorularının üstüne düşmüşse açıkça yazar:
    "B'de metin ile altındaki sorular uyumsuz: B 5-8. soruların üstündeki metin, A'da 15-17.
@@ -248,8 +262,10 @@ sorudaki toplam şekil mürekkebi kıyaslanır; yalnızca belirgin fark varsa (%
   kullanılmalıdır. Küçültmek gerekirse Acrobat'ta Dosya > Farklı Kaydet > Küçültülmüş Boyutlu
   PDF yazıları korur.
 - B baskı PDF'i **sayfa sayfa** olmalı; montajlı (imposition, 2 sayfa yan yana) PDF desteklenmez.
-- Bir şeklin parçaları arasındaki boşluk A ve B'de çok farklıysa "şekil sayısı farklı" uyarısı
-  çıkabilir. Bu uyarılar "elle bakın" düzeyindedir.
+- Şekil parçalarının sayısı A ve B'de farklıysa, örneğin parçalar arasındaki boşluk değiştiği
+  için, sorudaki toplam şekil mürekkebi karşılaştırılır. Mürekkep aynıysa fark yok sayılır.
+  Bu yüzden toplam şeklin %6'sından küçük bir parçanın (tek bir ok, küçük bir etiket kutusu)
+  eksikliği yakalanmayabilir.
 
 ### Gerçek kitapçıklarla deneme (8. sınıf Limit denemesi, sözel + sayısal, baskı PDF'leri)
 
