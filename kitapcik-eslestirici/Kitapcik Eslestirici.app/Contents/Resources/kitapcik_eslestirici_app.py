@@ -2258,8 +2258,10 @@ def _cevap_adaylari(o, genislikler=None):
     (yan yana kısa şıklar dahil). Renksiz adayda sınır daha sıkıdır: işaretin sağ
     kenarından önce başlayan satır yetmez (girintiye dayalı tablo harfi); numara
     satırı bu ölçüye girmez, çünkü renksiz aday zaten numarayla hizalıdır. Böylece
-    şıklar başka sütuna/sayfaya taşsa da çalışır.
-    Dönen: [{harf, satir, renk, kutu, oluk, renkli}]."""
+    şıklar başka sütuna/sayfaya taşsa da çalışır. Beyaz (kâğıt rengi) harf
+    baskıda görünmez: "gorunmez" işaretlenir, açık cevap sayılmaz, yalnız metin
+    karşılaştırmasından çıkarılır.
+    Dönen: [{harf, satir, renk, kutu, oluk, renkli, gorunmez}]."""
     satirlar_ = o["ham_satirlar"]
     if not satirlar_:
         return []
@@ -2275,16 +2277,21 @@ def _cevap_adaylari(o, genislikler=None):
         for i, (tt, renk, kutu) in enumerate(dolu):
             sonraki = dolu[i + 1][2][0] if i + 1 < len(dolu) else None
             tek_basina = sonraki is None or sonraki - kutu[2] >= 6
+            hizali = (re.fullmatch(r"[A-E][.)]?", tt) and tek_basina and r is not bas
+                      and r["sayfa"] == bas["sayfa"]
+                      and -6 <= kutu[0] - bas_kutu[0] <= 14 and kutu[1] > bas["y0"])
             if renkli_mi(renk):
                 if re.fullmatch(r"[A-E]", tt):
                     adaylar.append({"harf": tt, "satir": r, "renk": renk,
-                                    "kutu": kutu, "renkli": True})
+                                    "kutu": kutu, "renkli": True, "gorunmez": False})
+                elif hizali:                 # renkli "C)" / "C." (yanlış stil)
+                    adaylar.append({"harf": tt[0], "satir": r, "renk": renk,
+                                    "kutu": kutu, "renkli": False, "gorunmez": False})
                 continue
-            if (re.fullmatch(r"[A-E][.)]?", tt) and tek_basina and r is not bas
-                    and r["sayfa"] == bas["sayfa"]
-                    and -6 <= kutu[0] - bas_kutu[0] <= 14 and kutu[1] > bas["y0"]):
+            if hizali:                       # beyaz (basılmayan) harf ayrıca işaretlenir
                 adaylar.append({"harf": tt[0], "satir": r, "renk": renk,
-                                "kutu": kutu, "renkli": False})
+                                "kutu": kutu, "renkli": False,
+                                "gorunmez": _gorunmez_renk(renk)})
                 continue                     # renksiz aday girinti sayılmaz
             if ilk_metin is None and not re.fullmatch(r"\d{1,3}\s*[.)]?", tt):
                 ilk_metin = kutu[0]          # soru numarası girinti sayılmaz
@@ -2327,7 +2334,8 @@ def cevap_motoru(k):
     cevaplar, teshis = {}, []
     for o, ad in sorular:
         anahtar = (o["ti"], o["no"])
-        renksiz = sorted({a["harf"] for a in ad if a["oluk"] and not a["renkli"]})
+        renksiz_ad = [a for a in ad if a["oluk"] and not a["renkli"] and not a["gorunmez"]]
+        renksiz = sorted({a["harf"] for a in renksiz_ad})
         ad = [a for a in ad if a["renkli"]]
         oluk = [a for a in ad if a["oluk"]]
         oluk = [a for a in oluk if a["renk"] == baskin] or oluk
@@ -2350,8 +2358,9 @@ def cevap_motoru(k):
         elif len(renksiz) == 1:
             harf = renksiz[0]
             teshis.append((o["ti"], o["no"], o["sayfa"],
-                           f"cevap harfi '{harf}' cevap renginde değil (siyah ya da "
-                           f"başka renk basılmış); rengi elle değiştirilmiş olabilir"))
+                           f"cevap harfi '{harf}' cevap biçiminde değil "
+                           f"(#{renksiz_ad[0]['renk']:06X}, "
+                           f"{_renk_tarifi(renksiz_ad[0]['renk'], noktali=True)})"))
         else:
             diger = sorted({a["harf"] for a in ad if a["renk"] == baskin})
             if len(diger) == 1:
@@ -2455,6 +2464,37 @@ def _oluk_piksel_izleri(k, doc, dpi=110):
     return bulunan
 
 
+def _tam_magenta_mi(renk):
+    """Cevap rengi: %100 magenta (#EC008C, ±12)."""
+    r, g, b = (renk >> 16) & 255, (renk >> 8) & 255, renk & 255
+    return abs(r - 236) <= 12 and g <= 12 and abs(b - 140) <= 12
+
+
+def _gorunmez_renk(renk):
+    """Beyaza yakın (kâğıt rengi) yazı: beyaz zeminde basılmaz."""
+    return min((renk >> 16) & 255, (renk >> 8) & 255, renk & 255) >= 235
+
+
+def _renk_tarifi(renk, noktali=False):
+    """Açık kalan cevap harfinin rengi/biçimi, raporda okunacak sözle."""
+    r, g, b = (renk >> 16) & 255, (renk >> 8) & 255, renk & 255
+    if r >= 150 and g <= 110 and b >= 110:
+        ad = "magenta"
+    elif r >= 170 and g <= 90 and b <= 90:
+        ad = "kırmızı"
+    elif max(r, g, b) <= 90 and not renkli_mi(renk):
+        ad = "SİYAH basılmış"
+    elif not renkli_mi(renk):
+        ad = "gri basılmış"
+    else:
+        ad = "cevap rengi dışında bir renk"
+    if ad in ("magenta", "kırmızı") and noktali:
+        return f"{ad}, nokta/parantezli biçimde — stili elle değiştirilmiş olabilir"
+    if ad in ("magenta", "kırmızı"):
+        return ad
+    return f"{ad} — rengi elle değiştirilmiş ya da yanlış stil verilmiş olabilir"
+
+
 def _magenta_mi(renk):
     r, g, b = (renk >> 16) & 255, (renk >> 8) & 255, renk & 255
     return r > 170 and g < 110 and b > 90
@@ -2470,11 +2510,12 @@ def _acik_cevaplar(k):
             continue
         for a in _cevap_adaylari(o, k.get("genislikler")):   # EŞLEŞTİR ile aynı kural
             if a["renkli"] and (a["oluk"] or _magenta_mi(a["renk"])):
-                bulunan.append((o, a["satir"], a["harf"], f"#{a['renk']:06X}"))
-            elif not a["renkli"] and a["oluk"]:
-                bulunan.append((o, a["satir"], a["harf"],
-                                f"#{a['renk']:06X}; siyah/renksiz basılmış — cevap "
-                                f"rengi elle değiştirilmiş olabilir"))
+                bulunan.append((o, a["satir"], a["harf"], f"#{a['renk']:06X}"
+                                + ("" if _magenta_mi(a["renk"]) else
+                                   f"; {_renk_tarifi(a['renk'])}")))
+            elif not a["renkli"] and a["oluk"] and not a["gorunmez"]:
+                bulunan.append((o, a["satir"], a["harf"], f"#{a['renk']:06X}; "
+                                + _renk_tarifi(a["renk"], noktali=True)))
         for r in o["ham_satirlar"]:
             for t, renk in r.get("spanlar", []):
                 tt = t.strip()
@@ -2846,9 +2887,11 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
     # (şekildeki renkli harf etiketleri cevap sayılmaz).
     acik_say = {}
     for kk in (A, B):
-        # Cevap yerinde tek başına duran renksiz harf (rengi siyaha çevrilmiş
-        # cevap) soru metninden çıkarılır: açık cevap olarak ayrıca bildirilir,
-        # "metin farklı" diye bir kez daha yazılmaz
+        # Cevap yerinde tek başına duran renksiz/biçimi değişmiş harf (rengi
+        # siyaha çevrilmiş, "C)" yazılmış ya da beyaz) soru metninden ve şık
+        # sayımından çıkarılır: açık cevap olarak ayrıca bildirilir (beyaz harf
+        # basılmadığı için hiç bildirilmez); "metin farklı" ya da "ikinci şık
+        # takımı" diye bir kez daha yazılmaz
         for o in kk["ogeler"]:
             cikar = {id(a["satir"]) for a in _cevap_adaylari(o, kk.get("genislikler"))
                      if not a["renkli"] and a["oluk"]
@@ -2860,6 +2903,8 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                 o["cmp"] = _kiyas_metni(o["metin"])
                 o["norm"] = normalize(o["metin"])
                 o["tri"] = {o["norm"][i:i + 3] for i in range(len(o["norm"]) - 2)}
+                o["a_sayisi"] = max(0, o["a_sayisi"] - sum(
+                    1 for r in o["ham_satirlar"] if id(r) in cikar and _sik_harfi(r) == "A"))
         motor, _teshis, _cevapli = cevap_motoru(kk)   # EŞLEŞTİR ile aynı motor
         for o in kk["ogeler"]:
             o["cevap"] = motor.get((o["ti"], o["no"])) if o["no"] else None
@@ -2894,6 +2939,29 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                       gorunum=[(kk["etiket"], b_) for b_ in
                                tam_bolge.get((kk["etiket"], o["bolge"])) or [o["bolge"]]],
                       kutular=[(kk["etiket"], (pno, r.x0 - 3, r.y0 - 3, r.x1 + 3, r.y1 + 3))])
+            # Cevap renginde (tam magenta) kalan başka yazı: etkinlik cevabı,
+            # sayı, kelime. Tam kırmızı gerçek içerikte de kullanıldığı için
+            # (harita, grafik, konuşma balonu) aranmaz; simge karakterleri sayılmaz.
+            acik_satir = {id(r) for _o, r, _m, _c in acik}
+            for o in kk["ogeler"]:
+                for r in o["ham_satirlar"]:
+                    if id(r) in acik_satir:
+                        continue
+                    for t, renk in r.get("spanlar", []):
+                        tt = t.strip()
+                        if (not tt or not _tam_magenta_mi(renk) or len(tt) > 60
+                                or re.fullmatch(r"[A-E]", tt)   # harf kuralında
+                                or all(0xE000 <= ord(ch) <= 0xF8FF for ch in tt)):
+                            continue
+                        isaret = (kk["etiket"], (r["sayfa"], r["x0"] - 3, r["y0"] - 3,
+                                                 r["x1"] + 3, r["y1"] + 3))
+                        sorun("UYARI", kk["etiket"], f"Cevap renginde (magenta "
+                              f"#{renk:06X}) yazı: '{tt}' — açık kalmış cevap ya da "
+                              f"etkinlik cevabı olabilir, elle bakın.", test_adi(o["ti"]),
+                              o["ders"], o["etiket_no"], [isaret],
+                              gorunum=[(kk["etiket"], b_) for b_ in
+                                       tam_bolge.get((kk["etiket"], o["bolge"])) or [o["bolge"]]],
+                              kutular=[isaret])
             for o, r, metin, renk in acik:
                 tur = "cevap harfi" if len(metin) == 1 else "soru kodu"
                 isaret = (kk["etiket"], (r["sayfa"], r["x0"] - 3, r["y0"] - 3,

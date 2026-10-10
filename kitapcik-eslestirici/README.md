@@ -35,15 +35,26 @@ kullanır:
 5. **Baskı (cevapsız) kitapçıkta cevap üretilmez.** Önceden 8. sınıf sayısal baskıda Matematik
    A-7'nin şeklindeki kırmızı etiketten "B" cevabı okunuyordu.
 
-**Pembe Kod'dan alınan denetimler (v2.31).** A–B KONTROL'ün açık cevap taraması Pembe Kod
-(Cevap Kalesi) uygulamasının kurallarını da kapsar:
+**Pembe Kod'dan alınan denetimler (v2.31–v2.32).** A–B KONTROL'ün açık cevap taraması Pembe
+Kod (Cevap Kalesi) uygulamasının kurallarını da kapsar:
 
-- **Renkten bağımsız cevap harfi:** Cevap yerinde tek başına duran harf ("C", "C.", "C)"),
-  rengi siyaha ya da başka bir renge çevrilmiş olsa da açık kalan cevap sayılır. Bunun için harf
-  soru numarasıyla sol hizada olmalı (−6…+14 pt). Pembe Kod'un ölçümüne göre 175 gerçek cevap
-  harfinin hepsi numarayla tam hizadadır. Bu harf soru metninden de çıkarılır, böylece aynı sorun
-  "metin farklı" diye bir kez daha yazılmaz. EŞLEŞTİR de cevaplı kitapçıkta böyle bir harfi
-  kullanır, ama "cevap renginde değil" diye uyarır.
+- **Renkten ve stilden bağımsız cevap harfi:** Cevap yerinde tek başına duran harf açık kalan
+  cevap sayılır. Harf "C", "C." ya da "C)" biçiminde olabilir. Rengi siyaha, griye ya da başka
+  bir renge çevrilmiş, yazı tipi ya da boyu değiştirilmiş olsa da yakalanır. Bunun için harf soru
+  numarasıyla sol hizada olmalı (−6…+14 pt). Pembe Kod'un ölçümüne göre 175 gerçek cevap harfinin
+  hepsi numarayla tam hizadadır. Raporda rengi açıkça yazılır: "magenta", "kırmızı", "SİYAH
+  basılmış", "gri basılmış", "cevap rengi dışında bir renk" ya da "nokta/parantezli biçimde".
+  Rengi ya da stili değişmiş harflerin yanına "elle değiştirilmiş olabilir" diye eklenir. Bu harf
+  soru metninden ve şık sayımından çıkarılır. Böylece aynı sorun bir kez daha "metin farklı"
+  ya da "ikinci şık takımı" diye yazılmaz. EŞLEŞTİR de cevaplı kitapçıkta böyle bir harfi
+  kullanır, ama "cevap biçiminde değil" diye uyarır.
+- **Beyaz (kâğıt rengi) harf** baskıda görünmez. Açık cevap sayılmaz, "metin farklı" da
+  yazılmaz.
+- **Cevap renginde kalan başka yazı (v2.32):** Soru içinde tam magenta (#EC008C) yazılmış her
+  türlü metin raporlanır: kelime, sayı, etkinlik cevabı. Bu sarı UYARI'dır ("elle bakın").
+  Pembe Kod tam kırmızıyı da arar; bu uygulama aramaz, çünkü gerçek baskı PDF'lerinde tam kırmızı
+  içerik var: 6 çiftte "Ekvator", "y = g(x)", X/Y/Z etiketleri, konuşma balonu. Tam magenta ise
+  baskı PDF'lerinde soru içinde hiç geçmiyor. Yalnız simge karakterleri var, onlar sayılmaz.
 - **Piksel katmanı:** Her sorunun numara hizasındaki kök–şık arası şeridi görüntü olarak taranır.
   Önce metin katmanındaki glifler (numara, kök, şık) görüntüden çıkarılır. Satır kutuları yüksek
   olsa bile numaranın hemen altındaki iz kaybolmaz. Pembe Kod'un sabit "numara + 16 pt" sınırı
