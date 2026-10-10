@@ -204,6 +204,20 @@ Her kitapçık önce **kendi içinde**, sonra **A ile B karşılıklı** denetle
    - **Grafik/tablo etiketi numara sanılmaz:** Sütun kenarında durmayan ve sıraya uymayan bir
      "numara" soru başlangıcı sayılmaz. Örneğin bir grafikteki "11. ay" etiketi 11. soru sayılmaz.
      Gerçek soru numarası yanlış yazılmışsa rapor yalnız asıl hatayı gösterir.
+
+   `testler/numara_sina.py` B'nin numaralarını 7 biçimde bozar. Elimizdeki 5 gerçek çiftin baskı
+   kopyasında (7. sınıf Limit 1, 7. sınıf Limit sözel 1, 8. sınıf MOBESE sayısal, AYT LEK 1,
+   Finale TYT 1) 7 senaryonun hepsi doğru numarada HATA verdi (35/35). Senaryolar:
+   - mükerrer numara;
+   - olmayan numara;
+   - yer değiştirmiş iki numara;
+   - bir noktadan sonra kaymış numaralar;
+   - 1'den başlamayan test;
+   - silinmiş numara;
+   - noktası unutulmuş numara.
+
+   1'den başlamayan testte sonuç tek bir HATA ve "test yapısı farklı" oldu. Önceden bu durumda
+   76–97 satır çıkıyordu.
 3. **Metne bağlı grup başlıkları (A ve B ayrı ayrı):** "14 ve 15. soruları…", "1-4. soruları…",
    "12. ve 13. soruları…" gibi başlıklardaki numaralar altındaki sorularla aynı mı?
 4. **A'daki her soru B'de var mı?** Soru metni ve şıklarıyla birlikte aranır. LGS düzeninde
