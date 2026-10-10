@@ -21,6 +21,8 @@ function mkStory(sid) {
     paras.forEach(function (p) {
         Object.defineProperty(p, "contents", { get: function () { return p._t; }, set: function (v) { p._t = v; } });
         p.findGrep = function () {
+            // NUMFAIL=grep|all: InDesign'da paragraf aramasının boş döndüğü durumu taklit eder (numara yazma yedek yolları için)
+            if (process.env.NUMFAIL && /\(\?=\\\.\)/.test(grepPrefs.findWhat)) { return []; }
             var re = new RegExp(grepPrefs.findWhat), m = re.exec(p._t);
             if (!m) { return []; }
             var idx = m.index, len = m[0].length;
@@ -29,6 +31,15 @@ function mkStory(sid) {
     });
     st.paragraphs = paras;
     function whole() { return paras.map(function (p) { return p._t; }).join("\r"); }
+    // InDesign Story.characters.itemByRange(a, b): a..b (b dahil) aralığındaki metin
+    st.characters = { itemByRange: function (a, b) {
+        return { get contents() { return whole().substring(a, b + 1); },
+                 set contents(v) {
+                     if (process.env.NUMFAIL === "all") { throw new Error("metin kilitli (taklit)"); }
+                     var t = whole(); t = t.substr(0, a) + v + t.substr(b + 1);
+                     var parts = t.split("\r"); for (var i = 0; i < paras.length; i++) { paras[i]._t = (i < parts.length) ? parts[i] : ""; }
+                 } };
+    } };
     Object.defineProperty(st, "texts", { get: function () {
         return [{ get contents() { return whole(); },
                   set contents(v) { var parts = String(v).split("\r"); for (var i = 0; i < paras.length; i++) { paras[i]._t = (i < parts.length) ? parts[i] : ""; } } }];

@@ -70,7 +70,10 @@
 //   diğer sorular sayfa içinde bant olarak yer değiştirebilir; yönergedeki numaralar güncellenir.
 //   ÖZEL HAVUZ — sayfanın bütün soruları aynı havuzdaysa sayfa içi blok/bant/sütun takası ve iki
 //   sayfanın blok takası havuzlu sayfalarda da yapılır (havuz sınırı korunur); havuz bir ders
-//   bölgesini (Din 16-20, Felsefe 21-25 …) ya da ortak metin grubunu bölüyorsa uyarı verilir.)
+//   bölgesini (Din 16-20, Felsefe 21-25 …) ya da ortak metin grubunu bölüyorsa uyarı verilir.
+//   NUMARA YAZMA — her numara yazıldıktan sonra metinden geri okunup doğrulanır; ilk paragrafta arama
+//   boş dönerse numara rakamları doğrudan değiştirilir. Yine de yazılamazsa nedeniyle KRİTİK verilir,
+//   özet bu soruları "yer değiştirdi" saymaz ve cevap anahtarı kâğıttaki numaraya göre yazılır.)
 //  Limit Yayınları — A kitapçığından otomatik B kitapçığı üretimi
 //  (Lise AYT/TYT + Ortaokul 5-8. sınıf denemeleri)
 // -------------------------------------------------------------
@@ -3946,14 +3949,46 @@
                 return directiveSpan(String(stD.texts[0].contents), ed.lo + ed.delta, ed.hi + ed.delta) !== null;
             } catch (eDe) { return false; }
         }
+        // v4.26: sorunun çerçevesindeki numarayı metinden geri oku (yazmanın tuttuğunu doğrulamak için)
+        function readNumOf(rec) {
+            try {
+                var mR = QNUM_RE.exec(String((rec.numTf || rec.tf).parentStory.texts[0].contents));
+                return mR ? parseInt(mR[1], 10) : -1;
+            } catch (eRn) { return -1; }
+        }
+        // numarayı yaz ve DOĞRULA. 1) v4.25'ten beri kullanılan yol: ilk paragrafta GREP. 2) Arama boş
+        // dönerse (InDesign'da Bul/Değiştir ayarı, metnin başında boş paragraf vb.) hikâyenin başındaki
+        // numara rakamları doğrudan karakter aralığı olarak değiştirilir. Her iki yolda biçim korunur.
         function writeNum(contRec, newNum) {
             if (contRec.num === newNum) { return true; }
-            clearGrep();
-            app.findGrepPreferences.findWhat = "\\d{1,3}(?=\\.)";
-            var found = (contRec.numTf || contRec.tf).parentStory.paragraphs[0].findGrep();
-            clearGrep();
-            if (found.length > 0) { found[0].contents = String(newNum); return true; }
-            return false;
+            var stW = null;
+            try { stW = (contRec.numTf || contRec.tf).parentStory; } catch (eW0) { return false; }
+            try {
+                clearGrep();
+                app.findGrepPreferences.findWhat = "\\d{1,3}(?=\\.)";
+                var found = stW.paragraphs[0].findGrep();
+                clearGrep();
+                if (found.length > 0) {
+                    found[0].contents = String(newNum);
+                    if (readNumOf(contRec) === newNum) { return true; }
+                }
+            } catch (eW1) { try { clearGrep(); } catch (eW1b) {} }
+            try {
+                var mW = QNUM_RE.exec(String(stW.texts[0].contents));
+                if (mW && parseInt(mW[1], 10) !== newNum) {
+                    var sW = mW[0].length - 1 - mW[1].length;
+                    stW.characters.itemByRange(sW, sW + mW[1].length - 1).contents = String(newNum);
+                }
+                return readNumOf(contRec) === newNum;
+            } catch (eW2) { return false; }
+        }
+        // yazılamayan numaranın olası nedeni (uyarıda gösterilir)
+        function whyNoWrite(rec) {
+            var tfN = rec.numTf || rec.tf;
+            try { if (tfN.parentStory.lockState !== LockStateValues.NONE) { return "metin InCopy ile kilitli (önce metni düzenlemeye alın)"; } } catch (eY1) {}
+            try { if (tfN.itemLayer.locked) { return "çerçevenin katmanı kilitli"; } } catch (eY2) {}
+            try { if (tfN.locked) { return "çerçeve kilitli"; } } catch (eY3) {}
+            return "numara metinde bulunamadı";
         }
 
         // bölüm bazlı: bundle'lı bölümlerde tam sıralı numaralandırma
@@ -4031,12 +4066,25 @@
                 }
             }
         }
+        var numFail = [], numFailWhy = "";
         for (k = 0; k < numJobs.length; k++) {
-            var jb = numJobs[k], rJ = jb.r;
-            if (!writeNum(rJ, jb.nn)) { log("UYARI: S" + rJ.num + " numarası bulunamadı (s." + pageData[jb.pi].name + ")."); }
+            var jb = numJobs[k], rJ = jb.r, okW = writeNum(rJ, jb.nn);
+            if (!okW) {
+                numFail.push("Test " + (rJ.sec + 1) + " A" + rJ.num + "\u2192" + jb.nn + " (s." + pageData[jb.pi].name + ")");
+                if (numFailWhy === "") { numFailWhy = whyNoWrite(rJ); }
+                log("Ayrıntı: Test " + (rJ.sec + 1) + " S" + rJ.num + " numarası " + jb.nn + " yapılamadı (s." + pageData[jb.pi].name + ").");
+            }
+            // yazılamadıysa cevap anahtarı KÂĞITTAKİ numaraya göre yazılır (anahtar baskıyla hep tutarlı kalsın)
+            var nnP = jb.nn;
+            if (!okW) { nnP = readNumOf(rJ); if (!(nnP > 0)) { nnP = rJ.num; } }
             mapping.push({ sec: rJ.sec, oldNum: rJ.num, oldPage: pageData[rJ.page].name,
-                           newNum: jb.nn, newPage: pageData[jb.pi].name, ans: rJ.ans, shape: rJ.shape,
-                           keySkip: (rJ.keySkip === true), rec: rJ });
+                           newNum: nnP, newPage: pageData[jb.pi].name, ans: rJ.ans, shape: rJ.shape,
+                           keySkip: (rJ.keySkip === true), rec: rJ, numFail: !okW });
+        }
+        if (numFail.length > 0) {
+            log("KRİTİK: " + numFail.length + " sorunun numarası B'ye yazılamadı (" + numFailWhy + "): " +
+                numFail.slice(0, 8).join(", ") + (numFail.length > 8 ? ", \u2026" : "") +
+                " — bu sorular yer değiştirdi ama A numarasını taşıyor; numaraları elle düzeltin ya da nedeni giderip tekrar çalıştırın.");
         }
 
         // bütünlük denetimi + yerinde kalan raporu
@@ -4277,13 +4325,15 @@
             } else { log("UYARI: CSV yazılamadı."); }
         }
 
-        var movedQ = 0;
+        var movedQ = 0, failQ = 0;
         for (k = 0; k < mapping.length; k++) {
+            if (mapping[k].numFail) { failQ++; continue; }   // v4.26: numarası yazılamayan soru "yer değiştirdi" sayılmaz
             if (mapping[k].oldNum !== mapping[k].newNum) { movedQ++; }
         }
         // v4.22: sade uyarı penceresi — özet, yerinde kalanlar (nedenleriyle), dikkat, bilgi
         var R = [];
         R.push(movedQ + " / " + mapping.length + " soru yer değiştirdi.");
+        if (failQ > 0) { R.push("\u26A0 " + failQ + " sorunun numarası yazılamadı — DİKKAT bölümüne bakın."); }
         if (stayLines.length > 0) {
             R.push("");
             R.push("YERİNDE KALAN " + stayLines.length + " SORU");
