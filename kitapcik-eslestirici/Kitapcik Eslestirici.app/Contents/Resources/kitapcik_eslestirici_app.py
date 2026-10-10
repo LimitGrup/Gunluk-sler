@@ -1650,7 +1650,18 @@ def _kayip_testleri_bul(k):
     okumasına dokunulmaz); k["kaymalar_s"] yazılır."""
     satirlar, beklenen = k["satirlar"], k["beklenen"]
     eslesen = dict(k["eslesen"])
-    kenar = sorted(set(k["adaylar"]))       # sütun kenarındaki numara satırları
+    kenar = set(k["adaylar"])               # sütun kenarındaki numara satırları
+    # Motor 60'tan büyük numarayı aday saymaz; devam ettirilmiş numaralar
+    # (TYT Sosyal 41–65 gibi) için aynı sütun kenarındaki 61–199 da alınır
+    kenar_x = {}
+    for s_, _n in kenar:
+        kenar_x.setdefault(satirlar[s_].get("sutun"), set()).add(round(satirlar[s_]["x0"]))
+    for i, r in enumerate(satirlar):
+        mm = SORU_BASI_RE.match(r["metin"])
+        if mm and 60 < int(mm.group(1)) < 200 and any(
+                abs(r["x0"] - x) <= 6 for x in kenar_x.get(r.get("sutun"), ())):
+            kenar.add((i, int(mm.group(1))))
+    kenar = sorted(kenar)
     kullanilan = set(eslesen.values())
     kaymalar = []
     for ti_ in sorted({t for t, _d, _n in beklenen}):
@@ -1681,18 +1692,26 @@ def _kayip_testleri_bul(k):
                 # iki sütunlu sayfada satır sırası karışık olsa da her soru kendi
                 # numarasıyla yerine oturur
                 eslem = [(s_, n, n - fark) for s_, n in dizi]
-            else:
-                # Parçalar: aynı farkla ardışık giden numaralar (fark 0: doğru,
-                # başka fark: kaymış parça; Tarih 41–45 basılmış, Coğrafya 6'dan
-                # doğru devam ediyor gibi). En çok iki kaymış parça.
-                parcalar = []
-                for i, ((_s, yn), dn) in enumerate(zip(dizi, dogru)):
-                    if parcalar and parcalar[-1][0] == yn - dn:
-                        parcalar[-1][1].append(i)
-                    else:
-                        parcalar.append((yn - dn, [i]))
-                if sum(1 for f_, _i in parcalar if f_) <= 2:
-                    eslem = [(dizi[i][0], dizi[i][1], dogru[i]) for i in range(len(dizi))]
+        if eslem is None and dizi:
+            # Parçalar: aynı farkla ardışık giden numaralar (fark 0: doğru,
+            # başka fark: kaymış parça; Tarih 41–45 basılmış, Coğrafya 6'dan
+            # doğru devam ediyor gibi). Kaymış numara testin numara aralığının
+            # dışında olmalı (bir sonraki testin "1." sorusu kaymış sayılmaz);
+            # en çok iki kaymış parça. Uyan baştaki kısım alınır, kalan
+            # numaralar "bulunamadı" diye bildirilir.
+            en_buyuk = bek_ti[-1][0]
+            farklar, uyan = [], 0
+            for (_s, yn), dn in zip(dizi, dogru):
+                f_ = yn - dn
+                if f_ and yn <= en_buyuk:
+                    break
+                if f_ and (not farklar or farklar[-1] != f_):
+                    if sum(1 for x in set(farklar) if x) >= 2 and f_ not in farklar:
+                        break
+                farklar.append(f_)
+                uyan += 1
+            if uyan:
+                eslem = [(dizi[i][0], dizi[i][1], dogru[i]) for i in range(uyan)]
         if eslem is None:
             if hic_capa:
                 break                        # sonraki testlerin yeri belirsiz
@@ -1714,6 +1733,7 @@ def _kayip_testleri_bul(k):
                 parca.append((d_, y_, s_))
     k["eslesen"] = eslesen
     k["kaymalar_s"] = kaymalar
+    k["kenar_ek"] = [c for c in kenar if c not in set(k["adaylar"])]
 
 
 def _kitapcik_bolumle(k, mobilya, log):
@@ -1782,7 +1802,7 @@ def _kitapcik_bolumle(k, mobilya, log):
     # almışsa ("11. ay" gibi grafik etiketi) ve bu numara okuma sırasına
     # uymuyorsa çapa sayılmaz: numara "bulunamadı" diye bildirilir, yanlış
     # yerden bölünen soru başka (metin/şekil) hatalarına yol açmaz
-    kenar_satir = {id(satirlar[s]) for s, _n in k["adaylar"]}
+    kenar_satir = {id(satirlar[s]) for s, _n in k["adaylar"] + k.get("kenar_ek", [])}
     dusen = set()
     for ti_ in {beklenen[b_][0] for _p, b_ in capalar}:
         dizi = sorted((p_, b_) for p_, b_ in capalar if beklenen[b_][0] == ti_)
