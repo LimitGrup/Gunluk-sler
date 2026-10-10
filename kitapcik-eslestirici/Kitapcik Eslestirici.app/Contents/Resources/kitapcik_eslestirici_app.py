@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.28"
+SURUM = "2.29"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -112,12 +112,11 @@ def cevap_kodu_bul(satir, sadece_renk=False):
 
 
 def cevap_konumdan_bul(satirlar, sat_i, baslar):
-    """Yedek cevap araması (yalnızca soru bölümünde cevap bulunamadıysa).
-    Tam genişlik sayfada satır sırası sayfayı iki yarıya böldüğü için numara
-    satırı sağ yarıya düşerse, numaranın altındaki renkli cevap harfi numaradan
-    önce okunur ve soru bölümüne girmez. Burada konuma bakılır: aynı sayfada,
-    soru numarasının sol hizasında (±8 pt), numaranın altında ve aynı sütundaki
-    bir sonraki soru numarasından önce duran ilk renkli A–E harfi."""
+    """Cevap harfinin konumdan bulunması: aynı sayfada, soru numarasının sol
+    hizasında (±8 pt), numaranın altında ve aynı sütundaki bir sonraki soru
+    numarasından önce duran ilk renkli A–E harfi. Satır sırasından bağımsızdır:
+    tam genişlik sayfada numara satırı sağ yarıya düşse de, sorunun şeklinde
+    renkli harf etiketleri olsa da doğru harfi verir."""
     bas = satirlar[sat_i]
     pno, x0, y0 = bas["sayfa"], bas["x0"], bas["y0"]
     alt = min([satirlar[b]["y0"] for b in baslar
@@ -514,27 +513,24 @@ def sorulari_ayikla(pdf_yolu, yapi, etiket, log, dokum=None):
         ilk_secenek = next((i for i, r in enumerate(bolum)
                             if re.match(r"^\s*A\s*[\)\.]", r["metin"])), len(bolum))
         cevap = kod = None
-        cevap_sayfa = None
         atla = set()
         c0, k0 = cevap_kodu_bul(bolum[0], sadece_renk=True)
         if c0 or k0:
             cevap, kod = c0, k0
-            cevap_sayfa = bolum[0]["sayfa"]
         for i in range(1, ilk_secenek):  # cevap işareti seçeneklerden önce durur
             c, k = cevap_kodu_bul(bolum[i])
             if c or k:
                 atla.add(i)
-                if cevap is None and c:
-                    cevap_sayfa = bolum[i]["sayfa"]
                 cevap = cevap or c
                 kod = kod or k
-        # Bulunamadıysa ya da soru numarasından BAŞKA bir sayfadan okunduysa
-        # (tam genişlik sayfada sonraki sorunun cevabı olabilir): numaranın
-        # kendi sayfasında, hizasındaki renkli harf
-        if cevap is None or cevap_sayfa != bolum[0]["sayfa"]:
-            konum = cevap_konumdan_bul(satirlar, sat_i, tum_baslar)
-            if konum:
-                cevap = konum
+        # Cevap işareti soru numarasının hizasında (sol boşlukta) duruyorsa o
+        # alınır. Sıra kuralı yalnızca bu yoksa geçerlidir: sorunun içindeki
+        # ilk renkli harfi aldığı için şekildeki renkli etiketi (ör. kırmızı
+        # "A", "B") ya da tam genişlik sayfada sonraki sayfadaki başka bir
+        # sorunun cevabını alabiliyordu.
+        konum = cevap_konumdan_bul(satirlar, sat_i, tum_baslar)
+        if konum:
+            cevap = konum
         parcalar = []
         for i, r in enumerate(bolum):
             if i in atla:

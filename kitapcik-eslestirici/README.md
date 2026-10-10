@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.28)
+# Kitapçık Eşleştirici (v2.29)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -7,7 +7,7 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.xlsx` + sorunlu soruların A/B görüntüleri (PDF) |
 
-## EŞLEŞTİR'deki düzeltmeler (v2.21, v2.27, v2.28)
+## EŞLEŞTİR'deki düzeltmeler (v2.21, v2.27–v2.29)
 
 EŞLEŞTİR'in eşleştirme mantığı aynen duruyor; üstüne iki düzeltme eklendi:
 
@@ -28,6 +28,13 @@ EŞLEŞTİR'in eşleştirme mantığı aynen duruyor; üstüne iki düzeltme ekl
   sayfalarda (ör. 8. sınıf MOBESE sayısal) numara satırı sağ yarıya düşünce numaranın altındaki
   cevap harfi okunmuyordu: A'da 36/40, B'de 39/40 → şimdi 40/40 ve 40/40, eşleşen 40 çiftin
   hepsinde A ile B'nin cevabı aynı.
+- **Cevap harfi konumdan (v2.29):** Soru numarasının hizasında (sol boşlukta, numaranın altında,
+  bir sonraki sorudan önce) renkli A–E harfi varsa cevap odur; eski sıra kuralı yalnızca böyle bir
+  harf yoksa kullanılır. Eski kural sorunun içindeki ilk renkli harfi alıyordu: 8. sınıf Limit
+  sayısal Matematik A-7'nin şeklindeki kırmızı "B" etiketi cevap sanılıyordu (doğrusu pembe "A";
+  B kitapçığında aynı şekil olduğu için A–B cevap kıyası da yakalayamıyordu). Elimizdeki 5 cevaplı
+  gerçek çiftte (376 soru, iki kitapçıkta 752 cevap) iki kural yalnızca 4 cevapta ayrışıyor ve 4'ünde de
+  konumdan okunan harf doğru.
 - **Başka sayfadan okunan cevap (v2.28):** Aynı nedenle soru bölümü bir sonraki sayfaya taşınca
   eski kural o sayfadaki başka bir sorunun cevabını alabiliyordu (7. sınıf MOBESE sayısal Fen
   A-16: C okunuyordu, doğrusu B). Cevap soru numarasından başka bir sayfadan okunduysa ve
@@ -50,6 +57,8 @@ Gerçek kitapçıklarda sonuç:
 | 8. sınıf MOBESE Sayısal 1 A ↔ B (40 soru, cevaplı) | 38/40, cevap A 36/40 · B 39/40 | 40/40, cevap 40/40 · 40/40 |
 | 7. sınıf MOBESE Sayısal 1 A ↔ B (40 soru, cevaplı) | 34/40, cevap A 36/40 (1 yanlış) · B 36/40 | 40/40, cevap 40/40 · 40/40 |
 | AYT LEK 1. Deneme A ↔ B (166 soru, cevaplı) | 166/166, cevap 166/166 · 166/166 | 166/166, cevap 166/166 · 166/166 |
+| 7. sınıf Limit Deneme 1 A ↔ B (90 soru, cevaplı) | 90/90, cevap 85/90 · 86/90; Din soruları "SOSYAL BİLGİLER", Türkçe "Bölüm 1" | 90/90, cevap 90/90 · 90/90, 6 branş doğru adla |
+| 8. sınıf Limit Sayısal 1 A ↔ B (40 soru, cevaplı) | 38/40, cevap 39/40 (1 yanlış) · 38/40; Matematik "Bölüm 1" | 40/40, cevap 40/40 · 40/40 |
 
 TYT ya da AYT seçili olup dosyalar o düzene uymuyorsa (ör. 10. sınıf kitapçığı varsayılan TYT
 seçiliyken çalıştırılırsa) önce diğer sınav türü denenir; o da uymazsa yapı kitapçığın kendisinden
