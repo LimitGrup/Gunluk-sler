@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.30"
+SURUM = "2.31"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -2230,30 +2230,45 @@ def _sik_harfleri(o):
 
 def _cevap_adaylari(o, genislikler=None):
     """Bir sorunun cevap işareti adayları (EŞLEŞTİR ve A–B KONTROL ortak kural).
-    Aday: soru alanındaki renkli tek harf (A–E). "Oluk" adayı: harf, yanındaki
-    metnin (soru kökü ya da şıklar) girintisinin solundaki boşlukta durur —
-    numaranın altı ya da şıkların solu; denemede cevap hep bu boşluktadır. Şeklin
-    içindeki renkli etiketler metin girintisinin sağında kaldığı için oluk adayı
+    Aday: soru alanındaki renkli tek harf (A–E); ayrıca rengi ne olursa olsun
+    (siyaha çevrilmiş, yanlış stil almış) tek başına duran ve soru numarasıyla
+    sol hizada olan tek harf ("C", "C.", "C)") — renksiz aday. "Oluk" adayı: harf,
+    yanındaki metnin (soru kökü ya da şıklar) girintisinin solundaki boşlukta
+    durur — numaranın altı ya da şıkların solu; denemede cevap hep bu boşluktadır.
+    Şeklin içindeki renkli etiketler ve girintiye dayalı tablo harfleri oluk adayı
     olmaz. Ölçü her işaretin kendi yerinde alınır: yanındaki metin (aynı sütun,
     ±30 pt) işaretin sağından başlamalı; aynı sayfa yarısında (sütunda) ya da
-    işaretin üstünden geçen, solundan başlayan metin satırı olmamalı (yan yana
-    kısa şıklar dahil). Böylece şıklar başka sütuna/sayfaya taşsa da çalışır.
-    Dönen: [{harf, satir, renk, kutu, oluk}]."""
+    işaretin üstünden geçen, işaretin sağ kenarından önce başlayan metin satırı
+    olmamalı (yan yana kısa şıklar dahil). Böylece şıklar başka sütuna/sayfaya
+    taşsa da çalışır. Dönen: [{harf, satir, renk, kutu, oluk, renkli}]."""
+    satirlar_ = o["ham_satirlar"]
+    if not satirlar_:
+        return []
+    bas = satirlar_[0]                       # soru numarası satırı
+    bas_kutu = (bas.get("kutular") or [(bas["x0"], bas["y0"], bas["x1"], bas["y1"])])[0]
     metin_bas, adaylar = [], []
-    for r in o["ham_satirlar"]:
+    for r in satirlar_:
         spanlar = r.get("spanlar", [])
         kutular = r.get("kutular") or [(r["x0"], r["y0"], r["x1"], r["y1"])] * len(spanlar)
+        dolu = [(t.strip(), renk, tuple(kutu)) for (t, renk), kutu in zip(spanlar, kutular)
+                if t.strip()]
         ilk_metin = None
-        for (t, renk), kutu in zip(spanlar, kutular):
-            tt = t.strip()
-            if not tt:
-                continue
+        for i, (tt, renk, kutu) in enumerate(dolu):
+            sonraki = dolu[i + 1][2][0] if i + 1 < len(dolu) else None
+            tek_basina = sonraki is None or sonraki - kutu[2] >= 6
             if renkli_mi(renk):
                 if re.fullmatch(r"[A-E]", tt):
                     adaylar.append({"harf": tt, "satir": r, "renk": renk,
-                                    "kutu": tuple(kutu)})
-            elif ilk_metin is None and not re.fullmatch(r"\d{1,3}\s*[.)]?", tt):
-                ilk_metin = kutu[0]      # soru numarası girinti sayılmaz
+                                    "kutu": kutu, "renkli": True})
+                continue
+            if (re.fullmatch(r"[A-E][.)]?", tt) and tek_basina and r is not bas
+                    and r["sayfa"] == bas["sayfa"]
+                    and -6 <= kutu[0] - bas_kutu[0] <= 14 and kutu[1] > bas["y0"]):
+                adaylar.append({"harf": tt[0], "satir": r, "renk": renk,
+                                "kutu": kutu, "renkli": False})
+                continue                     # renksiz aday girinti sayılmaz
+            if ilk_metin is None and not re.fullmatch(r"\d{1,3}\s*[.)]?", tt):
+                ilk_metin = kutu[0]          # soru numarası girinti sayılmaz
         if ilk_metin is not None and len(r["metin"].strip()) >= 2:
             metin_bas.append((r["sayfa"], ilk_metin, r["x1"], r["y0"], r["y1"]))
     for a in adaylar:
@@ -2263,7 +2278,7 @@ def _cevap_adaylari(o, genislikler=None):
         komsu = [(mx0, mx1) for p, mx0, mx1, my0, my1 in metin_bas
                  if p == pno and my1 > y0 - 30 and my0 < y1 + 30]
         sagda = [mx0 for mx0, _mx1 in komsu if x1 - 1 <= mx0 < x1 + 80]
-        solda = [mx0 for mx0, mx1 in komsu if mx0 < x0 - 1
+        solda = [mx0 for mx0, mx1 in komsu if mx0 < x1 - 1
                  and (mx1 > x0 or (mx0 >= orta) == (x0 >= orta))]
         a["oluk"] = bool(sagda) and not solda
     return adaylar
@@ -2281,13 +2296,16 @@ def cevap_motoru(k):
     from collections import Counter
     sorular = [(o, _cevap_adaylari(o, k.get("genislikler"))) for o in k["ogeler"]
                if o["no"]]
-    oluklu = [ad for _o, ad in sorular if any(a["oluk"] for a in ad)]
+    oluklu = [ad for _o, ad in sorular if any(a["oluk"] and a["renkli"] for a in ad)]
     if not sorular or len(oluklu) < 0.5 * len(sorular):
         return {}, [], False                 # baskı kitapçığı: cevap işareti yok
-    baskin = Counter(a["renk"] for ad in oluklu for a in ad if a["oluk"]).most_common(1)[0][0]
+    baskin = Counter(a["renk"] for ad in oluklu for a in ad
+                     if a["oluk"] and a["renkli"]).most_common(1)[0][0]
     cevaplar, teshis = {}, []
     for o, ad in sorular:
         anahtar = (o["ti"], o["no"])
+        renksiz = sorted({a["harf"] for a in ad if a["oluk"] and not a["renkli"]})
+        ad = [a for a in ad if a["renkli"]]
         oluk = [a for a in ad if a["oluk"]]
         oluk = [a for a in oluk if a["renk"] == baskin] or oluk
         harfler = sorted({a["harf"] for a in oluk})
@@ -2306,6 +2324,11 @@ def cevap_motoru(k):
             teshis.append((o["ti"], o["no"], o["sayfa"],
                            f"birden fazla cevap işareti ({', '.join(harfler)}); "
                            f"A şıkkına en yakın olan '{harf}' alındı"))
+        elif len(renksiz) == 1:
+            harf = renksiz[0]
+            teshis.append((o["ti"], o["no"], o["sayfa"],
+                           f"cevap harfi '{harf}' cevap renginde değil (siyah ya da "
+                           f"başka renk basılmış); rengi elle değiştirilmiş olabilir"))
         else:
             diger = sorted({a["harf"] for a in ad if a["renk"] == baskin})
             if len(diger) == 1:
@@ -2326,6 +2349,80 @@ def cevap_motoru(k):
     return cevaplar, teshis, True
 
 
+def _oluk_piksel_izleri(k, doc, dpi=110):
+    """Metin katmanında görünmeyen cevap izleri (eğriye çevrilmiş ya da resme
+    gömülü cevap harfi). Her sorunun numara hizasındaki kök–şık arası şeridi
+    (numaranın solundan 4 pt, sağından 16 pt; numaranın alt kenarından ilk şıkka
+    kadar)
+    görüntü olarak taranır. Metin olmayan, harf boyutunda ve tek başına duran
+    (sağında, üstünde, altında mürekkep sürmeyen) her iz döner — gerçek
+    unutulmuş işaret tek başına durur; şerit kenarına dayanmış şekil, tablo,
+    çizgi sayılmaz. Dönen: [(öğe, sayfa, Rect, cevap renginde mi)]."""
+    from scipy import ndimage
+    olcek = 72.0 / dpi
+    metin = {}
+    for r in k["satirlar"]:
+        for kutu in r.get("kutular") or [(r["x0"], r["y0"], r["x1"], r["y1"])]:
+            metin.setdefault(r["sayfa"], []).append(fitz.Rect(kutu))
+    bulunan = []
+    for o in k["ogeler"]:
+        if not o["no"] or not o["ham_satirlar"]:
+            continue
+        bas = o["ham_satirlar"][0]
+        pno = bas["sayfa"]
+        sx = (bas.get("kutular") or [(bas["x0"],)])[0][0]
+        W = k["genislikler"][pno]
+        sol = sx < W / 2
+        siklar = [r["y0"] for r in o["ham_satirlar"]
+                  if r["sayfa"] == pno and _sik_harfi(r) and (r["x0"] < W / 2) == sol
+                  and r["y0"] > bas["y0"] + 4]
+        if not siklar:
+            continue
+        y_ust, y_alt = bas["y1"] + 1, min(siklar) - 2      # numaranın altından
+        if y_alt - y_ust < 8:
+            continue
+        serit = fitz.Rect(sx - 4, y_ust, sx + 16, y_alt)
+        sayfa = doc[pno]
+        kirp = fitz.Rect(serit.x0, serit.y0 - 4, serit.x1 + 8, serit.y1 + 4) & sayfa.rect
+        if kirp.is_empty:
+            continue
+        pix = sayfa.get_pixmap(dpi=dpi, clip=kirp, colorspace=fitz.csRGB,
+                               alpha=False, annots=False)
+        a = np.frombuffer(pix.samples, np.uint8).reshape(
+            pix.height, pix.width, 3).astype(np.int16)
+        ink = (a <= 200).any(axis=2)
+        if not ink.any():
+            continue
+        etiket, _n = ndimage.label(ndimage.binary_dilation(ink),
+                                   structure=np.ones((3, 3)))
+        for sl in ndimage.find_objects(etiket):
+            if sl is None:
+                continue
+            py0, py1, px0, px1 = sl[0].start, sl[0].stop, sl[1].start, sl[1].stop
+            r = fitz.Rect(kirp.x0 + px0 * olcek, kirp.y0 + py0 * olcek,
+                          kirp.x0 + px1 * olcek, kirp.y0 + py1 * olcek)
+            if not r.intersects(serit) or r.x1 > serit.x1 + 1:
+                continue
+            if not (3 <= r.width <= 22 and 3 <= r.height <= 22) or \
+                    max(r.width, r.height) < 7 or r.width >= 19:
+                continue
+            if r.y0 <= bas["y1"] + 0.5:          # numara glifinin eteği
+                continue
+            sag = int(6 / olcek) + 1
+            dik = int(3 / olcek) + 1
+            if (ink[py0:py1, px1:px1 + sag].any() or
+                    ink[max(py0 - dik, 0):py0, px0:px1].any() or
+                    ink[py1:py1 + dik, px0:px1].any()):
+                continue                         # tek başına değil: içerik parçası
+            if any(m.intersects(r) for m in metin.get(pno, [])):
+                continue                         # metin katmanında: ayrıca denetlenir
+            parca = a[py0:py1, px0:px1][ink[py0:py1, px0:px1]]
+            ort = parca.mean(axis=0) if len(parca) else (0, 0, 0)
+            cevap_rengi = ort[0] > 150 and ort[1] < 110 and ort[2] > 90
+            bulunan.append((o, pno, r, bool(cevap_rengi)))
+    return bulunan
+
+
 def _magenta_mi(renk):
     r, g, b = (renk >> 16) & 255, (renk >> 8) & 255, renk & 255
     return r > 170 and g < 110 and b > 90
@@ -2340,8 +2437,12 @@ def _acik_cevaplar(k):
         if not o["ham_satirlar"]:
             continue
         for a in _cevap_adaylari(o, k.get("genislikler")):   # EŞLEŞTİR ile aynı kural
-            if a["oluk"] or _magenta_mi(a["renk"]):
+            if a["renkli"] and (a["oluk"] or _magenta_mi(a["renk"])):
                 bulunan.append((o, a["satir"], a["harf"], f"#{a['renk']:06X}"))
+            elif not a["renkli"] and a["oluk"]:
+                bulunan.append((o, a["satir"], a["harf"],
+                                f"#{a['renk']:06X}; siyah/renksiz basılmış — cevap "
+                                f"rengi elle değiştirilmiş olabilir"))
         for r in o["ham_satirlar"]:
             for t, renk in r.get("spanlar", []):
                 tt = t.strip()
@@ -2713,6 +2814,20 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
     # (şekildeki renkli harf etiketleri cevap sayılmaz).
     acik_say = {}
     for kk in (A, B):
+        # Cevap yerinde tek başına duran renksiz harf (rengi siyaha çevrilmiş
+        # cevap) soru metninden çıkarılır: açık cevap olarak ayrıca bildirilir,
+        # "metin farklı" diye bir kez daha yazılmaz
+        for o in kk["ogeler"]:
+            cikar = {id(a["satir"]) for a in _cevap_adaylari(o, kk.get("genislikler"))
+                     if not a["renkli"] and a["oluk"]
+                     and a["satir"]["metin"].strip().rstrip(".)") == a["harf"]}
+            if cikar:
+                parcalar = [_temiz_satir(r, ilk=(i == 0))
+                            for i, r in enumerate(o["ham_satirlar"]) if id(r) not in cikar]
+                o["metin"] = "\n".join(x for x in parcalar if x)
+                o["cmp"] = _kiyas_metni(o["metin"])
+                o["norm"] = normalize(o["metin"])
+                o["tri"] = {o["norm"][i:i + 3] for i in range(len(o["norm"]) - 2)}
         motor, _teshis, _cevapli = cevap_motoru(kk)   # EŞLEŞTİR ile aynı motor
         for o in kk["ogeler"]:
             o["cevap"] = motor.get((o["ti"], o["no"])) if o["no"] else None
@@ -2728,6 +2843,25 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                   f"({len(cevapli)}/{soru_say} soruda renkli cevap/kod var) — "
                   f"baskı PDF'i değil, cevaplı dizgi PDF'i gibi görünüyor.")
         else:
+            # Metin katmanında olmayan izler (eğri / resim): yalnız baskıda
+            try:
+                with fitz.open(kk["pdf"]) as d_:
+                    izler = _oluk_piksel_izleri(kk, d_)
+            except Exception as h:
+                logla(f"Piksel katmanı taranamadı: {h}")
+                izler = []
+            for o, pno, r, cevap_rengi in izler:
+                sorun("HATA" if cevap_rengi else "UYARI", kk["etiket"],
+                      ("Cevap yerinde cevap renginde iz" if cevap_rengi else
+                       "Cevap yerinde metin olmayan iz")
+                      + f" ({r.width:.0f}×{r.height:.0f} pt): metin katmanında yok — "
+                      f"eğriye çevrilmiş ya da resme gömülü cevap harfi olabilir"
+                      + ("." if cevap_rengi else "; renkten bağımsız, elle bakın."),
+                      test_adi(o["ti"]), o["ders"], o["etiket_no"],
+                      [(kk["etiket"], (pno, r.x0 - 3, r.y0 - 3, r.x1 + 3, r.y1 + 3))],
+                      gorunum=[(kk["etiket"], b_) for b_ in
+                               tam_bolge.get((kk["etiket"], o["bolge"])) or [o["bolge"]]],
+                      kutular=[(kk["etiket"], (pno, r.x0 - 3, r.y0 - 3, r.x1 + 3, r.y1 + 3))])
             for o, r, metin, renk in acik:
                 tur = "cevap harfi" if len(metin) == 1 else "soru kodu"
                 isaret = (kk["etiket"], (r["sayfa"], r["x0"] - 3, r["y0"] - 3,

@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.30)
+# Kitapçık Eşleştirici (v2.31)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -34,6 +34,21 @@ kullanır:
    ayrıca vardır.
 5. **Baskı (cevapsız) kitapçıkta cevap üretilmez.** Önceden 8. sınıf sayısal baskıda Matematik
    A-7'nin şeklindeki kırmızı etiketten "B" cevabı okunuyordu.
+
+**Pembe Kod'dan alınan denetimler (v2.31).** A–B KONTROL'ün açık cevap taraması Pembe Kod
+(Cevap Kalesi) uygulamasının kurallarını da kapsar:
+
+- **Renkten bağımsız cevap harfi:** Cevap yerinde tek başına duran harf ("C", "C.", "C)"),
+  rengi siyaha ya da başka bir renge çevrilmiş olsa da açık kalan cevap sayılır. Bunun için harf
+  soru numarasıyla sol hizada olmalı (−6…+14 pt). Pembe Kod'un ölçümüne göre 175 gerçek cevap
+  harfinin hepsi numarayla tam hizadadır. Bu harf soru metninden de çıkarılır, böylece aynı sorun
+  "metin farklı" diye bir kez daha yazılmaz. EŞLEŞTİR de cevaplı kitapçıkta böyle bir harfi
+  kullanır, ama "cevap renginde değil" diye uyarır.
+- **Piksel katmanı:** Her sorunun numara hizasındaki kök–şık arası şeridi görüntü olarak taranır.
+  Metin katmanında olmayan, harf boyutunda ve tek başına duran iz bildirilir: eğriye çevrilmiş ya
+  da resme gömülü cevap harfi. Cevap rengindeyse HATA, değilse "elle bakın" uyarısı olur.
+  Sağında, üstünde ya da altında mürekkep süren izler (şerit kenarına dayanmış şekil, tablo,
+  çizgi) sayılmaz.
 
 Bu kurallar `testler/duzen_sina.py` ile sınanır. Bu betik, gerçek denemelerde görülen bütün
 durumları içeren A/B kitapçıkları üretir: yukarıdaki şık dizilişleri, iki sütunlu ve tam genişlik

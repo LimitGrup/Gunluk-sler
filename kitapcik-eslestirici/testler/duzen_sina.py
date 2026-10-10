@@ -99,6 +99,16 @@ def dizgi_sinifi(g, yer):
             cevapli = self.cevapli or cevap_acik
 
             def isaret(xx, yy):
+                if cevap_acik == "siyah":            # rengi elle siyaha çevrilmiş
+                    self._yaz(xx, yy, cevap, boy=9, kalin=True)
+                    return
+                if cevap_acik == "egri":             # eğriye çevrilmiş: metin yok
+                    k_ = fitz.Rect(xx, yy - 8, xx + 6, yy)
+                    self.sayfa.draw_polyline([k_.bl, (k_.x0 + 3, k_.y0), k_.br],
+                                             color=g.MAGENTA, width=1.4)
+                    self.sayfa.draw_line((k_.x0 + 1.2, k_.y1 - 3), (k_.x1 - 1.2, k_.y1 - 3),
+                                         color=g.MAGENTA, width=1.2)
+                    return
                 self._yaz(xx, yy, cevap, boy=9, kalin=True, renk=g.MAGENTA)
                 if s.get("kod") and yer == "sik":
                     self._yaz(ic, yy, f"56TS{no:02d}T1S{no}", boy=7, renk=g.MAGENTA)
@@ -135,7 +145,7 @@ def dizgi_sinifi(g, yer):
     return Dizgi
 
 
-def dizgile(g, Dizgi, testler, harf, kod, yol, cevapli=True, acik=None):
+def dizgile(g, Dizgi, testler, harf, kod, yol, cevapli=True, acik=None, acik_tur=True):
     d = Dizgi(harf, kod, cevapli)
     for ti, t in enumerate(testler):
         toplam = sum(len(b["sorular"]) for _d, bl in t["dersler"] for b in bl)
@@ -149,7 +159,7 @@ def dizgile(g, Dizgi, testler, harf, kod, yol, cevapli=True, acik=None):
                 for s in b["sorular"]:
                     no += 1
                     d.soru(no, s["govde"], s["sik"], s["cevap"], sekil=s["sekil"],
-                           cevap_acik=(acik == (ti, no)), s=s)
+                           cevap_acik=(acik_tur if acik == (ti, no) else False), s=s)
     d.kaydet(yol)
 
 
@@ -197,16 +207,23 @@ def main(app, cikti):
         qa, qb = cikti / f"duzen_{yer}_A_baski.pdf", cikti / f"duzen_{yer}_B_baski.pdf"
         dizgile(g, Dizgi, a, "A", "26279901", qa, cevapli=False)
         dizgile(g, Dizgi, b, "B", "26279902", qb, cevapli=False)
-        hedefler = sorted(k for k, s in hb.items() if s.get("etiket"))[:1] + \
-            sorted(k for k, s in hb.items() if s.get("tasma"))[:1]
-        for ad, acik in [("temiz", None)] + [(f"açık {k}", k) for k in hedefler]:
+        etiketli = sorted(k for k, s in hb.items() if s.get("etiket"))
+        tasan = sorted(k for k, s in hb.items() if s.get("tasma"))
+        sade = sorted(k for k, s in hb.items() if not s.get("etiket") and not s.get("tasma"))
+        durumlar = [("temiz", None, True), (f"açık renkli {etiketli[0]}", etiketli[0], True),
+                    (f"açık renkli {tasan[0]}", tasan[0], True),
+                    (f"açık SİYAH {sade[3]}", sade[3], "siyah"),
+                    (f"açık EĞRİ {sade[7]}", sade[7], "egri")]
+        for ad, acik, tur in durumlar:
             qb2 = cikti / f"duzen_{yer}_B_baski_{'temiz' if acik is None else 'acik'}.pdf"
-            dizgile(g, Dizgi, b, "B", "26279902", qb2, cevapli=False, acik=acik)
+            dizgile(g, Dizgi, b, "B", "26279902", qb2, cevapli=False, acik=acik,
+                    acik_tur=tur)
             yapi = m.yapi_cikar(str(qa))
             _sonuc, sorunlar = m.kontrol_et(str(qa), str(qb2), yapi, lambda _x: None,
                                             yapi_b=m.yapi_cikar(str(qb2)))
             hata = [s_ for s_ in sorunlar if s_["onem"] == "HATA"]
-            acik_bulunan = [s_ for s_ in hata if "Açık kalan" in s_["aciklama"]]
+            acik_bulunan = [s_ for s_ in hata if "Açık kalan" in s_["aciklama"]
+                            or "Cevap yerinde" in s_["aciklama"]]
             sorular_ = {(s_["test"], s_["soru"]) for s_ in acik_bulunan}
             beklenen = set() if acik is None else {str(acik[1])}
             durum = "tamam" if (len(hata) == len(acik_bulunan)
