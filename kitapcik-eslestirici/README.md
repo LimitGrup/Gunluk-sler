@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.29)
+# Kitapçık Eşleştirici (v2.30)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -6,6 +6,41 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.xlsx` + sorunlu soruların A/B görüntüleri (PDF) |
+
+## Tek cevap motoru (v2.30)
+
+EŞLEŞTİR'in cevap sütunu ile A–B KONTROL'ün "açık kalan cevap" denetimi artık **aynı motoru**
+kullanır:
+
+1. **Sorular sayfa düzeninden ayrılır** (A–B KONTROL'ün motoru): tam genişlik, iki sütun ya da
+   ikisi karışık sayfa; sütun ya da sayfa değiştiren sorular.
+2. **Cevap, sorunun oluğundaki renkli harftir:** numaranın altı ya da şıkların solundaki boşluk.
+   Bir harfin olukta sayılması için yanındaki metin (soru kökü ya da şıklar) harfin sağından
+   başlamalı, aynı sütunda harfin solundan başlayan metin olmamalıdır. Bu ölçü her harfin kendi
+   yerinde alınır; bu yüzden:
+   - şık dizilişi fark etmez: alt alta, yan yana, 3+2 (A B C / D E), 2+2+1 (A B / C D / E),
+     4 şıklı 2+2;
+   - şıklar sonraki sütuna ya da sayfaya taşsa da cevap şıkların yanında bulunur;
+   - şeklin içindeki renkli etiketler (kırmızı "A", "B") cevap sayılmaz.
+3. **Kitapçığın cevap rengi** (çoğunlukla magenta) kendiliğinden öğrenilir.
+4. **Motor kendini denetler.** Cevaplı kitapçıkta her soru için:
+   - cevap işareti yoksa,
+   - birden fazla işaret varsa,
+   - harf beklenen yerde değilse,
+   - harf sorunun şıklarında yoksa (4 şıklı soruda "E" gibi)
+
+   Kontrol sayfasına sayfasıyla birlikte "CEVAP KONTROL ET" yazılır. Yanlış bir harfi sessizce
+   yazmak yerine görünür uyarı verir. A ile B'nin cevabı farklıysa "CEVAP UYUŞMAZLIĞI" uyarısı
+   ayrıca vardır.
+5. **Baskı (cevapsız) kitapçıkta cevap üretilmez.** Önceden 8. sınıf sayısal baskıda Matematik
+   A-7'nin şeklindeki kırmızı etiketten "B" cevabı okunuyordu.
+
+Bu kurallar `testler/duzen_sina.py` ile sınanır. Bu betik, gerçek denemelerde görülen bütün
+durumları içeren A/B kitapçıkları üretir: yukarıdaki şık dizilişleri, iki sütunlu ve tam genişlik
+testler, 5 ve 4 şıklı testler, şekilde kırmızı harf etiketleri, cevabın yanında renkli soru kodu,
+şıkları sonraki sütuna ya da sayfaya taşan sorular, cevabın numaranın altında ya da A şıkkı
+hizasında durması. EŞLEŞTİR'in cevap harfi ve B numarası ile A–B KONTROL'ün açık cevap
+denetimi (temiz baskı, bilerek açık bırakılmış cevap) her durumda gerçek değerle karşılaştırılır.
 
 ## EŞLEŞTİR'deki düzeltmeler (v2.21, v2.27–v2.29)
 
@@ -216,6 +251,7 @@ pip install pymupdf numpy scipy openpyxl
 python3 testler/ornek_pdf_uret.py /tmp/ornek          # gerçek dizgiye benzeyen A/B PDF'leri
 python3 testler/eslestir_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/ornek /tmp/sonuc.json
 python3 testler/kontrol_sina.py  "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/ornek
+python3 testler/duzen_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/duzen  # cevap motoru: şık dizilişleri, taşan şıklar, şekil etiketleri
 python3 testler/cevap_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/ornek  # EŞLEŞTİR: cevap harfi ve B numarası gerçek değerle aynı mı
 python3 testler/kesir_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/kesir  # ilk satır numaranın üstünden başlıyor: kaybolmamalı
 python3 testler/tire_sina.py     "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/tire   # A ve B'de farklı tire karakteri: sahte uyarı olmamalı

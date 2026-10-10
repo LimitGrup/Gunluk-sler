@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.29"
+SURUM = "2.30"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -200,13 +200,16 @@ def satirlari_al(pdf_yolu):
             for ln in blk.get("lines", []):
                 spanlar = [(sp.get("text", ""), sp.get("color", 0))
                            for sp in ln.get("spans", [])]
+                kutular = [tuple(sp.get("bbox", ln["bbox"]))
+                           for sp in ln.get("spans", [])]
                 metin = "".join(t for t, _ in spanlar).strip()
                 if not metin:
                     continue
                 x0, y0, x1, y1 = ln["bbox"]
                 sutun = 0 if (x0 + x1) / 2 < orta else 1
                 kayit = {"metin": metin, "x0": x0, "y0": y0, "x1": x1, "y1": y1,
-                         "sayfa": pno, "sutun": sutun, "spanlar": spanlar}
+                         "sayfa": pno, "sutun": sutun, "spanlar": spanlar,
+                         "kutular": kutular}
                 (sol if sutun == 0 else sag).append(kayit)
                 kolonlar[sutun][0] = min(kolonlar[sutun][0], x0)
                 kolonlar[sutun][1] = max(kolonlar[sutun][1], x1)
@@ -1161,12 +1164,24 @@ def calistir(a_pdf, b_pdf, sinav, sablon, anah_a, anah_b, cikti, log,
                 dok_a, dok_b = dok_a3, dok_b3
         except RuntimeError as h:
             logla(f"Otomatik yapı denenemedi: {h}")
+    # Tek cevap motoru: sorular sayfa düzeninden ayrılır (A–B KONTROL ile aynı),
+    # cevap harfi sorunun oluğundan (numaranın altı / şıkların solu) okunur ve
+    # her soru denetlenir. Motor çalışmazsa eski okuma aynen kalır.
+    yapilar, cevap_uyarilari = None, []
+    try:
+        yapilar = _kitapciklari_hazirla(a_pdf, b_pdf, yapi, (a_s, u1, dok_a),
+                                        (b_s, u2, dok_b))
+        cevap_uyarilari = cevaplari_belirle(yapilar, a_s, b_s, yapi, log)
+    except Exception as h:
+        logla("Cevap motoru çalışmadı:\n" + traceback.format_exc())
+        log(f"  (cevap motoru atlandı: {h})")
     log("Sorular eşleştiriliyor...")
     esl, u3 = eslestir(a_s, b_s, yapi)
     try:                      # bağımsız içerik doğrulaması (kesin yanlışı düzeltir)
         log("Eşleşmeler içerikle doğrulanıyor...")
         eslestirme_dogrula(a_pdf, b_pdf, yapi, esl, u3, log,
-                           hazir_a=(a_s, u1, dok_a), hazir_b=(b_s, u2, dok_b))
+                           hazir_a=(a_s, u1, dok_a), hazir_b=(b_s, u2, dok_b),
+                           hazir_yapi=yapilar)
     except Exception as h:    # doğrulama yapılamazsa EŞLEŞTİR sonucu aynen kalır
         logla("İçerik doğrulaması yapılamadı:\n" + traceback.format_exc())
         log(f"  (içerik doğrulaması atlandı: {h})")
@@ -1176,7 +1191,7 @@ def calistir(a_pdf, b_pdf, sinav, sablon, anah_a, anah_b, cikti, log,
         f"B kitapçığı {len(pdf_b)}/{len(b_s)}")
     ca = {**pdf_a, **anahtar_oku(anah_a, yapi)}
     cb = {**pdf_b, **anahtar_oku(anah_b, yapi)}
-    uyarilar = u1 + u2 + u3
+    uyarilar = u1 + u2 + u3 + cevap_uyarilari
     if a_s and not pdf_a and not anah_a:
         uyarilar.append("A kitapçığında renkli cevap işareti bulunamadı; "
                         "Cevap sütunu boş kalacak.")
@@ -1327,6 +1342,16 @@ def _mobilya_anahtari(satir):
     return "#" if re.fullmatch(r"[\d\s/–-]+", m) else re.sub(r"\s+", " ", m)
 
 
+def _renkli_harf_satiri(satir):
+    """Yalnızca renkli tek harften (A–E) oluşan satır: cevap işareti olabilir.
+    Sayfa üst bilgisi sayılması için her sayfada aynı yerde durmalıdır (kitapçık
+    harfi "A A A A A" gibi); iki sayfada aynı köşede duran cevap harfi —
+    şıkları sayfa başına taşan sorularda olur — üst bilgi sayılmaz."""
+    spanlar = [(t.strip(), c) for t, c in satir.get("spanlar", []) if t.strip()]
+    return (len(spanlar) == 1 and re.fullmatch(r"[A-E]", spanlar[0][0]) is not None
+            and renkli_mi(spanlar[0][1]))
+
+
 def _kenar_bolgesi(satir, sayfa_yuk, sayfa_gen):
     return (satir["y1"] < 0.12 * sayfa_yuk or satir["y0"] > 0.90 * sayfa_yuk
             or satir["x1"] < 0.08 * sayfa_gen or satir["x0"] > 0.92 * sayfa_gen)
@@ -1351,7 +1376,8 @@ def _mobilya_kumesi(kitapciklar):
                 continue                     # şıklar asla sayfa bilgisi değildir
             m = _mobilya_anahtari(r)
             if (_kenar_bolgesi(r, yuk[r["sayfa"]], gen[r["sayfa"]])
-                    and not SORU_BASI_RE.match(r["metin"])):
+                    and not SORU_BASI_RE.match(r["metin"])
+                    and not _renkli_harf_satiri(r)):
                 for anahtar in _kenar_anahtarlari(r, m):
                     kenar.setdefault(anahtar, set()).add(r["sayfa"])
             sabit.setdefault((m, round(r["x0"] / 3), round(r["y0"] / 3)),
@@ -1368,7 +1394,7 @@ def _mobilya_mi(satir, kume, sayfa_yuk, sayfa_gen):
     m = _mobilya_anahtari(satir)
     if ("sabit", (m, round(satir["x0"] / 3), round(satir["y0"] / 3))) in kume:
         return True
-    if SORU_BASI_RE.match(satir["metin"]) or \
+    if SORU_BASI_RE.match(satir["metin"]) or _renkli_harf_satiri(satir) or \
             not _kenar_bolgesi(satir, sayfa_yuk, sayfa_gen):
         return False
     # Komşu konumlara da bakılır (yuvarlama sınırında kalan satırlar için)
@@ -2191,6 +2217,115 @@ def _test_adlari(k, yapi):
     return adlar
 
 
+def _sik_harfleri(o):
+    """Sorudaki şık harfleri; yan yana dizilmiş şıklar (A) 12  B) 15 …) dahil."""
+    harfler = set()
+    for r in o["ham_satirlar"]:
+        h = _sik_harfi(r)
+        if h:
+            harfler.add(h)
+        harfler.update(re.findall(r"(?:^|\s)([A-E])\s*\)", r["metin"]))
+    return harfler
+
+
+def _cevap_adaylari(o, genislikler=None):
+    """Bir sorunun cevap işareti adayları (EŞLEŞTİR ve A–B KONTROL ortak kural).
+    Aday: soru alanındaki renkli tek harf (A–E). "Oluk" adayı: harf, yanındaki
+    metnin (soru kökü ya da şıklar) girintisinin solundaki boşlukta durur —
+    numaranın altı ya da şıkların solu; denemede cevap hep bu boşluktadır. Şeklin
+    içindeki renkli etiketler metin girintisinin sağında kaldığı için oluk adayı
+    olmaz. Ölçü her işaretin kendi yerinde alınır: yanındaki metin (aynı sütun,
+    ±30 pt) işaretin sağından başlamalı; aynı sayfa yarısında (sütunda) ya da
+    işaretin üstünden geçen, solundan başlayan metin satırı olmamalı (yan yana
+    kısa şıklar dahil). Böylece şıklar başka sütuna/sayfaya taşsa da çalışır.
+    Dönen: [{harf, satir, renk, kutu, oluk}]."""
+    metin_bas, adaylar = [], []
+    for r in o["ham_satirlar"]:
+        spanlar = r.get("spanlar", [])
+        kutular = r.get("kutular") or [(r["x0"], r["y0"], r["x1"], r["y1"])] * len(spanlar)
+        ilk_metin = None
+        for (t, renk), kutu in zip(spanlar, kutular):
+            tt = t.strip()
+            if not tt:
+                continue
+            if renkli_mi(renk):
+                if re.fullmatch(r"[A-E]", tt):
+                    adaylar.append({"harf": tt, "satir": r, "renk": renk,
+                                    "kutu": tuple(kutu)})
+            elif ilk_metin is None and not re.fullmatch(r"\d{1,3}\s*[.)]?", tt):
+                ilk_metin = kutu[0]      # soru numarası girinti sayılmaz
+        if ilk_metin is not None and len(r["metin"].strip()) >= 2:
+            metin_bas.append((r["sayfa"], ilk_metin, r["x1"], r["y0"], r["y1"]))
+    for a in adaylar:
+        x0, y0, x1, y1 = a["kutu"]
+        pno = a["satir"]["sayfa"]
+        orta = (genislikler[pno] if genislikler else 612) / 2
+        komsu = [(mx0, mx1) for p, mx0, mx1, my0, my1 in metin_bas
+                 if p == pno and my1 > y0 - 30 and my0 < y1 + 30]
+        sagda = [mx0 for mx0, _mx1 in komsu if x1 - 1 <= mx0 < x1 + 80]
+        solda = [mx0 for mx0, mx1 in komsu if mx0 < x0 - 1
+                 and (mx1 > x0 or (mx0 >= orta) == (x0 >= orta))]
+        a["oluk"] = bool(sagda) and not solda
+    return adaylar
+
+
+def cevap_motoru(k):
+    """Kitapçıktaki her sorunun cevap harfi ve teşhisi (EŞLEŞTİR ile A–B KONTROL
+    aynı motoru kullanır). Sorular sayfa düzeninden ayrılır (tam genişlik, iki
+    sütun, sütun/sayfa devri); cevap sorunun oluğundaki renkli harftir. Kitapçığın
+    cevap rengi (çoğunlukla magenta) kendiliğinden öğrenilir. Kendini denetler:
+    cevap yoksa, birden fazla işaret varsa, harf beklenen yerde değilse ya da
+    sorunun şıklarında yoksa teşhis yazılır.
+    Dönen: (cevaplar {(ti, no): harf|None}, teşhisler [(ti, no, sayfa, mesaj)],
+            kitapçık cevaplı mı)."""
+    from collections import Counter
+    sorular = [(o, _cevap_adaylari(o, k.get("genislikler"))) for o in k["ogeler"]
+               if o["no"]]
+    oluklu = [ad for _o, ad in sorular if any(a["oluk"] for a in ad)]
+    if not sorular or len(oluklu) < 0.5 * len(sorular):
+        return {}, [], False                 # baskı kitapçığı: cevap işareti yok
+    baskin = Counter(a["renk"] for ad in oluklu for a in ad if a["oluk"]).most_common(1)[0][0]
+    cevaplar, teshis = {}, []
+    for o, ad in sorular:
+        anahtar = (o["ti"], o["no"])
+        oluk = [a for a in ad if a["oluk"]]
+        oluk = [a for a in oluk if a["renk"] == baskin] or oluk
+        harfler = sorted({a["harf"] for a in oluk})
+        harf = None
+        if len(harfler) == 1:
+            harf = harfler[0]
+        elif len(harfler) > 1:
+            # Birden fazla işaret: A şıkkı satırına en yakın olanı al, uyar
+            sik_a = [r for r in o["ham_satirlar"] if _sik_harfi(r) == "A"]
+            def uzaklik(a):
+                if not sik_a:
+                    return 0
+                return min(abs(a["kutu"][1] - r["y0"]) + 1000 * (a["satir"]["sayfa"] != r["sayfa"])
+                           for r in sik_a)
+            harf = min(oluk, key=uzaklik)["harf"]
+            teshis.append((o["ti"], o["no"], o["sayfa"],
+                           f"birden fazla cevap işareti ({', '.join(harfler)}); "
+                           f"A şıkkına en yakın olan '{harf}' alındı"))
+        else:
+            diger = sorted({a["harf"] for a in ad if a["renk"] == baskin})
+            if len(diger) == 1:
+                harf = diger[0]
+                teshis.append((o["ti"], o["no"], o["sayfa"],
+                               f"cevap harfi '{harf}' beklenen yerde (numaranın altı / "
+                               f"şıkların solu) değil"))
+            else:
+                teshis.append((o["ti"], o["no"], o["sayfa"],
+                               "cevap işareti okunamadı"
+                               + (f" (adaylar: {', '.join(diger)})" if diger else "")))
+        siklar = _sik_harfleri(o)
+        if harf and "A" in siklar and len(siklar) >= 3 and harf not in siklar:
+            teshis.append((o["ti"], o["no"], o["sayfa"],
+                           f"cevap '{harf}' ama soruda {''.join(sorted(siklar))} "
+                           f"şıkları var"))
+        cevaplar[anahtar] = harf
+    return cevaplar, teshis, True
+
+
 def _magenta_mi(renk):
     r, g, b = (renk >> 16) & 255, (renk >> 8) & 255, renk & 255
     return r > 170 and g < 110 and b > 90
@@ -2202,23 +2337,19 @@ def _acik_cevaplar(k):
     Şekil içindeki renkli etiketler (haritadaki A, B, C ...) sayılmaz."""
     bulunan = []
     for o in k["ogeler"]:
-        satirlar_ = o["ham_satirlar"]
-        if not satirlar_:
+        if not o["ham_satirlar"]:
             continue
-        sik_x = [r["x0"] for r in satirlar_ if _sik_harfi(r)]
-        govde_x = [r["x0"] for r in satirlar_[1:] if len(r["metin"]) >= 10]
-        sinir = min(sik_x or govde_x or [satirlar_[0]["x1"] + 15])
-        for r in satirlar_:
+        for a in _cevap_adaylari(o, k.get("genislikler")):   # EŞLEŞTİR ile aynı kural
+            if a["oluk"] or _magenta_mi(a["renk"]):
+                bulunan.append((o, a["satir"], a["harf"], f"#{a['renk']:06X}"))
+        for r in o["ham_satirlar"]:
             for t, renk in r.get("spanlar", []):
                 tt = t.strip()
-                if not tt or not renkli_mi(renk):
+                if not tt or not renkli_mi(renk) or re.fullmatch(r"[A-E]", tt):
                     continue
                 kod = tt.replace(" ", "")
-                if re.fullmatch(r"[A-E]", tt):
-                    if not (r["x1"] <= sinir + 1 or _magenta_mi(renk)):
-                        continue
-                elif not (re.fullmatch(r"[A-Za-z0-9ÇĞİÖŞÜçğıöşü.\-_/]{4,20}", tt)
-                          and re.search(r"\d", kod) and re.search(r"[A-Za-z]", kod)):
+                if not (re.fullmatch(r"[A-Za-z0-9ÇĞİÖŞÜçğıöşü.\-_/]{4,20}", tt)
+                        and re.search(r"\d", kod) and re.search(r"[A-Za-z]", kod)):
                     continue     # soru kodu boşluksuz tek parçadır ("81 ilde" değil)
                 bulunan.append((o, r, tt, f"#{renk:06X}"))
     return bulunan
@@ -2297,20 +2428,53 @@ def _icerik_eslestir(A, B, docA, docB, onbellek, cevap_a, cevap_b):
     return eslesmeler, eksik_a, eksik_b
 
 
-def eslestirme_dogrula(a_pdf, b_pdf, yapi, esl, uyarilar, log, hazir_a=None,
-                       hazir_b=None):
-    """EŞLEŞTİR sonucunu bağımsız içerik karşılaştırmasıyla doğrular ve yalnızca
-    kesin yanlış eşleri düzeltir: A sorusunun metni B'deki başka bir soruyla
-    birebir (≥ %98) aynıyken EŞLEŞTİR'in seçtiği sorunun metni belirgin farklıysa
-    (< %90). Her düzeltme uyarılara "DÜZELTİLDİ" diye yazılır. Karışık sayfa
-    düzeninde (tam genişlik soru + iki sütun) EŞLEŞTİR'in metni karışabiliyor."""
-    from collections import Counter
+def _kitapciklari_hazirla(a_pdf, b_pdf, yapi, hazir_a, hazir_b):
+    """A ve B'yi A–B KONTROL'ün soru ayırma motoruyla böler (okunmuş satırlarla)."""
     sessiz = lambda _m: None
     A = _kitapcik_oku(a_pdf, yapi, "A", sessiz, hazir=hazir_a)
     B = _kitapcik_oku(b_pdf, yapi, "B", sessiz, hazir=hazir_b)
     mobilya = _mobilya_kumesi([A, B])
     _kitapcik_bolumle(A, mobilya, sessiz)
     _kitapcik_bolumle(B, mobilya, sessiz)
+    return A, B
+
+
+def cevaplari_belirle(yapilar, a_s, b_s, yapi, log):
+    """EŞLEŞTİR'in cevap sütunu ortak cevap motorundan gelir. Cevaplı kitapçıkta
+    motorun bulamadığı ya da şüphelendiği her soru uyarı olarak yazılır (sessiz
+    yanlış yerine görünür uyarı). Cevapsız (baskı) kitapçıkta şekildeki renkli
+    harflerden cevap üretilmez. Dönen: uyarı satırları."""
+    uyarilar = []
+    for kk, sorular in zip(yapilar, (a_s, b_s)):
+        cevaplar, teshis, cevapli = cevap_motoru(kk)
+        for anahtar, s_ in sorular.items():
+            s_["cevap"] = cevaplar.get(anahtar) if cevapli else None
+        for o in kk["ogeler"]:              # içerik doğrulaması da aynı cevabı görsün
+            o["cevap"] = cevaplar.get((o["ti"], o["no"])) if cevapli and o["no"] else None
+        if not cevapli:
+            continue
+        okunan = sum(1 for k_ in sorular if cevaplar.get(k_))
+        log(f"  {kk['etiket']} kitapçığı: cevap harfi {okunan}/{len(sorular)} soruda "
+            f"okundu" + (f", {len(teshis)} soruda uyarı" if teshis else ""))
+        for ti, no, pno, mesaj in teshis:
+            test = yapi[ti]["test"] if ti < len(yapi) else ""
+            uyarilar.append(f"CEVAP KONTROL ET: {kk['etiket']} kitapçığı {test} "
+                            f"{no}. soru (s.{pno + 1}) — {mesaj}.")
+    return uyarilar
+
+
+def eslestirme_dogrula(a_pdf, b_pdf, yapi, esl, uyarilar, log, hazir_a=None,
+                       hazir_b=None, hazir_yapi=None):
+    """EŞLEŞTİR sonucunu bağımsız içerik karşılaştırmasıyla doğrular ve yalnızca
+    kesin yanlış eşleri düzeltir: A sorusunun metni B'deki başka bir soruyla
+    birebir (≥ %98) aynıyken EŞLEŞTİR'in seçtiği sorunun metni belirgin farklıysa
+    (< %90). Her düzeltme uyarılara "DÜZELTİLDİ" diye yazılır. Karışık sayfa
+    düzeninde (tam genişlik soru + iki sütun) EŞLEŞTİR'in metni karışabiliyor."""
+    from collections import Counter
+    if hazir_yapi is not None:          # cevap motoru için zaten bölünmüş
+        A, B = hazir_yapi
+    else:
+        A, B = _kitapciklari_hazirla(a_pdf, b_pdf, yapi, hazir_a, hazir_b)
     docA, docB = fitz.open(a_pdf), fitz.open(b_pdf)
     onbellek = {}
     _isaret_onbellegi(A, B, docA, docB, onbellek)
@@ -2549,8 +2713,9 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
     # (şekildeki renkli harf etiketleri cevap sayılmaz).
     acik_say = {}
     for kk in (A, B):
+        motor, _teshis, _cevapli = cevap_motoru(kk)   # EŞLEŞTİR ile aynı motor
         for o in kk["ogeler"]:
-            o["cevap"] = None
+            o["cevap"] = motor.get((o["ti"], o["no"])) if o["no"] else None
         acik = _acik_cevaplar(kk)
         for o, r, metin, renk in acik:
             if re.fullmatch(r"[A-E]", metin) and not o["cevap"]:
