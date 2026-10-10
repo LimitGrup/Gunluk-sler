@@ -191,6 +191,17 @@ var doc = {
     fullName: { name: encodeURI(docFile), fsName: "/tmp/" + docFile, parent: { fsName: "/tmp" } },
     viewPreferences: {}, documentPreferences: { facingPages: M.facing }, save: function () {}
 };
+// InDesign Page.appliedSection: sayfanın bölümü (bölüm işareti = üst banttaki branş adı olabilir)
+(function () {
+    var starts = M.sections.map(function (s, si) {
+        var ix = -1; M.pages.forEach(function (p, pi) { if (p.self === s.pageStart) { ix = pi; } });
+        return { ix: ix, obj: doc.sections[si] };
+    }).filter(function (x) { return x.ix >= 0; }).sort(function (a, b) { return a.ix - b.ix; });
+    pages.forEach(function (pg, pi) {
+        var cur = null; starts.forEach(function (st) { if (st.ix <= pi) { cur = st.obj; } });
+        if (cur) { pg.appliedSection = cur; }
+    });
+})();
 Object.defineProperty(doc, "stories", { get: function () { return Object.keys(STORIES).map(function (k) { return STORIES[k]; }); } });
 Object.keys(M.stories).forEach(function (sid) { story(sid); });
 
@@ -419,6 +430,36 @@ qb.forEach(function (q) {
     if (!testPages[tt][q.pg]) { issue("TEST DIŞI: Test " + (tt + 1) + " sorusu (A" + aNum[q.sid] + ") s." + pages[q.pg].name + " sayfasına gitti"); }
     bNums[tt] = bNums[tt] || {}; bNums[tt][q.num] = (bNums[tt][q.num] || 0) + 1;
 });
+// 1b) OKUMA SIRASI (v4.26): B'de her testin numaraları sayfa sayfa okuma sırasıyla artmalı —
+// tam genişlik soru kendi bandıdır; iki sütunlu bantta önce sol sütun yukarıdan aşağı, sonra sağ sütun.
+// A'nın kendisi bu sıraya uymayan sayfa (tasarım gereği) denetim dışıdır.
+function bandSeq(list) {
+    var bySeq = list.slice(0).sort(function (a, b) { return (a.pg - b.pg) || (a.gb[0] - b.gb[0]) || (a.gb[1] - b.gb[1]); });
+    var out = [], band = null, lastPg = -1;
+    function flush() { if (!band) { return; } band.sort(function (a, b) { return (colOf(a.gb) - colOf(b.gb)) || (a.gb[0] - b.gb[0]); }); out = out.concat(band); band = null; }
+    bySeq.forEach(function (q) {
+        if (q.pg !== lastPg) { flush(); lastPg = q.pg; }
+        if (q.gb[3] - q.gb[1] > W * 0.55) { flush(); out.push(q); return; }
+        if (!band) { band = []; }
+        band.push(q);
+    });
+    flush();
+    return out;
+}
+function orderBreaks(list) {
+    var seq = bandSeq(list), last = {}, bad = {};
+    seq.forEach(function (q) {
+        var tt = testOf[q.sid]; if (tt === undefined) { return; }
+        if (last[tt] !== undefined && q.num <= last[tt].num) { bad[q.pg] = (bad[q.pg] || []).concat([last[tt].num + "→" + q.num]); }
+        last[tt] = q;
+    });
+    return bad;
+}
+var aBreak = orderBreaks(qa), bBreak = orderBreaks(qb);
+Object.keys(bBreak).forEach(function (pg) {
+    if (aBreak[pg]) { return; }
+    issue("OKUMA SIRASI s." + pages[pg].name + ": numaralar okuma sırasıyla artmıyor (" + bBreak[pg].join(", ") + ")");
+});
 Object.keys(bNums).forEach(function (tt) {
     var nums = Object.keys(bNums[tt]).map(Number).sort(function (a, b) { return a - b; });
     var n = nums.length, bad = [];
@@ -532,7 +573,14 @@ pages.forEach(function (p, i) {
         var dAr = Math.abs(x.gb[0] - y.gb[0]);
         if (dAr > 3) { return; }   // 1-3 pt'lik tasarım kaçıklığı da satırdır
         nAlign++;
-        if (bL[li] && bR[ri] && Math.abs(bL[li].gb[0] - bR[ri].gb[0]) > dAr + 1) {
+        // v4.26: iki soru da AYNI kaynak sayfadan blok hâlinde geldiyse (tam sayfa takası) kaynak sayfadaki
+        // kendi kaçıklıkları korunur — izin verilen fark o kaçıklıktır
+        var tol = dAr;
+        if (bL[li] && bR[ri]) {
+            var sL = qa.filter(function (z) { return z.sid === bL[li].sid; })[0], sR = qa.filter(function (z) { return z.sid === bR[ri].sid; })[0];
+            if (sL && sR && sL.pg === sR.pg && sL.pg !== i) { var dS = Math.abs(sL.gb[0] - sR.gb[0]); if (dS <= 3 && dS > tol) { tol = dS; } }
+        }
+        if (bL[li] && bR[ri] && Math.abs(bL[li].gb[0] - bR[ri].gb[0]) > tol + 1) {
             issue("SATIR HİZASI s." + p.name + ": A'da aynı satırdaki sol/sağ slotlar B'de " + bL[li].gb[0].toFixed(1) + " / " + bR[ri].gb[0].toFixed(1));
         }
     }); });

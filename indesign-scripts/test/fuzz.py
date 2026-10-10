@@ -19,7 +19,8 @@ def story_text(d, sid):
 
 def is_q(d, sid):
     t = story_text(d, sid); m = QRE.match(t)
-    if not m or re.match(r"\s*Bu\s+(testte|denemede)", t[:60], re.I): return None
+    # test girişi ("Bu testte 10 soru vardır." ya da "1. Bu testte ...") soru değildir
+    if not m or re.search(r"Bu\s+(testte|denemede)", t[:80], re.I): return None
     if len(re.sub(r"[\s ​﻿￼\u009e»«¶]+", "", t[m.end():])) < 8: return None
     if re.match(r"^\s*\d+\s*\.?\s*(ve|,|-|–|ile)\s*\d+.{0,12}soru", t, re.I): return None
     return int(m.group(1))

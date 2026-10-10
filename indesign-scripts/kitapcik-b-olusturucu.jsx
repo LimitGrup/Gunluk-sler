@@ -73,7 +73,10 @@
 //   bölgesini (Din 16-20, Felsefe 21-25 …) ya da ortak metin grubunu bölüyorsa uyarı verilir.
 //   NUMARA YAZMA — her numara yazıldıktan sonra metinden geri okunup doğrulanır; ilk paragrafta arama
 //   boş dönerse numara rakamları doğrudan değiştirilir. Yine de yazılamazsa nedeniyle KRİTİK verilir,
-//   özet bu soruları "yer değiştirdi" saymaz ve cevap anahtarı kâğıttaki numaraya göre yazılır.)
+//   özet bu soruları "yer değiştirdi" saymaz ve cevap anahtarı kâğıttaki numaraya göre yazılır.
+//   BÖLÜM İŞARETİ — üst banttaki branş adı ("TÜRKÇE", "MATEMATİK") ana sayfada Bölüm İşareti olarak
+//   duruyorsa sayfanın branş etiketi odur; farklı branş sayfaları arasında takas yapılmaz (numaralar
+//   branşlar arasında sürse ve test girişi yalnız ana sayfada olsa bile branş karışmaz).)
 //  Limit Yayınları — A kitapçığından otomatik B kitapçığı üretimi
 //  (Lise AYT/TYT + Ortaokul 5-8. sınıf denemeleri)
 // -------------------------------------------------------------
@@ -596,6 +599,16 @@
         // allPageItems bazı sürümlerde boş dönebildiğinden öz-yinelemeli yedek içerir.
         // v4.25: üst bant yazısından branş etiketi: "SÖZEL BÖLÜM - TÜRKÇE" → TÜRKÇE,
         //        "MATEMATİK TESTİ" → MATEMATİK ("TESTİ BİTTİ", "TESTİNE GEÇİNİZ" sayılmaz)
+        // v4.26: sayfanın InDesign bölümü (Section) işareti — üst banttaki "TÜRKÇE", "MATEMATİK" çoğu belgede
+        // ana sayfada Bölüm İşareti olarak durur. Yalnız kitapçık harfi ("A A A A A") ya da boşsa kullanılmaz.
+        function sectionLabelOf(pgS) {
+            var mkS = "";
+            try { mkS = String(pgS.appliedSection.marker); } catch (eSL) { return ""; }
+            mkS = trimS(mkS.replace(/(^|[\s\u00A0])[ABab](?=[\s\u00A0]|$)/g, " "));
+            var lettersS = mkS.replace(/[^A-Za-z\u00C7\u011E\u0130\u00D6\u015E\u00DC\u00E7\u011F\u0131\u00F6\u015F\u00FC]/g, "");
+            if (lettersS.length < 3 || mkS.length > 70) { return ""; }
+            return "B\u00D6L\u00DCM: " + mkS.toUpperCase();
+        }
         function branchLabelOf(t) {
             var tl = trimS(String(t));
             if (tl.length < 3 || tl.length > 70 || /[\r\n\u2029]/.test(tl)) { return ""; }
@@ -786,6 +799,9 @@
                     }
                 }
             }
+
+            // v4.26: sayfada branş başlığı bulunamadıysa sayfanın bölüm işareti branş etiketi olur
+            if (pageLabel === "") { pageLabel = sectionLabelOf(pg); }
 
             // v4.24: A'da birden çok soru tek grupta duruyorsa (ör. 5 ve 6. sorular birlikte
             // gruplanmış) grup çözülmüş gibi her soru ayrı ele alınır. Grup üyesi başka sayfaya
