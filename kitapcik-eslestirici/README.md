@@ -49,6 +49,7 @@ Gerçek kitapçıklarda sonuç:
 | 7. sınıf Deneme 1 A ↔ B (90 soru) | 85/90 (ders adı "Bölüm 1") | 90/90 |
 | 8. sınıf MOBESE Sayısal 1 A ↔ B (40 soru, cevaplı) | 38/40, cevap A 36/40 · B 39/40 | 40/40, cevap 40/40 · 40/40 |
 | 7. sınıf MOBESE Sayısal 1 A ↔ B (40 soru, cevaplı) | 34/40, cevap A 36/40 (1 yanlış) · B 36/40 | 40/40, cevap 40/40 · 40/40 |
+| AYT LEK 1. Deneme A ↔ B (166 soru, cevaplı) | 166/166, cevap 166/166 · 166/166 | 166/166, cevap 166/166 · 166/166 |
 
 TYT ya da AYT seçili olup dosyalar o düzene uymuyorsa (ör. 10. sınıf kitapçığı varsayılan TYT
 seçiliyken çalıştırılırsa) önce diğer sınav türü denenir; o da uymazsa yapı kitapçığın kendisinden
@@ -176,6 +177,9 @@ sorudaki toplam şekil mürekkebi kıyaslanır; yalnızca belirgin fark varsa (%
 | 11. sınıf Deneme 2 A ↔ B | 100 | 100/100 birebir, 0 hata, 0 uyarı | ~4 sn |
 | 5. sınıf Deneme 1 A ↔ B | 75 | 75/75 birebir, 0 hata, 0 uyarı | ~16 sn |
 | 7. sınıf Deneme 1 A ↔ B | 90 | 90/90 birebir, 0 hata, 0 uyarı | ~50 sn |
+| 7. sınıf MOBESE Sayısal 1 A ↔ B (cevaplı) | 40 | 40/40 birebir, 2 metin grubu aynı, 0 hata (yalnız "cevaplar açık" uyarısı) | ~20 sn |
+| 8. sınıf MOBESE Sayısal 1 A ↔ B (cevaplı) | 40 | 40/40 birebir, 0 hata (yalnız "cevaplar açık" uyarısı) | ~20 sn |
+| AYT LEK 1. Deneme A ↔ B (cevaplı) | 166 | 166/166 birebir, 0 hata (yalnız "cevaplar açık" uyarısı) | ~60 sn |
 
 TYT'de B kitapçığı metne bağlı grubun sorularını ters sırayla diziyor (A 35-36 → B 38-37).
 Bu yayınevi düzeni hata sayılmaz; soruların yan yana ve aynı metnin altında olması denetlenir.
