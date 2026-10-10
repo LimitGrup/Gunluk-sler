@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.26"
+SURUM = "2.27"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -109,6 +109,28 @@ def cevap_kodu_bul(satir, sadece_renk=False):
         if m:
             cevap, kod = m.group(1), m.group(2)
     return cevap, kod
+
+
+def cevap_konumdan_bul(satirlar, sat_i, baslar):
+    """Yedek cevap araması (yalnızca soru bölümünde cevap bulunamadıysa).
+    Tam genişlik sayfada satır sırası sayfayı iki yarıya böldüğü için numara
+    satırı sağ yarıya düşerse, numaranın altındaki renkli cevap harfi numaradan
+    önce okunur ve soru bölümüne girmez. Burada konuma bakılır: aynı sayfada,
+    soru numarasının sol hizasında (±8 pt), numaranın altında ve aynı sütundaki
+    bir sonraki soru numarasından önce duran ilk renkli A–E harfi."""
+    bas = satirlar[sat_i]
+    pno, x0, y0 = bas["sayfa"], bas["x0"], bas["y0"]
+    alt = min([satirlar[b]["y0"] for b in baslar
+               if satirlar[b]["sayfa"] == pno and satirlar[b]["y0"] > y0 + 2
+               and abs(satirlar[b]["x0"] - x0) < 30] + [1e9])
+    adaylar = []
+    for r in satirlar:
+        if r["sayfa"] != pno or not y0 < r["y0"] < alt or abs(r["x0"] - x0) > 8:
+            continue
+        c, _k = cevap_kodu_bul(r, sadece_renk=True)
+        if c:
+            adaylar.append((r["y0"], c))
+    return min(adaylar)[1] if adaylar else None
 
 
 def bagimliliklari_yukle():
@@ -502,6 +524,8 @@ def sorulari_ayikla(pdf_yolu, yapi, etiket, log, dokum=None):
                 atla.add(i)
                 cevap = cevap or c
                 kod = kod or k
+        if cevap is None:      # bulunamadıysa: numaranın hizasındaki renkli harf
+            cevap = cevap_konumdan_bul(satirlar, sat_i, tum_baslar)
         parcalar = []
         for i, r in enumerate(bolum):
             if i in atla:
