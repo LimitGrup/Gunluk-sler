@@ -1550,9 +1550,22 @@ def _okuma_sirasi(satirlar, genislikler, capa_sirasi, yukseklikler=None):
                           key=lambda r: r["y0"]))
         dizi = [capa_sirasi[id(c)] for c in geo]
         if dizi != sorted(dizi):
-            sira.extend(sat)                     # motorun sayfa içi sırası
-            geri_donulen.append(pno + 1)
-            continue
+            # Aynı sütunda alt alta iki sorunun numarası yer değiştirmişse
+            # (11 yerine 12, 12 yerine 11) sayfa düzeni doğrudur, yalnız
+            # numaralar sırasızdır: bölgeler korunur (sıra hatası ayrıca
+            # bildirilir). Başka her sırasızlıkta motorun sırasına dönülür.
+            duz = list(dizi)
+            i = 0
+            while i < len(duz) - 1:
+                if duz[i] > duz[i + 1] and capa_sinif[id(geo[i])] == capa_sinif[id(geo[i + 1])]:
+                    duz[i], duz[i + 1] = duz[i + 1], duz[i]
+                    i += 2
+                else:
+                    i += 1
+            if duz != sorted(duz):
+                sira.extend(sat)                 # motorun sayfa içi sırası
+                geri_donulen.append(pno + 1)
+                continue
 
         def taraf(r):          # tam genişlik satır da ortasına göre bir yana
             return "L" if (r["x0"] + r["x1"]) / 2 < orta else "R"
@@ -1653,32 +1666,51 @@ def _kayip_testleri_bul(k):
         once = [s_ for b_, s_ in eslesen.items() if beklenen[b_][0] < ti_]
         sonra = [s_ for b_, s_ in eslesen.items() if beklenen[b_][0] >= ti_]
         alt, ust = max(once, default=-1), min(sonra, default=len(satirlar))
+        hic_capa = len(bas_eksik) == len(bek_ti)
         dizi = [(s_, n) for s_, n in kenar
                 if alt < s_ < ust and s_ not in kullanilan][:len(bas_eksik)]
-        if len(dizi) != len(bas_eksik):
-            continue
-        yazan = [n for _s, n in dizi]
         dogru = [n for n, _b in bas_eksik]
-        # Parçalar: aynı farkla ardışık giden numaralar (fark 0: doğru numara,
-        # başka fark: kaymış parça). En çok iki kaymış parça kabul edilir
-        # (Tarih 41–45 basılmış, Coğrafya 6'dan doğru devam ediyor gibi).
-        parcalar = []
-        for i, (yn, dn) in enumerate(zip(yazan, dogru)):
-            if parcalar and parcalar[-1][0] == yn - dn:
-                parcalar[-1][1].append(i)
+        b_of = dict(bas_eksik)
+        eslem = None                         # [(satır, yazan, doğru)]
+        if len(dizi) == len(bas_eksik):
+            yazan_k = sorted(n for _s, n in dizi)
+            fark = yazan_k[0] - dogru[0]
+            if len(set(yazan_k)) == len(yazan_k) and \
+                    all(y_ - d_ == fark for y_, d_ in zip(yazan_k, dogru)):
+                # Tam beklenen numaralar (fark 0) ya da hepsi aynı farkla kaymış;
+                # iki sütunlu sayfada satır sırası karışık olsa da her soru kendi
+                # numarasıyla yerine oturur
+                eslem = [(s_, n, n - fark) for s_, n in dizi]
             else:
-                parcalar.append((yn - dn, [i]))
-        if sum(1 for fark, _i in parcalar if fark) > 2:
+                # Parçalar: aynı farkla ardışık giden numaralar (fark 0: doğru,
+                # başka fark: kaymış parça; Tarih 41–45 basılmış, Coğrafya 6'dan
+                # doğru devam ediyor gibi). En çok iki kaymış parça.
+                parcalar = []
+                for i, ((_s, yn), dn) in enumerate(zip(dizi, dogru)):
+                    if parcalar and parcalar[-1][0] == yn - dn:
+                        parcalar[-1][1].append(i)
+                    else:
+                        parcalar.append((yn - dn, [i]))
+                if sum(1 for f_, _i in parcalar if f_) <= 2:
+                    eslem = [(dizi[i][0], dizi[i][1], dogru[i]) for i in range(len(dizi))]
+        if eslem is None:
+            if hic_capa:
+                break                        # sonraki testlerin yeri belirsiz
             continue
-        for (s_, _n), (_d, b_i) in zip(dizi, bas_eksik):
-            eslesen[b_i] = s_
+        for s_, _y, d_ in eslem:
+            eslesen[b_of[d_]] = s_
             kullanilan.add(s_)
-        for fark, idx in parcalar:
-            if fark:
-                kaymalar.append({"ti": ti_, "ders": beklenen[bas_eksik[idx[0]][1]][1],
-                                 "dogru": (dogru[idx[0]], dogru[idx[-1]]),
-                                 "yazan": (yazan[idx[0]], yazan[idx[-1]]),
-                                 "yazan_no": {dizi[i][0]: yazan[i] for i in idx}})
+        kaymis = sorted((d_, y_, s_) for s_, y_, d_ in eslem if y_ != d_)
+        parca = []
+        for d_, y_, s_ in kaymis + [None]:
+            if parca and (d_ is None or d_ != parca[-1][0] + 1 or y_ - d_ != parca[-1][1] - parca[-1][0]):
+                kaymalar.append({"ti": ti_, "ders": beklenen[b_of[parca[0][0]]][1],
+                                 "dogru": (parca[0][0], parca[-1][0]),
+                                 "yazan": (parca[0][1], parca[-1][1]),
+                                 "yazan_no": {x[2]: x[1] for x in parca}})
+                parca = []
+            if d_ is not None:
+                parca.append((d_, y_, s_))
     k["eslesen"] = eslesen
     k["kaymalar_s"] = kaymalar
 
