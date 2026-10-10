@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.27"
+SURUM = "2.28"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -514,18 +514,27 @@ def sorulari_ayikla(pdf_yolu, yapi, etiket, log, dokum=None):
         ilk_secenek = next((i for i, r in enumerate(bolum)
                             if re.match(r"^\s*A\s*[\)\.]", r["metin"])), len(bolum))
         cevap = kod = None
+        cevap_sayfa = None
         atla = set()
         c0, k0 = cevap_kodu_bul(bolum[0], sadece_renk=True)
         if c0 or k0:
             cevap, kod = c0, k0
+            cevap_sayfa = bolum[0]["sayfa"]
         for i in range(1, ilk_secenek):  # cevap işareti seçeneklerden önce durur
             c, k = cevap_kodu_bul(bolum[i])
             if c or k:
                 atla.add(i)
+                if cevap is None and c:
+                    cevap_sayfa = bolum[i]["sayfa"]
                 cevap = cevap or c
                 kod = kod or k
-        if cevap is None:      # bulunamadıysa: numaranın hizasındaki renkli harf
-            cevap = cevap_konumdan_bul(satirlar, sat_i, tum_baslar)
+        # Bulunamadıysa ya da soru numarasından BAŞKA bir sayfadan okunduysa
+        # (tam genişlik sayfada sonraki sorunun cevabı olabilir): numaranın
+        # kendi sayfasında, hizasındaki renkli harf
+        if cevap is None or cevap_sayfa != bolum[0]["sayfa"]:
+            konum = cevap_konumdan_bul(satirlar, sat_i, tum_baslar)
+            if konum:
+                cevap = konum
         parcalar = []
         for i, r in enumerate(bolum):
             if i in atla:
