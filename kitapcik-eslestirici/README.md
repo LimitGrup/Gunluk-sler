@@ -45,17 +45,42 @@ kullanır:
   "metin farklı" diye bir kez daha yazılmaz. EŞLEŞTİR de cevaplı kitapçıkta böyle bir harfi
   kullanır, ama "cevap renginde değil" diye uyarır.
 - **Piksel katmanı:** Her sorunun numara hizasındaki kök–şık arası şeridi görüntü olarak taranır.
-  Metin katmanında olmayan, harf boyutunda ve tek başına duran iz bildirilir: eğriye çevrilmiş ya
-  da resme gömülü cevap harfi. Cevap rengindeyse HATA, değilse "elle bakın" uyarısı olur.
-  Sağında, üstünde ya da altında mürekkep süren izler (şerit kenarına dayanmış şekil, tablo,
-  çizgi) sayılmaz.
+  Önce metin katmanındaki glifler (numara, kök, şık) görüntüden çıkarılır. Satır kutuları yüksek
+  olsa bile numaranın hemen altındaki iz kaybolmaz. Pembe Kod'un sabit "numara + 16 pt" sınırı
+  bu durumda izi kaçırıyordu. Geriye kalan, harf boyutunda ve tek başına duran iz bildirilir:
+  eğriye çevrilmiş ya da resme gömülü cevap harfi. Cevap rengindeyse HATA, değilse "elle bakın"
+  uyarısı olur. Sağında, üstünde ya da altında mürekkep süren izler (şerit kenarına dayanmış
+  şekil, tablo, çizgi) ve numara hizasından başlayan çerçeveler sayılmaz.
+- **Ölçü:** Renkli cevapta oluk kuralı v2.30 ile aynıdır. Renksiz harfte ölçü daha sıkıdır:
+  harfin sağ kenarından önce başlayan satır varsa harf cevap sayılmaz, çünkü bu girintiye dayalı
+  bir tablo harfidir.
 
 Bu kurallar `testler/duzen_sina.py` ile sınanır. Bu betik, gerçek denemelerde görülen bütün
 durumları içeren A/B kitapçıkları üretir: yukarıdaki şık dizilişleri, iki sütunlu ve tam genişlik
 testler, 5 ve 4 şıklı testler, şekilde kırmızı harf etiketleri, cevabın yanında renkli soru kodu,
 şıkları sonraki sütuna ya da sayfaya taşan sorular, cevabın numaranın altında ya da A şıkkı
 hizasında durması. EŞLEŞTİR'in cevap harfi ve B numarası ile A–B KONTROL'ün açık cevap
-denetimi (temiz baskı, bilerek açık bırakılmış cevap) her durumda gerçek değerle karşılaştırılır.
+denetimi (temiz baskı, bilerek açık bırakılmış renkli, siyah ve eğri cevap) her durumda gerçek
+değerle karşılaştırılır.
+
+`testler/baski_kopya_sina.py` aynı denetimi gerçek bir cevaplı çiftte yapar. Renkli cevapları
+silerek A ve B'nin baskı kopyasını üretir. Ardından B'de bir sorunun cevabını siyah metin, başka
+bir sorununkini eğri olarak bırakır. Bu kopyalarda iki şey beklenir:
+
+- temiz kopyada hiç açık cevap bildirilmez;
+- karışık kopyada tam o iki soru HATA olur.
+
+Elimizdeki yedi gerçek cevaplı çiftte sonuç:
+
+| Çift | Temiz baskı | Siyah cevap | Eğri cevap |
+|---|---|---|---|
+| 7. sınıf MOBESE sayısal | 0 sorun | MATEMATİK 14 ✓ | FEN 7 ✓ |
+| 8. sınıf MOBESE sayısal | 0 sorun | MATEMATİK 14 ✓ | FEN 7 ✓ |
+| 7. sınıf Limit 1 | 0 sorun | DİN KÜLTÜRÜ 1 ✓ | MATEMATİK 11 ✓ |
+| 8. sınıf Limit sayısal 1 | 0 sorun | MATEMATİK 14 ✓ | FEN 7 ✓ |
+| 7. sınıf Limit sözel 1 | 0 sorun | TÜRKÇE 17 ✓ | DİN KÜLTÜRÜ 4 ✓ |
+| AYT LEK 1 | 0 sorun | Coğrafya-2 16 ✓ | Matematik 25 ✓ |
+| Finale TYT 1 | yalnız çiftteki gerçek metin farkı (Türkçe A-11/B-10) | Tarih 2 ✓ | Temel Matematik 19 ✓ |
 
 ## EŞLEŞTİR'deki düzeltmeler (v2.21, v2.27–v2.29)
 
@@ -270,6 +295,7 @@ python3 testler/duzen_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/ki
 python3 testler/cevap_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/ornek  # EŞLEŞTİR: cevap harfi ve B numarası gerçek değerle aynı mı
 python3 testler/kesir_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/kesir  # ilk satır numaranın üstünden başlıyor: kaybolmamalı
 python3 testler/tire_sina.py     "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/tire   # A ve B'de farklı tire karakteri: sahte uyarı olmamalı
+python3 testler/baski_kopya_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/kopya  # gerçek cevaplı çiftten baskı kopyası: siyah ve eğri cevap yakalanmalı
 ```
 
 Üretilen örnekler: iki sütunlu ve tek sütunlu (2x2 şıklı) sayfalar, metne bağlı gruplar, şekilli

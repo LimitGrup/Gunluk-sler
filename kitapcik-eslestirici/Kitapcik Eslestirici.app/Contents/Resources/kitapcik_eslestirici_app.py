@@ -2238,9 +2238,12 @@ def _cevap_adaylari(o, genislikler=None):
     Şeklin içindeki renkli etiketler ve girintiye dayalı tablo harfleri oluk adayı
     olmaz. Ölçü her işaretin kendi yerinde alınır: yanındaki metin (aynı sütun,
     ±30 pt) işaretin sağından başlamalı; aynı sayfa yarısında (sütunda) ya da
-    işaretin üstünden geçen, işaretin sağ kenarından önce başlayan metin satırı
-    olmamalı (yan yana kısa şıklar dahil). Böylece şıklar başka sütuna/sayfaya
-    taşsa da çalışır. Dönen: [{harf, satir, renk, kutu, oluk, renkli}]."""
+    işaretin üstünden geçen, işaretin solundan başlayan metin satırı olmamalı
+    (yan yana kısa şıklar dahil). Renksiz adayda sınır daha sıkıdır: işaretin sağ
+    kenarından önce başlayan satır yetmez (girintiye dayalı tablo harfi); numara
+    satırı bu ölçüye girmez, çünkü renksiz aday zaten numarayla hizalıdır. Böylece
+    şıklar başka sütuna/sayfaya taşsa da çalışır.
+    Dönen: [{harf, satir, renk, kutu, oluk, renkli}]."""
     satirlar_ = o["ham_satirlar"]
     if not satirlar_:
         return []
@@ -2270,16 +2273,20 @@ def _cevap_adaylari(o, genislikler=None):
             if ilk_metin is None and not re.fullmatch(r"\d{1,3}\s*[.)]?", tt):
                 ilk_metin = kutu[0]          # soru numarası girinti sayılmaz
         if ilk_metin is not None and len(r["metin"].strip()) >= 2:
-            metin_bas.append((r["sayfa"], ilk_metin, r["x1"], r["y0"], r["y1"]))
+            metin_bas.append((r["sayfa"], ilk_metin, r["x1"], r["y0"], r["y1"], r is bas))
     for a in adaylar:
         x0, y0, x1, y1 = a["kutu"]
         pno = a["satir"]["sayfa"]
         orta = (genislikler[pno] if genislikler else 612) / 2
-        komsu = [(mx0, mx1) for p, mx0, mx1, my0, my1 in metin_bas
+        komsu = [(mx0, mx1, bas_mi) for p, mx0, mx1, my0, my1, bas_mi in metin_bas
                  if p == pno and my1 > y0 - 30 and my0 < y1 + 30]
-        sagda = [mx0 for mx0, _mx1 in komsu if x1 - 1 <= mx0 < x1 + 80]
-        solda = [mx0 for mx0, mx1 in komsu if mx0 < x1 - 1
-                 and (mx1 > x0 or (mx0 >= orta) == (x0 >= orta))]
+        sagda = [mx0 for mx0, _mx1, _b in komsu if x1 - 1 <= mx0 < x1 + 80]
+        if a["renkli"]:
+            solda = [mx0 for mx0, mx1, _b in komsu if mx0 < x0 - 1
+                     and (mx1 > x0 or (mx0 >= orta) == (x0 >= orta))]
+        else:
+            solda = [mx0 for mx0, mx1, bas_mi in komsu if mx0 < x1 - 1 and not bas_mi
+                     and (mx1 > x0 or (mx0 >= orta) == (x0 >= orta))]
         a["oluk"] = bool(sagda) and not solda
     return adaylar
 
@@ -2352,12 +2359,15 @@ def cevap_motoru(k):
 def _oluk_piksel_izleri(k, doc, dpi=110):
     """Metin katmanında görünmeyen cevap izleri (eğriye çevrilmiş ya da resme
     gömülü cevap harfi). Her sorunun numara hizasındaki kök–şık arası şeridi
-    (numaranın solundan 4 pt, sağından 16 pt; numaranın alt kenarından ilk şıkka
-    kadar)
-    görüntü olarak taranır. Metin olmayan, harf boyutunda ve tek başına duran
-    (sağında, üstünde, altında mürekkep sürmeyen) her iz döner — gerçek
-    unutulmuş işaret tek başına durur; şerit kenarına dayanmış şekil, tablo,
-    çizgi sayılmaz. Dönen: [(öğe, sayfa, Rect, cevap renginde mi)]."""
+    (numaranın solundan 4 pt, sağından 16 pt; numara satırının ortasından ilk
+    şıkka kadar) görüntü olarak taranır. Metin katmanındaki glifler (numara, kök,
+    şık, metin olarak duran harf) mürekkep haritasından önce çıkarılır; satır
+    kutuları yüksek olsa da numaranın hemen altındaki iz kaybolmaz. Geriye kalan,
+    numara satırının ortasından aşağıda başlayan, harf boyutunda ve tek başına
+    duran (sağında, üstünde, altında metin olmayan mürekkep sürmeyen) her iz
+    döner — gerçek unutulmuş işaret tek başına durur; şerit kenarına dayanmış
+    şekil, tablo, çizgi, numara çerçevesi sayılmaz.
+    Dönen: [(öğe, sayfa, Rect, cevap renginde mi)]."""
     from scipy import ndimage
     olcek = 72.0 / dpi
     metin = {}
@@ -2378,7 +2388,8 @@ def _oluk_piksel_izleri(k, doc, dpi=110):
                   and r["y0"] > bas["y0"] + 4]
         if not siklar:
             continue
-        y_ust, y_alt = bas["y1"] + 1, min(siklar) - 2      # numaranın altından
+        y_ust = (bas["y0"] + bas["y1"]) / 2                 # numara satırının ortası
+        y_alt = min(siklar) - 2
         if y_alt - y_ust < 8:
             continue
         serit = fitz.Rect(sx - 4, y_ust, sx + 16, y_alt)
@@ -2391,6 +2402,13 @@ def _oluk_piksel_izleri(k, doc, dpi=110):
         a = np.frombuffer(pix.samples, np.uint8).reshape(
             pix.height, pix.width, 3).astype(np.int16)
         ink = (a <= 200).any(axis=2)
+        for m in metin.get(pno, []):             # metin katmanı ayrıca denetlenir
+            if m.intersects(kirp):
+                qx0 = max(int((m.x0 - kirp.x0) / olcek), 0)
+                qy0 = max(int((m.y0 - kirp.y0) / olcek), 0)
+                qx1 = int(np.ceil((m.x1 - kirp.x0) / olcek))
+                qy1 = int(np.ceil((m.y1 - kirp.y0) / olcek))
+                ink[qy0:max(qy1, 0), qx0:max(qx1, 0)] = False
         if not ink.any():
             continue
         etiket, _n = ndimage.label(ndimage.binary_dilation(ink),
@@ -2406,7 +2424,7 @@ def _oluk_piksel_izleri(k, doc, dpi=110):
             if not (3 <= r.width <= 22 and 3 <= r.height <= 22) or \
                     max(r.width, r.height) < 7 or r.width >= 19:
                 continue
-            if r.y0 <= bas["y1"] + 0.5:          # numara glifinin eteği
+            if r.y0 <= y_ust:                    # numara hizasından başlayan çerçeve
                 continue
             sag = int(6 / olcek) + 1
             dik = int(3 / olcek) + 1
@@ -2414,8 +2432,6 @@ def _oluk_piksel_izleri(k, doc, dpi=110):
                     ink[max(py0 - dik, 0):py0, px0:px1].any() or
                     ink[py1:py1 + dik, px0:px1].any()):
                 continue                         # tek başına değil: içerik parçası
-            if any(m.intersects(r) for m in metin.get(pno, [])):
-                continue                         # metin katmanında: ayrıca denetlenir
             parca = a[py0:py1, px0:px1][ink[py0:py1, px0:px1]]
             ort = parca.mean(axis=0) if len(parca) else (0, 0, 0)
             cevap_rengi = ort[0] > 150 and ort[1] < 110 and ort[2] > 90
