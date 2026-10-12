@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.36"
+SURUM = "2.37"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -3056,6 +3056,40 @@ def _sayfa_yazi(sayfalar):
     return "sayfa " + (p[0] if len(p) == 1 else ", ".join(p[:-1]) + " ve " + p[-1])
 
 
+BANT_SAYI_RE = re.compile(r"(?:Bu\s+testte|toplam)\s+(\d{1,3})\s*soru\s*(?:vard[ıi]r|"
+                         r"bulunmaktad[ıi]r|yer\s+al)", re.IGNORECASE)
+
+
+def _bant_sayilari(kk):
+    """Her testin başındaki bantta yazan soru sayısı: "Bu testte 20 soru
+    vardır." ya da "... alanlarına ait toplam 25 soru vardır." (birkaç satıra
+    bölünmüş olabilir). Bant, bir önceki testin ilk sorusundan sonra ve bu testin
+    ilk sorusundan önce aranır; en yakını alınır. Dönen: {ti: (sayı, satır)}."""
+    sira = kk.get("sira") or []
+    poz = {id(r): i for i, r in enumerate(sira)}
+    ilk = {}
+    for o in kk["ogeler"]:
+        if o["ti"] is not None and (o["ti"] not in ilk or o["poz"] < ilk[o["ti"]]):
+            ilk[o["ti"]] = o["poz"]
+    sonuc, onceki = {}, -1
+    for ti in sorted(ilk):
+        bas, bit = onceki + 1, ilk[ti]
+        pencere = sira[bas:bit]
+        bulunan = None
+        for i, r in enumerate(pencere):
+            # Bant cümlesi "Bu testte"/"toplam" ile başlayan satırdan başlar;
+            # sayı ayrı bir satır/stil olarak bölünmüş olabilir
+            if not re.search(r"Bu\s+testte|toplam", r["metin"], re.IGNORECASE):
+                continue
+            mm = BANT_SAYI_RE.search(" ".join(x["metin"] for x in pencere[i:i + 4]))
+            if mm:
+                bulunan = (int(mm.group(1)), r)
+        if bulunan:
+            sonuc[ti] = bulunan
+        onceki = ilk[ti]
+    return sonuc
+
+
 def _sorun_yeri(s):
     """'A sayfa 3, B sayfa 5' biçiminde sorunun bulunduğu sayfalar (kısaltmasız)."""
     sayfalar = {}
@@ -3227,6 +3261,28 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
     numara_ozet = {}
     for kk in (A, B):
         bulunan = {(o["ti"], o["no"]) for o in kk["ogeler"] if o["no"]}
+        # Bantta yazan soru sayısı ile testte basılı soru sayısı aynı mı?
+        # ("Bu testte 20 soru vardır" ama 19 soru basılmış ya da tersi.) Testin
+        # sonundaki eksik numaralar bu satırla açıklanır, ayrıca "bulunamadı"
+        # diye yazılmaz.
+        bant_aciklanan = set()
+        for ti_, (bant, satir) in _bant_sayilari(kk).items():
+            basili = [o for o in kk["ogeler"] if o["ti"] == ti_]
+            if bant == len(basili):
+                continue
+            bek_no = sorted(n for t, _d, n in kk["beklenen"] if t == ti_)
+            var_no = sorted(o["no"] for o in basili if o["no"])
+            fark = bant - len(basili)
+            sorun("HATA", kk["etiket"], f"Bantta bu test için {bant} soru yazıyor "
+                  f"ama testte {len(basili)} soru var"
+                  + (f": {fark} soru eksik." if fark > 0 else
+                     f": bant yanlış ya da {-fark} soru fazla."),
+                  test_adi(ti_), basili[0]["ders"] if basili else "",
+                  f"{len(basili)}/{bant} soru",
+                  [(kk["etiket"], (satir["sayfa"], satir["x0"] - 3, satir["y0"] - 3,
+                                   satir["x1"] + 3, satir["y1"] + 3))])
+            if fark > 0 and var_no == list(range(1, len(var_no) + 1)):
+                bant_aciklanan |= {(ti_, n) for n in bek_no if n > len(var_no)}
         # Numarası sıraya uymayan sorular: hangi numaranın yerinde durduğu
         # belliyse ("11'den sonra '13.'": 12'nin yeri) tek satırda yazılır,
         # o numara ayrıca "bulunamadı" diye tekrarlanmaz
@@ -3249,8 +3305,8 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
         for ti, ders, no in kk["beklenen"]:
             if (ti, no) not in bulunan:
                 eksik_say += 1
-                if (ti, no) in aciklanan:
-                    continue                 # yanlış numaralı soru satırında yazılı
+                if (ti, no) in aciklanan or (ti, no) in bant_aciklanan:
+                    continue                 # yanlış numaralı soru / bant satırında yazılı
                 # Raporda yeri: bir önceki ve bir sonraki soru (arada olmalı)
                 komsu = sorted((o for o in kk["ogeler"] if o["ti"] == ti
                                 and o["no"] in (no - 1, no + 1)),

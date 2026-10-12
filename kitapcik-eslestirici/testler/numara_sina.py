@@ -18,6 +18,10 @@ ayrı bir kopyada denetlenir:
                    yazılır (13–15 grubunda 14. soruya "16.")
   grup içi silinmiş  aynı soru (yazısı ve şekliyle) tamamen silinir: soru
                    gerçekten yoksa "bulunamadı" denmeli
+  bant eksik soru  en uzun testin son sorusu silinir: bant (ör. "Bu testte 20
+                   soru vardır") ile basılı soru sayısı uyuşmamalı
+  bant yanlış      bandın sayısı bir eksik yazılır ("19 soru vardır"), testte
+                   20 soru var
 
 Her senaryoda beklenen HATA tam o numarada çıkmalı. Mükerrer, ileri numara ve
 yer değiştirmiş senaryolarında rapora yalnız o tek satır düşmeli: A'daki soru
@@ -86,9 +90,34 @@ def main(app, qa, qb, sinav, cikti):
                                      graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED)
         doc.save(yol)
 
+    def bant_yaz(yol):                       # bandın yalnız sayısı bir eksik
+        doc = fitz.open(qb)
+        hedef = f"{N} soru"
+        for page in doc:
+            for blk in page.get_text("rawdict")["blocks"]:
+                for l in blk.get("lines", []):
+                    for sp in l["spans"]:
+                        ch = sp["chars"]
+                        i = "".join(c["c"] for c in ch).find(hedef)
+                        if i < 0:
+                            continue
+                        son = ch[i + len(str(N)) - 1]
+                        r = fitz.Rect(ch[i]["bbox"][0], ch[i]["bbox"][1], son["bbox"][2], son["bbox"][3])
+                        h = r.height
+                        page.add_redact_annot(fitz.Rect(r.x0 + .2, r.y0 + .3 * h, r.x1 - .2, r.y1 - .3 * h))
+                        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
+                                              graphics=fitz.PDF_REDACT_LINE_ART_NONE)
+                        page.insert_text(ch[i]["origin"], str(N - 1), fontsize=sp["size"],
+                                         fontname="helv", color=(0, 0, 0))
+                        doc.save(yol)
+                        return
+        raise RuntimeError(f"bantta '{hedef}' bulunamadı")
+
     def boz(degisim, yol):
         if degisim and degisim[0] == "SIL":
             return sil(degisim[1], yol)
+        if degisim and degisim[0] == "BANT":
+            return bant_yaz(yol)
         doc = fitz.open(qb)
         yerler = [(numara_yeri(doc, o), yeni) for o, yeni in degisim]
         for (page, r, _org, _boy), _y in yerler:
@@ -121,6 +150,12 @@ def main(app, qa, qb, sinav, cikti):
          [f"bu testin 1–{len(s2)}. soruları '{len(s1) + 1}.'–'{len(s1) + len(s2)}.'"], 2),
         ("numara silinmiş", [(a, None)], [f"{n}. soru bulunamadı"], None),
         ("nokta unutulmuş", [(a, f"{n}")], [f"{n}. soru bulunamadı"], None),
+    ]
+    senaryolar += [
+        ("bant eksik soru", ("SIL", s1[-1]),
+         [f"Bantta bu test için {N} soru yazıyor ama testte {N - 1} soru var"], None),
+        ("bant yanlış", ("BANT",),
+         [f"Bantta bu test için {N - 1} soru yazıyor ama testte {N} soru var"], 1),
     ]
     # Metne bağlı grubun ortasındaki soru (en az 3 sorulu grup varsa)
     gruplu = [b for b in B["basliklar"] if len(b["sorular"]) >= 3

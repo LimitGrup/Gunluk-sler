@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.36)
+# Kitapçık Eşleştirici (v2.37)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -6,6 +6,21 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.xlsx` + sorunlu soruların A/B görüntüleri (PDF) |
+
+## Bantta yazan soru sayısı (v2.37)
+
+Her testin başındaki bant okunur: "Bu testte 20 soru vardır." ya da "… alanlarına ait toplam 25
+soru vardır." (birkaç satıra bölünmüş olabilir). Bu sayı testte basılı soru sayısıyla, A ve B'de
+ayrı ayrı karşılaştırılır. Fark varsa tek satır HATA verilir:
+
+- "Bantta bu test için 20 soru yazıyor ama testte 19 soru var: 1 soru eksik."
+- "Bantta bu test için 19 soru yazıyor ama testte 20 soru var: bant yanlış ya da 1 soru fazla."
+
+Bir soru silinip sonrakiler yeniden numaralanmışsa (1–19) testin sonundaki "20. soru bulunamadı"
+satırı ayrıca yazılmaz. Hangi sorunun eksik olduğunu "A-x sorusu B kitapçığında bulunamadı"
+satırı gösterir. Önceden bant yanlışsa (19 yazıp 20 soru basılmışsa) hiçbir şey çıkmıyordu.
+Temiz gerçek çiftlerde bant okuması her testte basılı soru sayısıyla birebir tuttu (6 çift,
+A ve B).
 
 ## Yeni deneme için TEMİZLE (v2.35)
 
