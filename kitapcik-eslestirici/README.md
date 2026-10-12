@@ -29,6 +29,17 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 - Elle bakılacaklar "Elle bakın: sayfa 7, soru 5 — …" diye başlar.
 - B'de yalnız numara yanlışsa (v2.34) rapor "A'daki soru B'de yok" demez, tek satır yazar:
   "Soru numarası hatalı: 12. sorunun yerinde '14.' yazıyor".
+- Soru gerçekten yoksa (yazısı ve şekliyle silinmiş) rapor yine "A-x sorusu B kitapçığında
+  bulunamadı" ve "N. soru bulunamadı" der. Metne bağlı grubun içindeki soru için de aynıdır;
+  grup başlığının altındaki soruların uymadığı ayrıca yazılır.
+- Grubun içinde yalnız numara yanlışsa tek satır ve grup başlığı uyarısı çıkar. Örneğin 13 tam
+  genişlik, altında 14 ile 15 yan yana duran sayfa düzeninde de yan hata çıkmaz.
+- Otomatik yapıda B'de numara hatası varken "test yapısı farklı" kırmızı HATA olmaz. Bunun
+  yerine şu sarı not çıkar: "büyük olasılıkla yukarıdaki numara hatalarından". Numaralar
+  temizken gerçek bir yapı farkı yine HATA'dır.
+- `testler/numara_sina.py` artık 10 senaryo içerir; ikisi metne bağlı grup içindir (grup içi
+  yanlış numara, grup içi silinmiş soru). 5 gerçek çiftte 42/42 geçti; grup senaryoları
+  yalnız 3+ sorulu grubu olan çiftte çalışır.
 
 ## Tek cevap motoru (v2.30)
 
