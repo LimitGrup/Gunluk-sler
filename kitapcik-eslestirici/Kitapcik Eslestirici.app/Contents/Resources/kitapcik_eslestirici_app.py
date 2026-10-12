@@ -1911,11 +1911,32 @@ def _kitapcik_bolumle(k, mobilya, log):
             k["_gecis"] = 1
             return _kitapcik_bolumle(k, mobilya, log)
     if gecis < 2 and fazlalar:
+        # Numarası hatalı sorunun okuma sırasındaki yeri: önce bir önceki sorunun
+        # hemen arkası, olmazsa testin eksik numaralarından birinin yeri denenir;
+        # sayfa düzeni (sütunlar, tam genişlik sorular) hangisiyle tutarlıysa o
+        # alınır (13 tam genişlik, altında 14 ile 15 yan yana gibi sayfalarda
+        # "bir önceki" okuma sırası yanıltıcı olabilir)
         ek_capa = {}
+        temel = {id(satirlar[s_]): b for b, s_ in k["eslesen"].items()}
+        capali_no = {(beklenen[b_][0], beklenen[b_][2]) for _p, b_ in capalar}
         for f in fazlalar:
+            s_f = s_of[id(sira[f["poz"]])]
             onceki_b = max(((p_, b_) for p_, b_ in capalar if p_ < f["poz"]),
                            default=(None, -1))[1]
-            ek_capa[s_of[id(sira[f["poz"]])]] = onceki_b + 0.5
+            eksik_b = sorted((b_i for b_i, (t, _d, n) in enumerate(beklenen)
+                              if t == f["ti"] and (t, n) not in capali_no),
+                             key=lambda b_i: abs(b_i - onceki_b))
+            sayfa_sat = [r for r in satirlar if r["sayfa"] == satirlar[s_f]["sayfa"]]
+            secilen = onceki_b + 0.5
+            for v in [onceki_b + 0.5] + eksik_b:
+                deneme = dict(temel)
+                deneme.update({id(satirlar[x]): y_ for x, y_ in ek_capa.items()})
+                deneme[id(satirlar[s_f])] = v
+                if not _okuma_sirasi(sayfa_sat, k["genislikler"], deneme,
+                                     k["yukseklikler"])[4]:
+                    secilen = v
+                    break
+            ek_capa[s_f] = secilen
         k["_ek_capa"] = ek_capa
         k["_gecis"] = 2
         return _kitapcik_bolumle(k, mobilya, log)

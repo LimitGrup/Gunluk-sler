@@ -14,6 +14,10 @@ ayrı bir kopyada denetlenir:
                    sonundan devam eder (Sosyal 1–10 yerine 21–30)
   numara silinmiş  ortadaki sorunun numarası silinir
   nokta unutulmuş  ortadaki sorunun numarası noktasız yazılır ("11")
+  grup içi numara  metne bağlı bir grubun ortasındaki soruya iki sonraki numara
+                   yazılır (13–15 grubunda 14. soruya "16.")
+  grup içi silinmiş  aynı soru (yazısı ve şekliyle) tamamen silinir: soru
+                   gerçekten yoksa "bulunamadı" denmeli
 
 Her senaryoda beklenen HATA tam o numarada çıkmalı. Mükerrer, ileri numara ve
 yer değiştirmiş senaryolarında rapora yalnız o tek satır düşmeli: A'daki soru
@@ -72,7 +76,19 @@ def main(app, qa, qb, sinav, cikti):
                                 ch[0]["origin"], sp["size"])
         raise RuntimeError(f"numara bulunamadı: {o['ders']} {o['no']}")
 
+    def sil(o, yol):                         # sorunun bütün satırları ve şekli
+        doc = fitz.open(qb)
+        for r in o["ham_satirlar"]:
+            doc[r["sayfa"]].add_redact_annot(
+                fitz.Rect(r["x0"] - 1, r["y0"] + 1, r["x1"] + 1, r["y1"] - 1))
+        for p_ in {r["sayfa"] for r in o["ham_satirlar"]}:
+            doc[p_].apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,
+                                     graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED)
+        doc.save(yol)
+
     def boz(degisim, yol):
+        if degisim and degisim[0] == "SIL":
+            return sil(degisim[1], yol)
         doc = fitz.open(qb)
         yerler = [(numara_yeri(doc, o), yeni) for o, yeni in degisim]
         for (page, r, _org, _boy), _y in yerler:
@@ -106,6 +122,17 @@ def main(app, qa, qb, sinav, cikti):
         ("numara silinmiş", [(a, None)], [f"{n}. soru bulunamadı"], None),
         ("nokta unutulmuş", [(a, f"{n}")], [f"{n}. soru bulunamadı"], None),
     ]
+    # Metne bağlı grubun ortasındaki soru (en az 3 sorulu grup varsa)
+    gruplu = [b for b in B["basliklar"] if len(b["sorular"]) >= 3
+              and all(x["no"] for x in b["sorular"])]
+    if gruplu:
+        g = gruplu[len(gruplu) // 2]
+        o = g["sorular"][1]
+        senaryolar += [
+            ("grup içi numara", [(o, f"{o['no'] + 2}.")],
+             [f"Soru numarası hatalı: {o['no']}. sorunun yerinde '{o['no'] + 2}.' yazıyor"], 2),
+            ("grup içi silinmiş", ("SIL", o), [f"{o['no']}. soru bulunamadı"], None),
+        ]
 
     def kontrol(yol):
         ya = m.yapi_cikar(qa) if sinav == "OTOMATİK" else yapi
