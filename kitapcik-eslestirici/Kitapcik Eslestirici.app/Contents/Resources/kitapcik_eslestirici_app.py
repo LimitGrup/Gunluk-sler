@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.33"
+SURUM = "2.34"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -1740,9 +1740,14 @@ def _kitapcik_bolumle(k, mobilya, log):
     """Soruları okuma sırasına göre böler; her sorunun temiz metnini (gövde +
     şıklar), bölgesini, metne bağlı grup başlıklarını ve numarası beklenen
     sıraya uymayan şıklı soru başlangıçlarını çıkarır."""
-    _kayip_testleri_bul(k)
+    if not k.get("_gecis"):
+        _kayip_testleri_bul(k)
     satirlar, beklenen = k["satirlar"], k["beklenen"]
     capa_sirasi = {id(satirlar[s]): b for b, s in k["eslesen"].items()}
+    # İkinci geçiş: numarası hatalı soruların başları da okuma sırasında soru
+    # başlangıcı sayılır (bölgeleri komşu sorulara karışmasın)
+    for s_, deger in k.get("_ek_capa", {}).items():
+        capa_sirasi.setdefault(id(satirlar[s_]), deger)
     sira, sinif, capa_sinif, iki_sutun, geri = _okuma_sirasi(
         satirlar, k["genislikler"], capa_sirasi, k["yukseklikler"])
     if geri:
@@ -1866,6 +1871,54 @@ def _kitapcik_bolumle(k, mobilya, log):
                  "yazan": kay["yazan"],
                  "pozlar": [poz[id(satirlar[s_])] for s_ in kay["yazan_no"]]}
                 for kay in k["kaymalar_s"]]
+
+    # Aynı numara iki yerde basılmışsa (11'den sonra gelen soruya "13." yazılmış,
+    # asıl 13 de yerinde) motor sıraya uymayanı çapa almış olabilir: sıraya
+    # uyan aynı numaralı satıra taşınır, öteki "numara hatalı" soru olur. Sonra
+    # numarası hatalı soruların başları da çapa sayılarak okuma sırası yeniden
+    # kurulur; böylece bu sorular komşu sorulara karışmaz ("A'daki soru B'de
+    # yok", "metin farklı", "fazla şekil" gibi yan hatalar çıkmaz).
+    gecis = k.get("_gecis", 0)
+    s_of = {id(r): i for i, r in enumerate(satirlar)}
+    if gecis == 0:
+        kullanilan_p = {p_ for p_, _b in capalar}
+        bos_kenar = {}
+        for s_, n in k["adaylar"] + k.get("kenar_ek", []):
+            q = poz[id(satirlar[s_])]
+            if q not in kullanilan_p and not mob(satirlar[s_]):
+                bos_kenar.setdefault(n, []).append(q)
+        yeni_eslesen, tasindi = dict(k["eslesen"]), False
+        for ti_ in sorted({beklenen[b_][0] for _p, b_ in capalar}):
+            dizi = sorted((p_, b_) for p_, b_ in capalar if beklenen[b_][0] == ti_)
+            for i, (p_, b_) in enumerate(dizi):
+                no = beklenen[b_][2]
+                sonraki = beklenen[dizi[i + 1][1]][2] if i + 1 < len(dizi) else None
+                if sonraki is None or no < sonraki:
+                    continue
+                for q in sorted(bos_kenar.get(no, [])):
+                    if q <= p_:
+                        continue
+                    alt_no = max((beklenen[b2][2] for p2, b2 in dizi
+                                  if p2 < q and p2 != p_), default=0)
+                    ust_no = min((beklenen[b2][2] for p2, b2 in dizi if p2 > q),
+                                 default=10 ** 6)
+                    if alt_no < no < ust_no:
+                        yeni_eslesen[b_] = s_of[id(sira[q])]
+                        tasindi = True
+                        break
+        if tasindi:
+            k["eslesen"] = yeni_eslesen
+            k["_gecis"] = 1
+            return _kitapcik_bolumle(k, mobilya, log)
+    if gecis < 2 and fazlalar:
+        ek_capa = {}
+        for f in fazlalar:
+            onceki_b = max(((p_, b_) for p_, b_ in capalar if p_ < f["poz"]),
+                           default=(None, -1))[1]
+            ek_capa[s_of[id(sira[f["poz"]])]] = onceki_b + 0.5
+        k["_ek_capa"] = ek_capa
+        k["_gecis"] = 2
+        return _kitapcik_bolumle(k, mobilya, log)
 
     # --- soru bölümleri --------------------------------------------------------
     sinirlar = sorted([(p, ("S", b)) for p, b in capalar] +
@@ -3136,10 +3189,30 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
     numara_ozet = {}
     for kk in (A, B):
         bulunan = {(o["ti"], o["no"]) for o in kk["ogeler"] if o["no"]}
+        # Numarası sıraya uymayan sorular: hangi numaranın yerinde durduğu
+        # belliyse ("11'den sonra '13.'": 12'nin yeri) tek satırda yazılır,
+        # o numara ayrıca "bulunamadı" diye tekrarlanmaz
+        fazla_bilgi, aciklanan = [], set()
+        for f in kk["fazlalar"]:
+            o = next(x for x in kk["ogeler"] if x["poz"] == f["poz"])
+            onceki = max((x for x in kk["ogeler"] if x["no"] and x["poz"] < o["poz"]
+                          and x["ti"] == o["ti"]), key=lambda x: x["poz"],
+                         default=None)
+            bek_ti = [n for t, _d, n in kk["beklenen"] if t == f["ti"]]
+            eksik_ti = [n for n in bek_ti if (f["ti"], n) not in bulunan]
+            yerine = None
+            if onceki and (o["ti"], onceki["no"] + 1) not in bulunan \
+                    and onceki["no"] + 1 in bek_ti \
+                    and (f["ti"], onceki["no"] + 1) not in aciklanan:
+                yerine = onceki["no"] + 1
+                aciklanan.add((f["ti"], yerine))
+            fazla_bilgi.append((f, o, yerine, bek_ti, eksik_ti))
         eksik_say = 0
         for ti, ders, no in kk["beklenen"]:
             if (ti, no) not in bulunan:
                 eksik_say += 1
+                if (ti, no) in aciklanan:
+                    continue                 # yanlış numaralı soru satırında yazılı
                 # Raporda yeri: bir önceki ve bir sonraki soru (arada olmalı)
                 komsu = sorted((o for o in kk["ogeler"] if o["ti"] == ti
                                 and o["no"] in (no - 1, no + 1)),
@@ -3149,18 +3222,18 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                       test_adi(ti), ders, str(no),
                       gorunum=[(kk["etiket"], b_) for o in komsu for b_ in
                                tam_bolge.get((kk["etiket"], o["bolge"])) or [o["bolge"]]])
-        for f in kk["fazlalar"]:
-            o = next(x for x in kk["ogeler"] if x["poz"] == f["poz"])
-            onceki = max((x for x in kk["ogeler"] if x["no"] and x["poz"] < o["poz"]
-                          and x["ti"] == o["ti"]), key=lambda x: x["poz"],
-                         default=None)
+        for f, o, yerine, bek_ti, eksik_ti in fazla_bilgi:
+            if yerine is not None:
+                iki_kez = (f["ti"], f["no_yazan"]) in bulunan
+                sorun("HATA", kk["etiket"], f"Soru numarası hatalı: {yerine}. sorunun "
+                      f"yerinde '{f['no_yazan']}.' yazıyor"
+                      + (f" ({f['no_yazan']} numarası bu testte iki kez geçiyor)"
+                         if iki_kez else "") + ".", test_adi(f["ti"]), f["ders"],
+                      o["etiket_no"], [yer(kk, o)])
+                o["_sorun"] = sorunlar[-1]
+                continue
             tahmin = ""
-            bek_ti = [n for t, _d, n in kk["beklenen"] if t == f["ti"]]
-            eksik_ti = [n for n in bek_ti if (f["ti"], n) not in bulunan]
-            if onceki and (o["ti"], onceki["no"] + 1) not in bulunan \
-                    and onceki["no"] + 1 in bek_ti:
-                tahmin = f" Beklenen numara büyük olasılıkla {onceki['no'] + 1}."
-            elif bek_ti and f["no_yazan"] == max(bek_ti) + 1 and len(eksik_ti) == 1:
+            if bek_ti and f["no_yazan"] == max(bek_ti) + 1 and len(eksik_ti) == 1:
                 tahmin = (f" Bu test {len(bek_ti)} soruluk ve {eksik_ti[0]}. soru yok: "
                           f"{eksik_ti[0]}. sorudan itibaren numaralar bir fazla basılmış "
                           f"(kaymış) olabilir.")
@@ -4192,8 +4265,8 @@ def gui_baslat():
     ttk.Label(ana, text="A–B KONTROL (baskı kontrolü): A'daki her soru metni, "
                         "şıkları ve şekilleriyle B'de var mı, numaralar branş "
                         "branş düzgün mü, metne bağlı gruplar aynı mı, açık kalan "
-                        "cevap var mı. Rapor Excel + işaretli PDF olarak çıktı "
-                        "klasörüne yazılır.",
+                        "cevap var mı. Rapor Excel + işaretli PDF olarak yazılır; "
+                        "kayıt yeri başlarken sorulur.",
               foreground="#666666", wraplength=740,
               justify="left").pack(side="bottom", anchor="w")
 
@@ -4282,7 +4355,22 @@ def gui_baslat():
                                    parent=pencere)
             return
         klasor = Path(yollar["cikti"].get().strip() or a).parent
-        cikti = str(klasor / "kitapcik_kontrol_raporu.xlsx")
+        # Rapor nereye yazılsın: Evet = PDF'lerin klasörü, Hayır = konum seçilir
+        yanina = messagebox.askyesno(
+            "Kontrol raporu",
+            "Kontrol raporu (Excel) ve bakılacak soruların A/B görüntüleri (PDF) "
+            f"şu klasöre kaydedilsin mi?\n\n{klasor}\n\n(Hayır = farklı konum seç)",
+            parent=pencere)
+        if yanina:
+            cikti = str(klasor / "kitapcik_kontrol_raporu.xlsx")
+        else:
+            cikti = filedialog.asksaveasfilename(
+                parent=pencere, title="Kontrol raporunu kaydet",
+                defaultextension=".xlsx", initialdir=str(klasor),
+                initialfile="kitapcik_kontrol_raporu.xlsx",
+                filetypes=[("Excel", "*.xlsx")])
+            if not cikti:
+                return                       # vazgeçildi: kontrol başlamaz
         buton.configure(state="disabled")
         kontrol_buton.configure(state="disabled")
         log_kutusu.configure(state="normal")

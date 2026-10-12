@@ -5,6 +5,8 @@ kitapçıklarında B'nin soru numaraları farklı biçimlerde bozulur, her senar
 ayrı bir kopyada denetlenir:
 
   mükerrer         ortadaki soruya bir önceki sorunun numarası yazılır
+  ileri numara     ortadaki soruya iki sonraki numara yazılır (11'den sonra
+                   gelen soruya "13.", asıl 13 de yerinde)
   olmayan numara   ortadaki soruya testte olmayan bir numara yazılır
   yer değiştirmiş  ardışık iki sorunun numaraları değiştirilir
   kaymış           ortadaki sorudan testin sonuna kadar numaralar +1
@@ -13,8 +15,9 @@ ayrı bir kopyada denetlenir:
   numara silinmiş  ortadaki sorunun numarası silinir
   nokta unutulmuş  ortadaki sorunun numarası noktasız yazılır ("11")
 
-Her senaryoda beklenen HATA tam o numarada çıkmalı. Temiz kopyada bulunmayan
-ve senaryonun dokunmadığı bir yerde yeni HATA çıkmamalı (yan etki yok).
+Her senaryoda beklenen HATA tam o numarada çıkmalı. Mükerrer, ileri numara ve
+yer değiştirmiş senaryolarında rapora yalnız o tek satır düşmeli: A'daki soru
+için "B'de yok", "metin farklı" gibi yan hata çıkmamalı.
 
 Kopyalar <çıktı_klasörü> içine yazılır; kaynak PDF'lere dokunulmaz.
 
@@ -85,19 +88,23 @@ def main(app, qa, qb, sinav, cikti):
 
     a, b_ = s1[k], s1[k + 1]
     n, n2 = a["no"], b_["no"]
-    # ad, değişiklik, beklenen açıklama parçaları (her biri en az bir HATA'da geçmeli)
+    # ad, değişiklik, beklenen açıklama parçaları (her biri en az bir HATA'da
+    # geçmeli; "|" ile ayrılanlardan biri yeter), en çok kaç yeni sorun
     senaryolar = [
         ("mükerrer", [(a, f"{n - 1}.")],
-         [f"{n}. soru bulunamadı", f"büyük olasılıkla {n}"]),
-        ("olmayan numara", [(a, f"{N + 27}.")], [f"{n}. soru bulunamadı"]),
+         [f"Soru numarası hatalı: {n}. sorunun yerinde '{n - 1}.' yazıyor"], 1),
+        ("ileri numara", [(a, f"{n + 2}.")],
+         [f"Soru numarası hatalı: {n}. sorunun yerinde '{n + 2}.' yazıyor"], 1),
+        ("olmayan numara", [(a, f"{N + 27}.")],
+         [f"{n}. soru bulunamadı|{n}. sorunun yerinde '{N + 27}.'"], None),
         ("yer değiştirmiş", [(a, f"{n2}."), (b_, f"{n}.")],
-         [f"Numaralar sırasız: {n2}. soru {n}. sorudan önce"]),
+         [f"Numaralar sırasız: {n2}. soru {n}. sorudan önce"], 1),
         ("kaymış", [(o, f"{o['no'] + 1}.") for o in s1[k:]],
-         [f"{n}. soru bulunamadı", f"{n}. sorudan itibaren numaralar bir fazla"]),
+         [f"{n}. soru bulunamadı", f"{n}. sorudan itibaren numaralar bir fazla"], None),
         ("branş devamı", [(o, f"{o['no'] + len(s1)}.") for o in s2],
-         [f"bu testin 1–{len(s2)}. soruları '{len(s1) + 1}.'–'{len(s1) + len(s2)}.'"]),
-        ("numara silinmiş", [(a, None)], [f"{n}. soru bulunamadı"]),
-        ("nokta unutulmuş", [(a, f"{n}")], [f"{n}. soru bulunamadı"]),
+         [f"bu testin 1–{len(s2)}. soruları '{len(s1) + 1}.'–'{len(s1) + len(s2)}.'"], 2),
+        ("numara silinmiş", [(a, None)], [f"{n}. soru bulunamadı"], None),
+        ("nokta unutulmuş", [(a, f"{n}")], [f"{n}. soru bulunamadı"], None),
     ]
 
     def kontrol(yol):
@@ -109,16 +116,19 @@ def main(app, qa, qb, sinav, cikti):
     tset = {(s["onem"], s["aciklama"]) for s in temiz}
     print(f"temiz: {len(temiz)} sorun")
     hepsi = True
-    for i, (ad, degisim, beklenen) in enumerate(senaryolar):
+    for i, (ad, degisim, beklenen, en_cok) in enumerate(senaryolar):
         yol = str(out / f"B_numara{i}.pdf")
         boz(degisim, yol)
         yeni = [s for s in kontrol(yol) if (s["onem"], s["aciklama"]) not in tset]
         hata = [s for s in yeni if s["onem"] == "HATA"]
-        eksik = [p for p in beklenen if not any(p in s["aciklama"] for s in hata)]
-        tamam = not eksik
+        eksik = [p for p in beklenen
+                 if not any(any(q in s["aciklama"] for q in p.split("|")) for s in hata)]
+        fazla = en_cok is not None and len(yeni) > en_cok
+        tamam = not eksik and not fazla
         hepsi &= tamam
         print(f"{'✓' if tamam else '✗'} {ad}: {len(yeni)} yeni sorun"
-              + (f"; bulunamayan: {eksik}" if eksik else ""))
+              + (f"; bulunamayan: {eksik}" if eksik else "")
+              + (f"; en çok {en_cok} olmalıydı (yan hata)" if fazla else ""))
         for s in yeni:
             print(f"     {s['onem']} [{s['kitapcik']}] {s['test']} | {s['soru']} | {s['aciklama'][:150]}")
     print("SONUÇ:", "tamam" if hepsi else "SORUN")

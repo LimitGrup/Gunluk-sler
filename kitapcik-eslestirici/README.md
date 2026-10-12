@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.33)
+# Kitapçık Eşleştirici (v2.34)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -201,11 +201,19 @@ Her kitapçık önce **kendi içinde**, sonra **A ile B karşılıklı** denetle
      Önceden motor bu durumda sonraki bütün testleri kaybediyordu ve rapora 100'e yakın yan hata
      düşüyordu. Şimdi testler kendi yerlerinde yeniden bulunur. Numaraları doğru olan testler
      sessizce yerine oturur.
+   - **Yanlış numaralı soru tek satırda (v2.34):** Bir soruya yanlış numara yazılmışsa (11'den
+     sonra gelen soruya "13.", ya da "10.") ve aynı numara testte iki kez geçiyorsa, motor
+     sıraya uyanı gerçek soru sayar. Rapor tek satır yazar: "Soru numarası hatalı: 12.
+     sorunun yerinde '13.' yazıyor (13 numarası bu testte iki kez geçiyor)". Yanlış numaralı
+     sorunun başı da sayfa düzeninde soru başlangıcı sayılır. Böylece A'daki soru için "B'de
+     yok", "metin farklı" ya da "fazla şekil" gibi yan hatalar çıkmaz.
    - **Grafik/tablo etiketi numara sanılmaz:** Sütun kenarında durmayan ve sıraya uymayan bir
      "numara" soru başlangıcı sayılmaz. Örneğin bir grafikteki "11. ay" etiketi 11. soru sayılmaz.
      Gerçek soru numarası yanlış yazılmışsa rapor yalnız asıl hatayı gösterir.
 
-   `testler/numara_sina.py` B'nin numaralarını 7 biçimde bozar. Elimizdeki 5 gerçek çiftin baskı
+   `testler/numara_sina.py` B'nin numaralarını 8 biçimde bozar (v2.34'te "ileri numara" eklendi:
+   11'den sonra gelen soruya "13."). Mükerrer, ileri numara ve yer değiştirmiş numarada rapora
+   tek satır düşmelidir. Aşağıdaki ilk ölçüm v2.33'te, 7 senaryoyla yapıldı. Elimizdeki 5 gerçek çiftin baskı
    kopyasında (7. sınıf Limit 1, 7. sınıf Limit sözel 1, 8. sınıf MOBESE sayısal, AYT LEK 1,
    Finale TYT 1) 7 senaryonun hepsi doğru numarada HATA verdi (35/35). Senaryolar:
    - mükerrer numara;
@@ -253,6 +261,10 @@ sağında ve onun hizasında duran satır, üst üste kesir (315/2) ya da büyü
 numaranın biraz üstünden başlasa da o sorunun ilk satırı sayılır.
 
 ### Rapor
+
+A–B KONTROL başlarken raporun nereye kaydedileceği sorulur. "Evet" derseniz rapor PDF'lerin
+bulunduğu klasöre yazılır; soruda klasör adı gösterilir. "Hayır" derseniz kayıt penceresi
+açılır, yer ve ad seçilir. Kayıt penceresinde vazgeçilirse kontrol başlamaz.
 
 - **Özet:** Her kontrol için TEMİZ / HATA / KONTROL ET. Hatalar kırmızı zemin üzerinde beyaz,
   açıklamaları koyu kırmızı yazılır; uyarılar sarıdır. Altında **"NEREYE BAKMALI?"** listesi:
