@@ -2,7 +2,7 @@
 """
 A–B KONTROL'ün açık cevap ve eksik şekil denetimi gerçek bir dizgide doğru mu:
 cevaplı A/B kitapçıklarından baskı kopyası üretilir (renkli cevap harfleri ve
-soru kodları silinir), sonra dört durum denetlenir:
+soru kodları silinir), sonra beş durum denetlenir:
 
   temiz    A baskı ↔ B baskı: açık cevap bildirilmemeli (yanlış alarm yok).
   karışık  B'de bir sorunun cevabı SİYAH metin olarak, başka bir sorununki
@@ -15,6 +15,9 @@ soru kodları silinir), sonra dört durum denetlenir:
            (magenta, kırmızı, mavi, gri, siyah, "C)", "C.", italik, Times, 7 ve
            13 pt, kaymış, eğri, magenta sayı, beyaz): her biri beklenen önemle
            bildirilmeli; beyaz (basılmayan) harf bildirilmemeli.
+  siyah kod B'de bir sorunun soru kodu (ör. 56LMT7D1T1S17) silinmez, SİYAH
+           basılır: tam o soru "Soru kodu açık" HATA'sı olmalı, kod "metin
+           farklı" sayılmamalı.
 
 Kopyalar <çıktı_klasörü> içine yazılır; kaynak PDF'lere dokunulmaz. Kitapçıkların
 kendi içerik farkları (gerçek metin farkı vb.) her durumda aynı çıkar ve
@@ -65,7 +68,7 @@ def main(app, a_pdf, b_pdf, sinav, cikti):
         sh.finish(color=renk, width=1.3)
         sh.commit()
 
-    def baski(src, dst, siyah=None, egri=None, sil=(), stil=()):
+    def baski(src, dst, siyah=None, egri=None, sil=(), stil=(), kod=()):
         doc = fitz.open(src)
         for page in doc:
             for b in page.get_text("dict")["blocks"]:
@@ -98,6 +101,9 @@ def main(app, a_pdf, b_pdf, sinav, cikti):
                                   fontsize=boy, fontname=font, color=renk)
             else:
                 egri_ciz(sayfa, x0, y0, y1, renk)
+        for pno, (x0, y0, _x1, y1), metin in kod:   # siyaha çevrilmiş soru kodu
+            doc[pno].insert_text((x0, y0 + 0.72 * (y1 - y0)), metin, fontsize=8,
+                                 fontname="helv", color=(0, 0, 0))
         for pno, r in sil:                     # unutulmuş şekil
             doc[pno].add_redact_annot(fitz.Rect(r.x0 - 1, r.y0 - 1, r.x1 + 1, r.y1 + 1))
             doc[pno].apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,
@@ -206,6 +212,33 @@ def main(app, a_pdf, b_pdf, sinav, cikti):
                                                             for o in sayi))]
     yaz(fazla)
     tamam = tamam and not fazla
+
+    # Soru kodu siyah basılmış (cevaplı B'deki renkli kodun yerine)
+    kodlu = []
+    for o in B["ogeler"]:
+        if not o["no"] or o is siyah[0] or o is egri[0]:
+            continue
+        for r in o["ham_satirlar"]:
+            sp_ = r.get("spanlar", [])
+            ku_ = r.get("kutular") or [(r["x0"], r["y0"], r["x1"], r["y1"])] * len(sp_)
+            for (t, renk), kutu in zip(sp_, ku_):
+                if m.renkli_mi(renk) and m._soru_kodu_mu(t):
+                    kodlu.append((o, (r["sayfa"], tuple(kutu), t.strip())))
+    if kodlu:
+        o_k, kod_ = kodlu[len(kodlu) // 2]
+        qkod = str(out / "B_kod.pdf")
+        baski(b_pdf, qkod, kod=[kod_])
+        ks = kontrol(qkod)
+        print(f"siyah kod: {o_k['ders']} {o_k['etiket_no']} '{kod_[2]}'")
+        yaz(ks)
+        bul = [s for s in ks if cevap_sorunu(s)]
+        diger_k = [s for s in ks if not cevap_sorunu(s) and (s["onem"], s["aciklama"]) not in temiz_set]
+        ok = (len(bul) == 1 and bul[0]["onem"] == "HATA" and "Soru kodu açık" in bul[0]["aciklama"]
+              and yer(bul[0], o_k) and not diger_k)
+        print(f"    {'✓' if ok else '✗'} siyah kod")
+        tamam = tamam and ok
+    else:
+        print("siyah kod: renkli soru kodu bulunamadı (atlandı)")
     print("SONUÇ:", "tamam" if tamam else "SORUN")
     return 0 if tamam else 1
 

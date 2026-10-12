@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.37)
+# Kitapçık Eşleştirici (v2.38)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -6,6 +6,45 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.xlsx` + sorunlu soruların A/B görüntüleri (PDF) |
+
+## Bilerek bozulmuş gerçek kitapçıkta net rapor (v2.38)
+
+7. sınıf Limit denemesinin B'si bilerek bozuldu, rapor v2.36'da gerçek hataları buluyordu ama
+yanında yanıltıcı satırlar da yazıyordu. Üç neden düzeltildi:
+
+- **Testin yalnız ilk sorusu yanlış numaralı (Sosyal 1 yerine "21.").** Motor Sosyal 1'i
+  sayfadaki "1. Örnek: …" satırına bağlamıştı. Bu satır soru numarası değil ve okuma sırasına da
+  uymuyordu; o sayfanın düzenini bozuyordu: tam genişlik bir soru ("SOSYAL MEDYA") ikiye bölündü,
+  "A-5 B'de bulunamadı / B-8'in karşılığı yok / metin farklı / fazla şekil" gibi satırlar çıktı,
+  "21." Türkçe'nin fazla sorusu sayıldı ve bant denetimi de yanıldı. Artık böyle bir çapa
+  atıldığında sayfanın okuma sırası yeniden kurulur, testin baştaki eksik numarası yeniden
+  aranır. Rapor tek satır yazar: "Numara yanlış: bu testin 1. sorusu '21.' diye numaralanmış."
+- **Aynı satırdaki şıkların taban farkı.** Şıklar aynı satırda yüzde birkaç puan farkla
+  durunca satır aralığı neredeyse 0 ölçülüyordu. Bu yüzden şıkların altındaki tablo satırları
+  sorudan kopuyor, "metin farklı + fazla şekil" yazılıyordu (Fen 14). 2 pt'den küçük farklar
+  artık satır aralığı sayılmaz.
+- **Siyah basılmış soru kodu.** Soru kodu (ör. `56LMT7D1T1S17`) rengi siyaha çevrilerek açık
+  kalmışsa "Metin farklı" deniyordu. Artık şöyle yazılır: "Soru kodu açık: sayfa 5, soru 16 —
+  '56LMT7D1T1S17' basılı kalmış (SİYAH basılmış — …)". Kod biçimi dardır: iki rakam, harfler,
+  sonda rakam. Gerçek kitapçıklarda siyah basılmış böyle bir metin yoktu; yanlış alarm çıkmaz.
+
+O çiftte rapor şimdi yalnız bilerek yapılan hataları gösterir:
+
+- Türkçe 3. sorunun yerinde '7.' yazıyor.
+- Sosyal 1. soru '21.' diye numaralanmış.
+- 16. soruda siyah 'A' ve siyah kod açık kalmış.
+- 20. soruda renkli 'B' ve kod açık kalmış.
+
+Bunların yanında tek bir sarı not var: test yapısı B'nin numaralarından okunamadı (bu numara
+hatalarından).
+
+Testler:
+
+- 17 gerçek çiftte KONTROL raporu ve EŞLEŞTİR tablosu değişmedi.
+- `numara_sina.py`'ye "ilk soru devam" senaryosu eklendi: Sosyal 1 yerine "21.". 5 çiftte tek
+  satır HATA verdi, tüm senaryolar geçti.
+- `baski_kopya_sina.py`'ye "siyah kod" senaryosu eklendi. Kodlu 3 çiftte (AYT, TYT, 7. sınıf
+  sayısal) yalnız "Soru kodu açık" çıktı. 7 çiftin hepsi tamam.
 
 ## Bantta yazan soru sayısı (v2.37)
 
@@ -422,8 +461,8 @@ python3 testler/duzen_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/ki
 python3 testler/cevap_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/ornek  # EŞLEŞTİR: cevap harfi ve B numarası gerçek değerle aynı mı
 python3 testler/kesir_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/kesir  # ilk satır numaranın üstünden başlıyor: kaybolmamalı
 python3 testler/tire_sina.py     "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/tire   # A ve B'de farklı tire karakteri: sahte uyarı olmamalı
-python3 testler/numara_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A_baski.pdf B_baski.pdf OTOMATİK /tmp/numara  # B'de numaraları 7 biçimde bozar: her biri doğru yerde HATA olmalı
-python3 testler/baski_kopya_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/kopya  # gerçek cevaplı çiftten baskı kopyası: siyah ve eğri cevap yakalanmalı
+python3 testler/numara_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A_baski.pdf B_baski.pdf OTOMATİK /tmp/numara  # B'de numaraları 11 biçimde bozar: her biri doğru yerde HATA olmalı
+python3 testler/baski_kopya_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/kopya  # gerçek cevaplı çiftten baskı kopyası: siyah/eğri cevap, 21 stil, siyah kod yakalanmalı
 ```
 
 Üretilen örnekler: iki sütunlu ve tek sütunlu (2x2 şıklı) sayfalar, metne bağlı gruplar, şekilli

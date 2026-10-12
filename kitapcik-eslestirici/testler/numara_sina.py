@@ -12,6 +12,8 @@ ayrı bir kopyada denetlenir:
   kaymış           ortadaki sorudan testin sonuna kadar numaralar +1
   branş devamı     ikinci testin numaraları 1'den değil önceki testin
                    sonundan devam eder (Sosyal 1–10 yerine 21–30)
+  ilk soru devam   ikinci testin yalnız 1. sorusu önceki testin sonundan devam
+                   eder (Sosyal 1 yerine "21.", 2–10 doğru)
   numara silinmiş  ortadaki sorunun numarası silinir
   nokta unutulmuş  ortadaki sorunun numarası noktasız yazılır ("11")
   grup içi numara  metne bağlı bir grubun ortasındaki soruya iki sonraki numara
@@ -23,9 +25,9 @@ ayrı bir kopyada denetlenir:
   bant yanlış      bandın sayısı bir eksik yazılır ("19 soru vardır"), testte
                    20 soru var
 
-Her senaryoda beklenen HATA tam o numarada çıkmalı. Mükerrer, ileri numara ve
-yer değiştirmiş senaryolarında rapora yalnız o tek satır düşmeli: A'daki soru
-için "B'de yok", "metin farklı" gibi yan hata çıkmamalı.
+Her senaryoda beklenen HATA tam o numarada çıkmalı. Mükerrer, ileri numara,
+yer değiştirmiş ve ilk soru devam senaryolarında rapora yalnız o tek satır
+düşmeli: A'daki soru için "B'de yok", "metin farklı" gibi yan hata çıkmamalı.
 
 Kopyalar <çıktı_klasörü> içine yazılır; kaynak PDF'lere dokunulmaz.
 
@@ -148,6 +150,8 @@ def main(app, qa, qb, sinav, cikti):
          [f"{n}. soru bulunamadı", f"{n}. sorudan itibaren numaralar bir fazla"], None),
         ("branş devamı", [(o, f"{o['no'] + len(s1)}.") for o in s2],
          [f"bu testin 1–{len(s2)}. soruları '{len(s1) + 1}.'–'{len(s1) + len(s2)}.'"], 2),
+        ("ilk soru devam", [(s2[0], f"{len(s1) + 1}.")],
+         [f"bu testin 1. sorusu '{len(s1) + 1}.' diye numaralanmış"], 1),
         ("numara silinmiş", [(a, None)], [f"{n}. soru bulunamadı"], None),
         ("nokta unutulmuş", [(a, f"{n}")], [f"{n}. soru bulunamadı"], None),
     ]

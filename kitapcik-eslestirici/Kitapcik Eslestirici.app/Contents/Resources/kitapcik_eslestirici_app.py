@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.37"
+SURUM = "2.38"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -1292,6 +1292,19 @@ def _renkli_isaret_mi(metin, renk):
                 and re.search(r"\d", t))
 
 
+# Soru kodu biçimi (ör. 56LMT7D1T1S17): iki rakam, harfler, rakamla biter. Rengi
+# siyaha çevrilmiş (ya da yanlış stil almış) kod da kod sayılır: metinden
+# çıkarılır ("Metin farklı" denmez), açık kalmış kod diye bildirilir
+SORU_KODU_RE = re.compile(r"\d{2}[A-ZÇĞİÖŞÜ]{2,}[A-Z0-9ÇĞİÖŞÜ]*\d")
+
+
+def _soru_kodu_mu(metin):
+    t = metin.strip()
+    return (8 <= len(t) <= 20 and bool(SORU_KODU_RE.fullmatch(t))
+            and sum(ch.isdigit() for ch in t) >= 3
+            and sum(ch.isalpha() for ch in t) >= 3)
+
+
 def _sik_harfi(satir):
     m = SECENEK_SATIRI_RE.match(satir["metin"])
     return m.group(1) if m else None
@@ -1327,7 +1340,7 @@ def _gorunur_ayni(a, b):
 
 def _temiz_satir(satir, ilk=False):
     m = "".join(t for t, rk in satir.get("spanlar", [])
-                if not _renkli_isaret_mi(t, rk)).strip()
+                if not _renkli_isaret_mi(t, rk) and not _soru_kodu_mu(t)).strip()
     if ilk:
         mm = SORU_BASI_RE.match(m)
         if mm:
@@ -1663,7 +1676,7 @@ def _kayip_testleri_bul(k):
             kenar.add((i, int(mm.group(1))))
     kenar = sorted(kenar)
     kullanilan = set(eslesen.values())
-    kaymalar = []
+    kaymalar = list(k.get("kaymalar_s", []))      # önceki geçişte bulunanlar
     for ti_ in sorted({t for t, _d, _n in beklenen}):
         bek_ti = sorted((n, b_i) for b_i, (t, _d, n) in enumerate(beklenen) if t == ti_)
         capali_no = {beklenen[b_][2] for b_ in eslesen if beklenen[b_][0] == ti_}
@@ -1740,8 +1753,9 @@ def _kitapcik_bolumle(k, mobilya, log):
     """Soruları okuma sırasına göre böler; her sorunun temiz metnini (gövde +
     şıklar), bölgesini, metne bağlı grup başlıklarını ve numarası beklenen
     sıraya uymayan şıklı soru başlangıçlarını çıkarır."""
-    if not k.get("_gecis"):
+    if not k.get("_kayip_bakildi"):
         _kayip_testleri_bul(k)
+        k["_kayip_bakildi"] = True
     satirlar, beklenen = k["satirlar"], k["beklenen"]
     capa_sirasi = {id(satirlar[s]): b for b, s in k["eslesen"].items()}
     # İkinci geçiş: numarası hatalı soruların başları da okuma sırasında soru
@@ -1823,6 +1837,16 @@ def _kitapcik_bolumle(k, mobilya, log):
         logla(f"{k['etiket']}: okuma sırasına uymayan kenar dışı numara çapa "
               f"sayılmadı: " + ", ".join(f"{beklenen[b_][2]} ({sira[p_]['metin'][:20]!r})"
                                          for p_, b_ in sorted(dusen)))
+        # Yanlış çapa sayfanın okuma sırasını da bozmuştur (tam genişlik bir
+        # soru ikiye bölünür): çapa atılır, okuma sırası yeniden kurulur ve
+        # testin baştaki numarası artık eksikse yeniden aranır (Sosyal 1
+        # "21." diye basılmış gibi)
+        if not k.get("_dusuruldu"):
+            atilan = {b_ for _p, b_ in dusen}
+            k["eslesen"] = {b_: s_ for b_, s_ in k["eslesen"].items() if b_ not in atilan}
+            k["_dusuruldu"] = True
+            k["_kayip_bakildi"] = False
+            return _kitapcik_bolumle(k, mobilya, log)
         capalar = [c for c in capalar if c not in dusen]
 
     # --- numarası beklenene uymayan şıklı soru başlangıçları ------------------
@@ -1958,9 +1982,11 @@ def _kitapcik_bolumle(k, mobilya, log):
                    if SECENEK_SATIRI_RE.match(r["metin"])]
         if sec_idx:
             son_sec = sec_idx[-1]
+            # Aynı satırdaki şıkların taban farkı (birkaç yüzde puan) satır
+            # aralığı sayılmaz; yoksa tablo/şekil satırları şıktan kopar
             adimlar = sorted(bolum[a + 1]["y0"] - bolum[a]["y0"]
                              for a in range(sec_idx[0], son_sec)
-                             if bolum[a + 1]["y0"] > bolum[a]["y0"])
+                             if bolum[a + 1]["y0"] - bolum[a]["y0"] > 2)
             tipik = adimlar[len(adimlar) // 2] if adimlar else 14
             j = son_sec + 1
             while (j < len(bolum) and bolum[j]["sayfa"] == bolum[j - 1]["sayfa"]
@@ -2741,6 +2767,11 @@ def _acik_cevaplar(k):
         for r in o["ham_satirlar"]:
             for t, renk in r.get("spanlar", []):
                 tt = t.strip()
+                if tt and not renkli_mi(renk) and not _gorunmez_renk(renk) \
+                        and _soru_kodu_mu(tt):
+                    bulunan.append((o, r, tt, f"#{renk:06X}; "
+                                    + _renk_tarifi(renk, noktali=True)))
+                    continue
                 if not tt or not renkli_mi(renk) or re.fullmatch(r"[A-E]", tt):
                     continue
                 kod = tt.replace(" ", "")
