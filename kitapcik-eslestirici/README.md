@@ -1,11 +1,46 @@
-# Kitapçık Eşleştirici (v2.38)
+# Kitapçık Eşleştirici (v2.39)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
 | Düğme | Ne yapar | Çıktı |
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
-| **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.xlsx` + sorunlu soruların A/B görüntüleri (PDF) |
+| **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.pdf` (tek PDF: özet + sorunlu soruların A/B görüntüleri) |
+
+## KONTROL tek PDF verir; sayfa süsü şekil sayılmaz (v2.39)
+
+- **Tek çıktı:** A–B KONTROL artık yalnız `kitapcik_kontrol_raporu.pdf` yazar:
+  - İlk sayfada özet ve tıklanır sorun listesi var.
+  - Sonraki sayfalarda her sorunun A/B görüntüsü var.
+  - Sorun yoksa tek sayfa yeşil "SORUN BULUNMADI" yazar.
+
+  Excel raporu ve A ile B için ayrı ayrı işaretli PDF'ler (`…_kontrol.pdf`) yazılmaz. Kayıt yeri
+  yine başlarken sorulur (Evet = PDF'lerin klasörü, Hayır = konum seç). Biten işte "Rapor (PDF)
+  şimdi açılsın mı?" diye sorulur. EŞLEŞTİR'in çıktısı ve akışı değişmedi.
+- **Sayfa süsü yanlış "şekil eksik/fazla" vermez:** 8. sınıf final (sözel) çiftinde 10 HATA'nın
+  hepsi aynı yanlış alarmdı:
+  - Her sütunun altında, son sorunun hemen altında mor noktalı bir süs çizgisi var.
+  - A ile B'de sorular yer değiştirince süs başka sorunun altına düşüyordu.
+  - Program bunu "A'da 1, B'de 0 şekil parçası" diye okuyordu.
+
+  Artık şekil sayılmayanlar:
+  - Kitapçığın birçok sayfasında (en az 3 sayfa ve sayfaların %30'u) aynı yerde duran çizim ve
+    resimler (çerçeve, süs, logo).
+  - Sorunun son satırının tamamen altında kalan ince şerit.
+
+  Sorunun içindeki şekiller ve şıkların resimleri eskisi gibi denetlenir.
+- `testler/sus_sina.py` yeni test. A ve B'ye aynı süsü çizer, süssüz kopyaya göre yeni sorun
+  çıkmamalı:
+  - sütun sonu süsü: her sütunun son satırının altında;
+  - sabit süs: her sayfada aynı yerde.
+
+  Eski sürüm (v2.38) süslü 8. sınıf sayısal çiftinde 16 yanlış şekil satırı verdi: 11'i sütun
+  sonu süsünden, 5'i sabit süsten. v2.39, 5 gerçek çiftin hepsinde 0 yeni sorun verdi.
+- Diğer testler:
+  - 17 gerçek çiftte KONTROL bulguları v2.38 ile aynı.
+  - 15 gerçek çiftte EŞLEŞTİR tablosu v2.30 ile aynı.
+  - Numara senaryoları 5 çiftte, baskı kopyası 7 çiftte tamam. Bunun içinde gerçekten silinmiş
+    şekil her çiftte yine "şekil eksik" diye yakalanıyor.
 
 ## Bilerek bozulmuş gerçek kitapçıkta net rapor (v2.38)
 
@@ -355,29 +390,28 @@ A–B KONTROL başlarken raporun nereye kaydedileceği sorulur. "Evet" derseniz 
 bulunduğu klasöre yazılır; soruda klasör adı gösterilir. "Hayır" derseniz kayıt penceresi
 açılır, yer ve ad seçilir. Kayıt penceresinde vazgeçilirse kontrol başlamaz.
 
-- **Özet:** Her kontrol için TEMİZ / HATA / KONTROL ET. Hatalar kırmızı zemin üzerinde beyaz,
-  açıklamaları koyu kırmızı yazılır; uyarılar sarıdır. Altında **"NEREYE BAKMALI?"** listesi:
-  her sorun sıra numarası, testi, soru numarası (A-7 / B-2), **A ve B sayfası** ve ne bulunduğuyla.
-  Liste kitapçıktaki sıraya göredir (önce hatalar, sonra uyarılar).
-- **Sorun kartları PDF'i** (`kitapcik_kontrol_raporu_sorunlar.pdf`): Her sorun için bir sayfa.
-  Üstte ne bulunduğu ve sayfası, altta sorunun **A ve B kitapçığındaki görüntüsü yan yana**:
+Rapor tek PDF'tir (`kitapcik_kontrol_raporu.pdf`, v2.39):
+
+- **İlk sayfa:** Özet var: A ve B'de yerinde duran soru sayısı, eşleşen soru, metin birebir,
+  metne bağlı gruplar, şekiller, açık cevap. Altında **"Bakılacak sorular"** listesi var:
+  - Her satırda sıra numarası, testi, soru numarası (A-7 / B-2), **A ve B sayfası** ve ne
+    bulunduğu yazar.
+  - Hatalar kırmızı, uyarılar turuncu yazılır.
+  - Liste önce hataları, sonra uyarıları kitapçıktaki sırayla verir.
+  - Satıra tıklayınca o sorunun sayfası açılır.
+  - Sorun yoksa başlık yeşil "SORUN BULUNMADI" olur.
+- **Sonraki sayfalar:** Her sorun için bir sayfa. Üstte ne bulunduğu ve sayfası, altta sorunun
+  **A ve B kitapçığındaki görüntüsü yan yana**:
   - farklı kelimeler sarıyla boyanır;
   - farklı şekil kırmızı çerçeveyle, en farklı küçük bölgesi ayrıca işaretlenir;
   - açık kalan cevap harfi çerçevelenir;
   - bulunamayan sorunun yerine önceki ve sonraki soru gösterilir.
 
-  İlk sayfa tıklanır içindekiler listesidir. Böylece her uyarı PDF'leri açıp aramadan,
-  birkaç saniyede doğrulanır. Sorun yoksa bu dosya oluşmaz; önceki kontrolden kalan eski dosya
-  da silinir.
-- **Sorunlar:** Her sorun için sıra no, önem, kitapçık, test, ders, soru, sayfa ve açıklama.
-- **Soru Eşleşmesi:** A no → B no, metin %, şekil/resim durumu, cevaplar ve durum.
-- **Metne Bağlı Gruplar:** A grubu → B karşılığı, parça benzerliği ve durum.
-- **İşaretli PDF:** Sorunlu yerler A ve B PDF'lerinin kopyasında çerçevelenir (kırmızı = hata,
-  turuncu = elle bakılacak), farklı kelimeler vurgulanır ve not olarak açıklama eklenir. Sorun
-  yoksa bu PDF oluşmaz.
+  Böylece her uyarı, PDF'leri açıp aramadan birkaç saniyede doğrulanır.
 
-Uygulamada kontrol bitince "Excel ve görüntüler açılsın mı?" sorusuna Evet denirse ikisi birlikte
-açılır. Günlükte de her sorun sayfasıyla yazılır.
+Uygulamada kontrol bitince "Rapor (PDF) şimdi açılsın mı?" diye sorulur. Günlükte de her sorun
+sayfasıyla yazılır. v2.38'e kadar ayrıca Excel raporu ve A ile B için işaretli PDF kopyaları
+yazılıyordu; artık yazılmaz.
 
 ### Farklı şablonlar
 
@@ -463,6 +497,7 @@ python3 testler/kesir_sina.py    "Kitapcik Eslestirici.app/Contents/Resources/ki
 python3 testler/tire_sina.py     "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" /tmp/tire   # A ve B'de farklı tire karakteri: sahte uyarı olmamalı
 python3 testler/numara_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A_baski.pdf B_baski.pdf OTOMATİK /tmp/numara  # B'de numaraları 11 biçimde bozar: her biri doğru yerde HATA olmalı
 python3 testler/baski_kopya_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/kopya  # gerçek cevaplı çiftten baskı kopyası: siyah/eğri cevap, 21 stil, siyah kod yakalanmalı
+python3 testler/sus_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/sus  # sütun sonu / sabit sayfa süsü: yanlış şekil uyarısı çıkmamalı
 ```
 
 Üretilen örnekler: iki sütunlu ve tek sütunlu (2x2 şıklı) sayfalar, metne bağlı gruplar, şekilli

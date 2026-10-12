@@ -22,17 +22,14 @@ def motoru_yukle(yol):
 
 def calistir(m, klasor, ad, sinav, a, b, dogru=None, ayrinti=False):
     loglar = []
-    cikti = klasor / f"_{ad}_kontrol.xlsx"
+    cikti = klasor / f"_{ad}_kontrol_raporu.pdf"
     yapi = m.YAPILAR.get(sinav) or m.yapi_cikar(str(klasor / a))
     yapi_b = None if sinav in m.YAPILAR else m.yapi_cikar(str(klasor / b))
     sonuc, sorunlar = m.kontrol_et(str(klasor / a), str(klasor / b), yapi,
                                    loglar.append, yapi_b=yapi_b)
-    kart = m.kart_yolu(cikti)
-    m.kontrol_raporu_yaz(sonuc, sorunlar, str(cikti),
-                         kartlar=kart if sorunlar else None)
-    m.kontrol_pdf_isaretle(sonuc, sorunlar, klasor)
-    if sorunlar:                     # her sorun için A/B görüntü kartı
-        m.kontrol_kartlari_yaz(sonuc, sorunlar, kart)
+    # Tek çıktı: özet + her sorun için A/B görüntü kartı (sorun yoksa özet)
+    m.kontrol_kartlari_yaz(sonuc, sorunlar, str(cikti),
+                           ozet=m.kontrol_ozeti(sonuc, sorunlar))
     hata = [s for s in sorunlar if s["onem"] == "HATA"]
     uyari = [s for s in sorunlar if s["onem"] == "UYARI"]
     es = sonuc["eslesmeler"]

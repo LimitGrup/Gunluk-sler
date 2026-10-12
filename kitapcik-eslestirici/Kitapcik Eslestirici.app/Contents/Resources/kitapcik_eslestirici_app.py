@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.38"
+SURUM = "2.39"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -2181,8 +2181,43 @@ def _gorsel_puan(docA, docB, bolgeA, bolgeB, onbellek):
 def _sayfa_nesneleri(doc, pno, onbellek):
     """Sayfadaki çizim ve resim parçalarının GÖRÜNEN dikdörtgenleri: her çizim
     parçası bağlı olduğu kırpma alanıyla kesilir (kırpılmış vektör resmin
-    görünmeyen parçaları düşer); sayfa/sütun ayırıcı çizgiler alınmaz."""
+    görünmeyen parçaları düşer); sayfa/sütun ayırıcı çizgiler ve sayfa süsleri
+    (birçok sayfada aynı yerde duran çerçeve, sütun altı noktalı süs, logo)
+    alınmaz: A ile B'de sorular yer değiştirince süs başka sorunun altına düşer,
+    "şekil eksik/fazla" sanılırdı."""
     anahtar = ("nesne", id(doc), pno)
+    if anahtar not in onbellek:
+        tekrar = _tekrar_eden_nesneler(doc, onbellek)
+        onbellek[anahtar] = [r for r in _sayfa_nesneleri_ham(doc, pno, onbellek)
+                             if not (_nesne_anahtarlari(r) & tekrar)]
+    return onbellek[anahtar]
+
+
+def _nesne_anahtarlari(r):
+    """Konum anahtarı (2 pt ızgara; sınırda bölünmesin diye iki kaydırmalı)."""
+    return {tuple(int((v + k) // 2) for v in (r.x0, r.y0, r.x1, r.y1)) + (k,)
+            for k in (0, 1)}
+
+
+def _tekrar_eden_nesneler(doc, onbellek):
+    """Kitapçığın birçok sayfasında (en az 3 sayfa ve sayfaların %30'u) aynı
+    yerde duran çizim/resim parçaları: sayfa süsü sayılır."""
+    anahtar = ("nesne_tekrar", id(doc))
+    if anahtar not in onbellek:
+        sayac = {}
+        for p_ in range(len(doc)):
+            anahtarlar = set()
+            for r in _sayfa_nesneleri_ham(doc, p_, onbellek):
+                anahtarlar |= _nesne_anahtarlari(r)
+            for a_ in anahtarlar:
+                sayac[a_] = sayac.get(a_, 0) + 1
+        esik = max(3, int(0.3 * len(doc) + 0.999))
+        onbellek[anahtar] = {a_ for a_, n in sayac.items() if n >= esik}
+    return onbellek[anahtar]
+
+
+def _sayfa_nesneleri_ham(doc, pno, onbellek):
+    anahtar = ("nesne_ham", id(doc), pno)
     if anahtar not in onbellek:
         sayfa = doc[pno]
         W = sayfa.rect.width
@@ -2264,9 +2299,13 @@ def _sekil_kutulari(doc, bolgeler, onbellek):
     resim ya da yüzlerce parçalı çizim tek kutu olur. Dönen: [(sayfa, Rect)]."""
     sonuc = []
     for pno, x0, y0, x1, y1 in bolgeler:
+        # Bölge, sorunun satırlarının 3 pt dışına kadardır. Son satırın tamamen
+        # altında kalan parça (en çok ~6 pt'lik şerit) şekil değil süs/ayraçtır
+        # (sütun sonundaki noktalı süs çizgisi gibi): sütunun son sorusu A ile
+        # B'de farklı olunca "şekil eksik/fazla" sanılmasın
         parcalar = [r for r in _sayfa_nesneleri(doc, pno, onbellek)
                     if r.x0 >= x0 - 2 and r.x1 <= x1 + 2 and r.y0 >= y0 - 2
-                    and r.y1 <= y1 + 2]
+                    and r.y1 <= y1 + 2 and r.y0 < y1 - 4]
         kutular = []
         for r in parcalar:
             genis = fitz.Rect(r.x0 - 6, r.y0 - 6, r.x1 + 6, r.y1 + 6)
@@ -3639,247 +3678,7 @@ def _nolar_yazi(nolar):
     return ", ".join(map(str, nolar))
 
 
-def kart_yolu(rapor):
-    """Sorun kartları PDF'inin yolu (raporun yanında)."""
-    rapor = Path(rapor)
-    return rapor.with_name(rapor.stem + "_sorunlar.pdf")
-
-
-def kontrol_raporu_yaz(sonuc, sorunlar, cikti, kartlar=None):
-    import openpyxl
-    from openpyxl.styles import Alignment, Font, PatternFill
-    KIRMIZI = PatternFill("solid", fgColor="E53935")    # hata: açık kırmızı
-    SARI = PatternFill("solid", fgColor="FFE699")
-    YESIL = PatternFill("solid", fgColor="C6EFCE")
-    KALIN = Font(name="Tahoma", bold=True)
-    BEYAZ_KALIN = Font(name="Tahoma", bold=True, color="FFFFFF")
-    KOYU_KIRMIZI = Font(name="Tahoma", bold=True, color="B71C1C")
-
-    def ekle(sayfa, satir):
-        sayfa.append([_xl(v) for v in satir])
-
-    def boya(hucre, tur):
-        """tur: HATA (kırmızı, beyaz kalın yazı), UYARI/KONTROL ET (sarı), TEMİZ."""
-        if tur == "HATA":
-            hucre.fill, hucre.font = KIRMIZI, BEYAZ_KALIN
-        elif tur == "TEMİZ":
-            hucre.fill = YESIL
-        else:
-            hucre.fill = SARI
-    adlar = sonuc["test_adlari"]
-    test_adi = lambda ti: adlar[ti] if ti is not None and ti < len(adlar) else ""
-
-    wb = openpyxl.Workbook()
-    oz = wb.active
-    oz.title = "Özet"
-    hata = sum(1 for s in sorunlar if s["onem"] == "HATA")
-    uyari = sum(1 for s in sorunlar if s["onem"] == "UYARI")
-    es = sonuc["eslesmeler"]
-    metin_farki = lambda d: "METİN FARKI" in d or "NOKTALAMA" in d
-    ayni = sum(1 for e in es if not metin_farki(e[6]))     # yalnız metin ve şıklar
-    toplam_a = sonuc["numara"]["A"][1]
-    ekle(oz, ["A–B KİTAPÇIK KONTROL RAPORU", f"Motor sürümü {SURUM}"])
-    ekle(oz, ["A kitapçığı", Path(sonuc["A"]["pdf"]).name])
-    ekle(oz, ["B kitapçığı", Path(sonuc["B"]["pdf"]).name])
-    ekle(oz, [])
-    ekle(oz, ["Kontrol", "Sonuç", "Durum"])
-    for c in oz[5]:
-        c.font = KALIN
-    satirlar = [
-        ("Genel sonuç", f"{hata} hata, {uyari} uyarı"
-         + (" — hangi soru, hangi sayfa: aşağıda" if sorunlar else ""),
-         "TEMİZ" if not hata and not uyari else ("HATA" if hata else "UYARI")),
-    ]
-    for et in ("A", "B"):
-        bul, bek, eks, faz = sonuc["numara"][et]
-        satirlar.append((f"{et} kitapçığı numaralandırma",
-                         f"{bul}/{bek} soru yerinde, {eks} eksik, {faz} sırasız numara",
-                         "TEMİZ" if not eks and not faz else "HATA"))
-    eslesen_a = sum(1 for e in es if e[0]["no"])
-    satirlar.append(("A'daki her soru B'de var mı?",
-                     f"{eslesen_a}/{toplam_a} soru B'de bulundu",
-                     "TEMİZ" if eslesen_a == toplam_a else "HATA"))
-    satirlar.append(("Soru metni + şıklar birebir",
-                     f"{ayni}/{len(es)} çift tamamen aynı",
-                     "TEMİZ" if ayni == len(es) else
-                     ("HATA" if any("METİN FARKI" in e[6] for e in es) else "KONTROL ET")))
-    ca, cb = sonuc["cevap_var"]
-    cevap_fark = sum(1 for e in es if "CEVAP FARKLI" in e[6])
-    satirlar.append(("Cevap harfleri", f"{cevap_fark} farklı (A'da {ca}, B'de {cb} "
-                     f"renkli cevap okundu)" + ("" if cb else " — B'de cevap yok, "
-                                               "kıyas yapılamadı"),
-                     "TEMİZ" if not cevap_fark else "HATA"))
-    gr = sonuc["gruplar"]
-    gr_ok = sum(1 for g in gr if not g[7])
-    satirlar.append(("Metne bağlı gruplar", f"{gr_ok}/{len(gr)} grup B'de aynı",
-                     "TEMİZ" if gr_ok == len(gr) else "HATA"))
-    sekil_fark = sum(1 for e in es if any(d.startswith("ŞEKİL") for d in e[6])) + \
-        sum(1 for g in gr if any(d.startswith("ŞEKİL") for d in g[7]))
-    sekil_hata = any(d in ("ŞEKİL EKSİK", "ŞEKİL FAZLA", "ŞEKİL DEĞİŞMİŞ")
-                     for e in list(es) + list(gr) for d in e[-1])
-    satirlar.append(("Şekil, resim, tablo çizimleri",
-                     f"{sekil_fark} soru/metinde fark",
-                     "TEMİZ" if not sekil_fark else ("HATA" if sekil_hata else "KONTROL ET")))
-    for et in ("A", "B"):
-        acik = sonuc["acik_cevap"][et]
-        satirlar.append((f"Açık kalan cevap ({et})",
-                         "yok" if not acik else f"{acik} işaret bulundu",
-                         "TEMİZ" if not acik else "HATA"))
-    for s in satirlar:
-        ekle(oz, list(s))
-        boya(oz.cell(row=oz.max_row, column=3), s[2])
-    oz.column_dimensions["A"].width = 40
-    oz.column_dimensions["B"].width = 70
-    oz.column_dimensions["C"].width = 16
-
-    # Nereye bakmalı: her sorun, sayfasıyla birlikte doğrudan özette
-    ekle(oz, [])
-    if sorunlar:
-        ekle(oz, ["NEREYE BAKMALI?", f"{len(sorunlar)} sorun — kitapçıktaki "
-                   f"sırasıyla (önce hatalar)", "Sayfa"])
-        for c in oz[oz.max_row]:
-            c.font = KALIN
-        if kartlar:
-            ekle(oz, ["Görüntüler", f"Her sorunun A ve B görüntüsü yan yana, "
-                       f"farklı kelimeler sarı: {Path(kartlar).name}", ""])
-            c = oz.cell(row=oz.max_row, column=2)
-            c.hyperlink = Path(kartlar).name
-            c.font = Font(name="Tahoma", color="0563C1", underline="single")
-        for s in sorunlar:
-            ekle(oz, [f"{s['sira']}. {s['onem']} · {s['test'] or s['kitapcik']}"
-                       + (f" · {s['soru']}" if s["soru"] else ""),
-                       s["aciklama"], _sorun_yeri(s)])
-            boya(oz.cell(row=oz.max_row, column=1), s["onem"])
-            if s["onem"] == "HATA":           # açıklama da kırmızı okunsun
-                oz.cell(row=oz.max_row, column=2).font = KOYU_KIRMIZI
-            oz.cell(row=oz.max_row, column=2).alignment = Alignment(
-                wrap_text=True, vertical="top")
-            oz.cell(row=oz.max_row, column=1).alignment = Alignment(vertical="top")
-            oz.cell(row=oz.max_row, column=3).alignment = Alignment(vertical="top")
-    else:
-        ekle(oz, ["NEREYE BAKMALI?", "Bakılacak soru yok — A ile B kitapçığında "
-                   "sorun bulunamadı.", ""])
-        oz.cell(row=oz.max_row, column=1).font = KALIN
-
-    ws = wb.create_sheet("Sorunlar")
-    ekle(ws, ["Sıra", "Önem", "Kitapçık", "Test", "Ders", "Soru", "Sayfa",
-               "Açıklama"])
-    for s in sorunlar:
-        ekle(ws, [s.get("sira", ""), s["onem"], s["kitapcik"], s["test"],
-                   s["ders"], s["soru"], _sorun_yeri(s), s["aciklama"]])
-        boya(ws.cell(row=ws.max_row, column=2), s["onem"])
-        if s["onem"] == "HATA":
-            ws.cell(row=ws.max_row, column=8).font = KOYU_KIRMIZI
-    if not sorunlar:
-        ekle(ws, ["", "", "", "", "", "", "", "Sorun bulunamadı."])
-    for col, gen in zip("ABCDEFGH", (6, 8, 9, 26, 18, 22, 14, 110)):
-        ws.column_dimensions[col].width = gen
-
-    se = wb.create_sheet("Soru Eşleşmesi")
-    ekle(se, ["Test", "Ders (A)", "A No", "B No", "Ders (B)", "Metin %",
-               "Şekil/Resim", "A Cevap", "B Cevap", "A Sayfa", "B Sayfa", "Durum"])
-    for oa, ob, oran, gorsel, ca_, cb_, durum in sorted(
-            es, key=lambda e: (e[0]["ti"], e[0]["no"] or 999)):
-        ekle(se, [test_adi(oa["ti"]), oa["ders"], oa["etiket_no"], ob["etiket_no"],
-                   ob["ders"], round(oran * 100, 1),
-                   gorsel,
-                   ca_, cb_, oa["sayfa"] + 1, ob["sayfa"] + 1,
-                   ", ".join(durum) or "OK"])
-        boya(se.cell(row=se.max_row, column=12),
-             "TEMİZ" if not durum else
-             ("UYARI" if set(durum) <= {"NOKTALAMA", "ŞEKİL FARKI", "KOD FARKLI"}
-              else "HATA"))
-
-    gs = wb.create_sheet("Metne Bağlı Gruplar")
-    ekle(gs, ["Test", "A Başlığı", "A Sorular", "B Başlığı", "B Karşılıkları",
-               "Parça Metni %", "Parça Şekil/Resim", "Durum"])
-    for ti, ga, gb, a_nolar, b_nolar, p_oran, p_gorsel, durum in gr:
-        ekle(gs, [test_adi(ti), _nolar_yazi(ga["nolar"]), _nolar_yazi(a_nolar),
-                   _nolar_yazi(gb["nolar"]) if gb else "—",
-                   ", ".join(str(n) if n else "?" for n in b_nolar),
-                   round(p_oran * 100, 1) if p_oran is not None else "",
-                   p_gorsel or "",
-                   ", ".join(durum) or "OK"])
-        boya(gs.cell(row=gs.max_row, column=8), "TEMİZ" if not durum else
-             ("UYARI" if set(durum) <= {"NOKTALAMA"} else "HATA"))
-    for sayfa in (se, gs):
-        for c in sayfa[1]:
-            c.font = KALIN
-        sayfa.freeze_panes = "A2"
-    for c in ws[1]:
-        c.font = KALIN
-    ws.freeze_panes = "A2"
-    for row in ws.iter_rows(min_row=2):
-        row[7].alignment = Alignment(wrap_text=True, vertical="top")
-    wb.save(cikti)
-
-
 CIKTI_ISARETI = "Kitapcik Eslestirici kontrol ciktisi"
-
-
-def eski_ciktiyi_sil(yol):
-    """Önceki kontrolden kalan çıktı PDF'ini siler (yalnızca bu uygulamanın
-    yazdığı, işaretli dosyayı: aynı adlı başka bir dosyaya dokunulmaz)."""
-    yol = Path(yol)
-    try:
-        if yol.exists():
-            with fitz.open(str(yol)) as d:
-                bizim = (d.metadata or {}).get("keywords") == CIKTI_ISARETI
-            if bizim:
-                yol.unlink()
-    except Exception as h:
-        logla(f"Eski çıktı silinemedi ({yol}): {h}")
-
-
-def kontrol_pdf_isaretle(sonuc, sorunlar, klasor):
-    """Sorunlu soruların üzerine kırmızı çerçeve + açıklama notu koyar; farklı
-    kelimeleri sarıyla vurgular."""
-    yazilan = []
-    for et in ("A", "B"):
-        kaynak = sonuc[et]["pdf"]
-        hedef = Path(klasor) / (Path(kaynak).stem + "_kontrol.pdf")
-        eski_ciktiyi_sil(hedef)
-        isler = [(s, b) for s in sorunlar for k, b in s["yerler"] if k == et]
-        if not isler:
-            continue
-        doc = fitz.open(kaynak)
-        for s, (pno, x0, y0, x1, y1) in isler:
-            sayfa = doc[pno]
-            r = fitz.Rect(x0, y0, x1, y1) & sayfa.rect
-            if r.is_empty:
-                continue
-            renk = (0.9, 0.1, 0.1) if s["onem"] == "HATA" else (0.95, 0.6, 0.0)
-            a = sayfa.add_rect_annot(r)
-            a.set_colors(stroke=renk)
-            a.set_border(width=1.5)
-            a.set_info(title=f"{s.get('sira', '')}. {s['onem']} — {s['soru']}",
-                       content=s["aciklama"])
-            a.update()
-        for s in sorunlar:
-            if not any(k == et for k, _b in s["yerler"]):
-                continue
-            for k, (pno, x0, y0, x1, y1) in s["kutular"]:
-                sayfa = doc[pno]             # (sayfa nesnesi açıkken eklenmeli)
-                r = fitz.Rect(x0, y0, x1, y1) & sayfa.rect
-                if k == et and not r.is_empty:
-                    a = sayfa.add_rect_annot(r)
-                    a.set_colors(stroke=(0.9, 0.1, 0.1))
-                    a.set_border(width=1, dashes=[2, 2])
-                    a.update()
-            for k, pno, rc in s["vurgu"]:
-                if k == et:
-                    sayfa = doc[pno]
-                    a = sayfa.add_highlight_annot(fitz.Rect(rc))
-                    a.set_colors(stroke=(1, 0.85, 0))
-                    a.update()
-        md = dict(doc.metadata or {})
-        md["keywords"] = CIKTI_ISARETI
-        doc.set_metadata({k: v for k, v in md.items()
-                          if k not in ("format", "encryption")})
-        doc.save(str(hedef), garbage=1, deflate=True)
-        doc.close()
-        yazilan.append(str(hedef))
-    return yazilan
 
 
 def _kart_yazi(sayfa, nokta, metin, font, boyut, renk=(0, 0, 0)):
@@ -3896,21 +3695,34 @@ def _kart_kisalt(metin, font, boyut, genislik):
     return metin + "…"
 
 
-def kontrol_kartlari_yaz(sonuc, sorunlar, hedef, azami=300):
-    """Her sorun için bir sayfa: üstte ne bulunduğu, altta sorunun A ve B
-    kitapçığındaki görüntüsü yan yana (ya da alt alta). Farklı kelimeler sarı,
-    farklı şekil bölgesi ve açık cevap kırmızı çerçeveli. İlk sayfa(lar) tıklanır
-    içindekiler listesidir."""
+def kontrol_kartlari_yaz(sonuc, sorunlar, hedef, azami=300, ozet=()):
+    """A–B KONTROL raporu (tek PDF). İlk sayfa(lar): özet ve tıklanır sorun
+    listesi (sorun yoksa "sorun bulunmadı"). Sonra her sorun için bir sayfa:
+    üstte ne bulunduğu, altta sorunun A ve B kitapçığındaki görüntüsü yan yana
+    (ya da alt alta). Farklı kelimeler sarı, farklı şekil bölgesi ve açık cevap
+    kırmızı çerçeveli."""
     W, H, M = 595, 842, 28
     font, kalin = fitz.Font("helv"), fitz.Font("hebo")
     KIRMIZI, TURUNCU, GRI = (0.8, 0.1, 0.1), (0.85, 0.5, 0.0), (0.35, 0.35, 0.35)
+    YESIL = (0.1, 0.5, 0.2)
     kaynak = {et: fitz.open(sonuc[et]["pdf"]) for et in ("A", "B")}
     out = fitz.open()
-    gosterilen = sorunlar[:azami]
-    SATIR = 16
-    ilk_satir = 4                       # içindekiler sayfasında başlık satırları
-    sayfa_basi = int((H - 2 * M) / SATIR) - ilk_satir
-    icindekiler = max(1, -(-len(gosterilen) // sayfa_basi))
+    gosterilen = sorunlar[:azami]       # görüntü sayfası olanlar (listede hepsi)
+    SATIR, OZET_SATIR = 16, 13
+    ozet = list(ozet)
+    ozet_y = M + 54
+    liste_ilk = (ozet_y + len(ozet) * OZET_SATIR + 22) if ozet else M + 64
+    # İçindekiler sayfaları: ilk sayfada özetten sonra, diğerlerinde başlıktan
+    # sonra sığan kadar satır
+    dilimler, i, y0 = [], 0, liste_ilk
+    while True:
+        n = max(1, int((H - M - 10 - y0) // SATIR) + 1)
+        dilimler.append((i, n, y0))
+        i += n
+        if i >= len(sorunlar):
+            break
+        y0 = M + 64
+    icindekiler = len(dilimler)
     for _ in range(icindekiler):
         out.new_page(width=W, height=H)
     toc = []
@@ -4006,42 +3818,85 @@ def kontrol_kartlari_yaz(sonuc, sorunlar, hedef, azami=300):
                 hr = donustur(et, pno, (x0, y0, x1, y1))
                 if hr is not None:
                     sayfa.draw_rect(hr, color=KIRMIZI, width=1.4)
-        # İçindekiler (tıklanır)
+        # İçindekiler (tıklanır): başlık, özet, sorun listesi
         sorun_say = {o: sum(1 for s in sorunlar if s["onem"] == o)
                      for o in ("HATA", "UYARI")}
-        for i, s in enumerate(gosterilen):
-            sayfa = out[i // sayfa_basi]
-            satir = i % sayfa_basi
-            if satir == 0:
-                _kart_yazi(sayfa, (M, M + 14), "A–B KONTROL — BAKILACAK SORULAR",
-                           kalin, 14, (0.1, 0.25, 0.55))
-                _kart_yazi(sayfa, (M, M + 32), _kart_kisalt(
-                    f"{Path(sonuc['A']['pdf']).name}  ↔  {Path(sonuc['B']['pdf']).name}"
-                    f"   ·   {sorun_say['HATA']} hata, {sorun_say['UYARI']} uyarı"
-                    + (f" (ilk {azami} gösteriliyor)" if len(sorunlar) > azami else ""),
-                    font, 9, W - 2 * M), font, 9, GRI)
-            y = M + (ilk_satir + satir) * SATIR
-            renk = KIRMIZI if s["onem"] == "HATA" else TURUNCU
-            sol = (f"{s['sira']}. {s['onem']} · {s['test'] or s['kitapcik']}"
-                   + (f" · {s['soru']}" if s["soru"] else ""))
-            sol = _kart_kisalt(sol, kalin, 9, 230)
-            _kart_yazi(sayfa, (M, y), sol, kalin, 9, renk)
-            _kart_yazi(sayfa, (M + 236, y), _kart_kisalt(
-                f"{_sorun_yeri(s) or '—'}  ·  {s['aciklama']}", font, 9,
-                W - 2 * M - 236), font, 9)
-            sayfa.insert_link({"kind": fitz.LINK_GOTO, "page": icindekiler + i,
-                               "from": fitz.Rect(M, y - 10, W - M, y + 4),
-                               "to": fitz.Point(0, 0)})
+        for sn, (bas_i, n, y0) in enumerate(dilimler):
+            sayfa = out[sn]
+            _kart_yazi(sayfa, (M, M + 14), "A–B KONTROL — BAKILACAK SORULAR"
+                       if sorunlar else "A–B KONTROL — SORUN BULUNMADI",
+                       kalin, 14, (0.1, 0.25, 0.55) if sorunlar else YESIL)
+            _kart_yazi(sayfa, (M, M + 32), _kart_kisalt(
+                f"{Path(sonuc['A']['pdf']).name}  ↔  {Path(sonuc['B']['pdf']).name}"
+                f"   ·   {sorun_say['HATA']} hata, {sorun_say['UYARI']} uyarı"
+                + (f" (görüntüsü ilk {azami} sorun için)" if len(sorunlar) > azami else ""),
+                font, 9, W - 2 * M), font, 9, GRI)
+            if sn == 0:
+                for j, satir_ in enumerate(ozet):
+                    yesil = satir_.startswith("✓")
+                    _kart_yazi(sayfa, (M, ozet_y + j * OZET_SATIR), _kart_kisalt(
+                        satir_, kalin if yesil else font, 9, W - 2 * M),
+                        kalin if yesil else font, 9, YESIL if yesil else (0, 0, 0))
+                if ozet and sorunlar:
+                    _kart_yazi(sayfa, (M, liste_ilk - SATIR), "Bakılacak sorular "
+                               "(satıra tıklayınca o sorunun sayfasına gider):",
+                               kalin, 9, (0.1, 0.25, 0.55))
+            for i in range(bas_i, min(bas_i + n, len(sorunlar))):
+                s = sorunlar[i]
+                y = y0 + (i - bas_i) * SATIR
+                renk = KIRMIZI if s["onem"] == "HATA" else TURUNCU
+                sol = (f"{s['sira']}. {s['onem']} · {s['test'] or s['kitapcik']}"
+                       + (f" · {s['soru']}" if s["soru"] else ""))
+                sol = _kart_kisalt(sol, kalin, 9, 230)
+                _kart_yazi(sayfa, (M, y), sol, kalin, 9, renk)
+                _kart_yazi(sayfa, (M + 236, y), _kart_kisalt(
+                    f"{_sorun_yeri(s) or '—'}  ·  {s['aciklama']}", font, 9,
+                    W - 2 * M - 236), font, 9)
+                if i < len(gosterilen):
+                    sayfa.insert_link({"kind": fitz.LINK_GOTO, "page": icindekiler + i,
+                                       "from": fitz.Rect(M, y - 10, W - M, y + 4),
+                                       "to": fitz.Point(0, 0)})
         out.set_toc(toc)
-        out.set_metadata({"title": "A–B kontrol: bakılacak sorular",
+        out.set_metadata({"title": "A–B kontrol raporu",
                           "creator": f"Kitapçık Eşleştirici {SURUM}",
                           "keywords": CIKTI_ISARETI})
-        out.save(str(hedef), garbage=3, deflate=True)
+        veri = out.tobytes(garbage=3, deflate=True)
     finally:
         out.close()
         for d in kaynak.values():
             d.close()
+    Path(hedef).write_bytes(veri)     # yazılamazsa OSError (konum yeniden sorulur)
     return str(hedef)
+
+
+def kontrol_ozeti(sonuc, sorunlar):
+    """Raporun ilk sayfasındaki ve ekrandaki özet satırları."""
+    satirlar = []
+    for et in ("A", "B"):
+        bul, bek, eks, faz = sonuc["numara"][et]
+        satirlar.append(f"{et} kitapçığı: {bul}/{bek} soru yerinde"
+                        + (f", {eks} eksik" if eks else "")
+                        + (f", {faz} sırasız numara" if faz else ""))
+    es = sonuc["eslesmeler"]
+    satirlar.append(
+        f"A→B eşleşen soru: {sum(1 for e in es if e[0]['no'])}/"
+        f"{sonuc['numara']['A'][1]}  |  metin birebir: "
+        f"{sum(1 for e in es if 'METİN FARKI' not in e[6] and 'NOKTALAMA' not in e[6])}"
+        f"/{len(es)}")
+    gr = sonuc["gruplar"]
+    if gr:
+        satirlar.append(f"Metne bağlı gruplar: {sum(1 for g in gr if not g[7])}/"
+                        f"{len(gr)} sorunsuz")
+    sekil = sum(1 for e in es if any(d.startswith("ŞEKİL") for d in e[6]))
+    satirlar.append(f"Şekil/resim farkı: {sekil} soruda" if sekil else
+                    "Şekil/resimler: farksız")
+    ac = sonuc["acik_cevap"]
+    satirlar.append(f"Açık kalan cevap işareti: A {ac['A']}, B {ac['B']}")
+    if not sorunlar:
+        satirlar += ["✓ Hiç sorun bulunmadı.",
+                     "A'daki her soru (metni, şıkları ve şekilleriyle) B'de aynen var, "
+                     "numaralar düzgün, açık cevap yok."]
+    return satirlar
 
 
 def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
@@ -4084,11 +3939,15 @@ def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
     sonuc, sorunlar = kontrol_et(a_pdf, b_pdf, yapi, log,
                                  anahtar_oku(anah_a, yapi),
                                  anahtar_oku(anah_b, yapi), yapi_b=yapi_b)
-    hedef = cikti
+    # Tek çıktı: kontrol raporu PDF'i (özet + bakılacak soruların A/B görüntüleri)
+    hedef = str(Path(cikti).with_suffix(".pdf"))
+    ozet = kontrol_ozeti(sonuc, sorunlar)
     while True:
         try:
-            kontrol_raporu_yaz(sonuc, sorunlar, hedef,
-                               kartlar=kart_yolu(hedef) if sorunlar else None)
+            if Path(hedef).resolve() in {Path(a_pdf).resolve(), Path(b_pdf).resolve()}:
+                raise RuntimeError("Rapor, kitapçık PDF'inin üzerine yazılamaz; "
+                                   "başka bir ad seçin.")
+            kontrol_kartlari_yaz(sonuc, sorunlar, hedef, ozet=ozet)
             break
         except OSError as h:
             log(f"\n⚠ '{hedef}' konumuna yazılamadı ({h}).")
@@ -4096,50 +3955,16 @@ def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
             if not yeni:
                 raise RuntimeError("Rapor kaydedilemedi. Çıktı konumunu "
                                    "Seç... düğmesiyle belirleyin.") from h
-            hedef = yeni
-    try:
-        pdfler = kontrol_pdf_isaretle(sonuc, sorunlar, Path(hedef).parent)
-    except Exception as h:              # işaretli PDF isteğe bağlıdır
-        logla(f"İşaretli PDF yazılamadı: {h}")
-        pdfler = []
-    kartlar = None
-    eski_ciktiyi_sil(kart_yolu(hedef))
-    if sorunlar:
-        try:
-            kartlar = kontrol_kartlari_yaz(sonuc, sorunlar, kart_yolu(hedef))
-        except Exception:               # görsel yardımcı; rapor yine geçerli
-            logla("Sorun kartları yazılamadı:\n" + traceback.format_exc())
+            hedef = str(Path(yeni).with_suffix(".pdf"))
     hata = [s for s in sorunlar if s["onem"] == "HATA"]
     uyari = [s for s in sorunlar if s["onem"] == "UYARI"]
     log("  Testler: " + " | ".join(
         f"{ad} ({sum(int(a) for _d, a in t['dersler'])})"
         for ad, t in zip(sonuc["test_adlari"], yapi)))
-    log(f"\n✓ Kontrol raporu: {hedef}")
-    if kartlar:
-        log(f"  Bakılacak soruların A/B görüntüleri: {kartlar}")
-    for p in pdfler:
-        log(f"  İşaretli PDF: {p}")
-    for et in ("A", "B"):
-        bul, bek, eks, faz = sonuc["numara"][et]
-        log(f"  {et} kitapçığı: {bul}/{bek} soru yerinde"
-            + (f", {eks} eksik" if eks else "") + (f", {faz} sırasız numara" if faz else ""))
-    es = sonuc["eslesmeler"]
-    log(f"  A→B eşleşen soru: {sum(1 for e in es if e[0]['no'])}/"
-        f"{sonuc['numara']['A'][1]}  |  metin birebir: "
-        f"{sum(1 for e in es if 'METİN FARKI' not in e[6] and 'NOKTALAMA' not in e[6])}"
-        f"/{len(es)}")
-    gr = sonuc["gruplar"]
-    if gr:
-        log(f"  Metne bağlı gruplar: {sum(1 for g in gr if not g[7])}/{len(gr)} sorunsuz")
-    sekil = sum(1 for e in es if any(d.startswith("ŞEKİL") for d in e[6]))
-    log(f"  Şekil/resim farkı: {sekil} soruda" if sekil else
-        "  Şekil/resimler: farksız")
-    ac = sonuc["acik_cevap"]
-    log(f"  Açık kalan cevap işareti: A {ac['A']}, B {ac['B']}")
-    if not sorunlar:
-        log("  ✓ Hiç sorun bulunmadı: A'daki her soru (metni, şıkları ve "
-            "şekilleriyle) B'de aynen var, numaralar düzgün, açık cevap yok.")
-    else:
+    log(f"\n✓ Kontrol raporu (PDF): {hedef}")
+    for satir in ozet:
+        log("  " + satir)
+    if sorunlar:
         log(f"  {len(hata)} HATA, {len(uyari)} UYARI — nereye bakılacağı:")
         for s in sorunlar:
             log(f"  {s['sira']}. {'✗' if s['onem'] == 'HATA' else '⚠'} "
@@ -4424,8 +4249,8 @@ def gui_baslat():
     ttk.Label(ana, text="A–B KONTROL (baskı kontrolü): A'daki her soru metni, "
                         "şıkları ve şekilleriyle B'de var mı, numaralar branş "
                         "branş düzgün mü, metne bağlı gruplar aynı mı, açık kalan "
-                        "cevap var mı. Rapor Excel + işaretli PDF olarak yazılır; "
-                        "kayıt yeri başlarken sorulur.",
+                        "cevap var mı. Rapor tek PDF olarak yazılır (özet + sorunlu "
+                        "soruların A/B görüntüleri); kayıt yeri başlarken sorulur.",
               foreground="#666666", wraplength=740,
               justify="left").pack(side="bottom", anchor="w")
 
@@ -4454,11 +4279,12 @@ def gui_baslat():
                     "macOS, çıktı klasörüne doğrudan yazmaya izin vermedi.\n"
                     "Şimdi açılacak pencerede kayıt konumunu seçin — seçtiğiniz "
                     "konuma yazma izni verilmiş olur.", parent=pencere)
+                pdf_mi = str(oge[1]).lower().endswith(".pdf")   # KONTROL raporu
                 yol = filedialog.asksaveasfilename(
-                    parent=pencere, defaultextension=".xlsx",
+                    parent=pencere, defaultextension=".pdf" if pdf_mi else ".xlsx",
                     initialdir=os.path.dirname(oge[1]) or str(Path.home()),
                     initialfile=os.path.basename(oge[1]),
-                    filetypes=[("Excel", "*.xlsx")])
+                    filetypes=[("PDF", "*.pdf")] if pdf_mi else [("Excel", "*.xlsx")])
                 kayit_kuyrugu.put(yol or "")
                 continue
             log_kutusu.configure(state="normal")
@@ -4467,13 +4293,13 @@ def gui_baslat():
             log_kutusu.configure(state="disabled")
         pencere.after(150, kuyrugu_isle)
 
-    def bitti(cikti_yolu, mesaj="Tablo hazır.", ekler=()):
+    def bitti(cikti_yolu, mesaj="Tablo hazır.", ekler=(), soru=None):
         buton.configure(state="normal")
         kontrol_buton.configure(state="normal")
         temizle_buton.configure(state="normal")
         ekler = [e for e in ekler if e and Path(e).exists()]
-        soru = ("Excel dosyası ve bakılacak soruların A/B görüntüleri (PDF) "
-                "şimdi açılsın mı?" if ekler else "Excel dosyası şimdi açılsın mı?")
+        soru = soru or ("Excel dosyası ve bakılacak soruların A/B görüntüleri (PDF) "
+                        "şimdi açılsın mı?" if ekler else "Excel dosyası şimdi açılsın mı?")
         if cikti_yolu and messagebox.askyesno(
                 "Tamamlandı", f"{mesaj}\n{soru}", parent=pencere):
             subprocess.run(["open", cikti_yolu])
@@ -4530,20 +4356,20 @@ def gui_baslat():
                                    parent=pencere)
             return
         klasor = Path(yollar["cikti"].get().strip() or a).parent
-        # Rapor nereye yazılsın: Evet = PDF'lerin klasörü, Hayır = konum seçilir
+        # Rapor (tek PDF) nereye yazılsın: Evet = PDF'lerin klasörü, Hayır = konum seçilir
         yanina = messagebox.askyesno(
             "Kontrol raporu",
-            "Kontrol raporu (Excel) ve bakılacak soruların A/B görüntüleri (PDF) "
-            f"şu klasöre kaydedilsin mi?\n\n{klasor}\n\n(Hayır = farklı konum seç)",
+            "Kontrol raporu (PDF) şu klasöre kaydedilsin mi?"
+            f"\n\n{klasor}\n\n(Hayır = farklı konum seç)",
             parent=pencere)
         if yanina:
-            cikti = str(klasor / "kitapcik_kontrol_raporu.xlsx")
+            cikti = str(klasor / "kitapcik_kontrol_raporu.pdf")
         else:
             cikti = filedialog.asksaveasfilename(
                 parent=pencere, title="Kontrol raporunu kaydet",
-                defaultextension=".xlsx", initialdir=str(klasor),
-                initialfile="kitapcik_kontrol_raporu.xlsx",
-                filetypes=[("Excel", "*.xlsx")])
+                defaultextension=".pdf", initialdir=str(klasor),
+                initialfile="kitapcik_kontrol_raporu.pdf",
+                filetypes=[("PDF", "*.pdf")])
             if not cikti:
                 return                       # vazgeçildi: kontrol başlamaz
         buton.configure(state="disabled")
@@ -4559,8 +4385,8 @@ def gui_baslat():
                                        yollar["anah_a"].get().strip() or None,
                                        yollar["anah_b"].get().strip() or None,
                                        cikti, log, yol_sor=yol_sor)
-                kuyruk.put(("BITTI", yol, "Kontrol raporu hazır.",
-                            [str(kart_yolu(yol))]))
+                kuyruk.put(("BITTI", yol, "Kontrol raporu hazır.", (),
+                            "Rapor (PDF) şimdi açılsın mı?"))
             except Exception as h:
                 logla("KONTROL HATASI:\n" + traceback.format_exc())
                 log(f"\nHATA: {h}")
