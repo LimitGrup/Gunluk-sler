@@ -3210,11 +3210,14 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                       kutular=[isaret])
 
     # --- 1) Yapı karşılaştırması (otomatik yapıda) -------------------------------
+    # (bildirimi numaralandırmadan sonra: B'nin yapısı numaralarından okunur;
+    # B'de numara hatası varsa yapı farkı büyük olasılıkla ondandır)
+    yapi_farki = None
     if yapi_b is not None:
         ozet = lambda y: [(normalize(t["test"]),
                            sum(int(a) for _d, a in t["dersler"])) for t in y]
         if ozet(yapi) != ozet(yapi_b):
-            sorun("HATA", "A-B", "Test yapısı farklı. A: " + " | ".join(
+            yapi_farki = ("A: " + " | ".join(
                 f"{t['test']} ({sum(int(a) for _d, a in t['dersler'])})"
                 for t in yapi) + "  —  B: " + " | ".join(
                 f"{t['test']} ({sum(int(a) for _d, a in t['dersler'])})"
@@ -3331,6 +3334,15 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                       f"altındaki sorular: {', '.join(map(str, alt)) or 'yok'}.",
                       test_adi(b["ti"]), "", _nolar_yazi(b["nolar"]),
                       [(kk["etiket"], b["baslik_bolge"])])
+
+    if yapi_farki:
+        _bul, _bek, eks_b, faz_b = numara_ozet["B"]
+        if eks_b or faz_b:
+            sorun("UYARI", "A-B", "B'nin numaralarından okunan test yapısı A'dan farklı "
+                  f"({yapi_farki}). Büyük olasılıkla yukarıdaki numara hatalarından; "
+                  "numaralar düzelince yeniden bakın.")
+        else:
+            sorun("HATA", "A-B", f"Test yapısı farklı. {yapi_farki}")
 
     # --- 3) A ↔ B soru eşleştirmesi (her test kendi içinde, dersler arası) -----
     docA, docB = fitz.open(a_pdf), fitz.open(b_pdf)

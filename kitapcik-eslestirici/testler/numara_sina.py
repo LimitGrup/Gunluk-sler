@@ -150,12 +150,12 @@ def main(app, qa, qb, sinav, cikti):
         hata = [s for s in yeni if s["onem"] == "HATA"]
         eksik = [p for p in beklenen
                  if not any(any(q in s["aciklama"] for q in p.split("|")) for s in hata)]
-        fazla = en_cok is not None and len(yeni) > en_cok
+        fazla = en_cok is not None and len(hata) > en_cok     # yan HATA olmamalı
         tamam = not eksik and not fazla
         hepsi &= tamam
         print(f"{'✓' if tamam else '✗'} {ad}: {len(yeni)} yeni sorun"
               + (f"; bulunamayan: {eksik}" if eksik else "")
-              + (f"; en çok {en_cok} olmalıydı (yan hata)" if fazla else ""))
+              + (f"; en çok {en_cok} HATA olmalıydı (yan hata)" if fazla else ""))
         for s in yeni:
             print(f"     {s['onem']} [{s['kitapcik']}] {s['test']} | {s['soru']} | {s['aciklama'][:150]}")
     print("SONUÇ:", "tamam" if hepsi else "SORUN")
