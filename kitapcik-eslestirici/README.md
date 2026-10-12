@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.34)
+# Kitapçık Eşleştirici (v2.36)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -6,6 +6,29 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.xlsx` + sorunlu soruların A/B görüntüleri (PDF) |
+
+## Yeni deneme için TEMİZLE (v2.35)
+
+- **TEMİZLE düğmesi:** Uygulamayı kapatıp açmadan yeni deneme yapılabilir. Düğme dosya
+  kutularını, çıktı yolunu ve rapor alanını boşaltır; sınav türü olduğu gibi kalır. İş sürerken
+  çalışmaz.
+- **Sürükle-bırak:** Birlikte bırakılan iki PDF eskilerin yerine geçer: ilki A, ikincisi B olur.
+  Önceden A doluysa ikisi de B'ye yazılıyordu.
+- **Çıktı yolu:** Elle seçilmemişse her yeni A kitapçığıyla o kitapçığın klasörüne güncellenir.
+  Önceden rapor eski denemenin klasörüne yazılıyordu.
+
+## Sade rapor satırları (v2.36)
+
+- Sayfa kısaltılmaz: "s.7" yerine "sayfa 7" yazılır. Excel'de, ekranda ve sorun kartlarında
+  aynıdır.
+- Açık cevap tek satırdır: "Cevap açık: sayfa 7, soru 5 — 'C' harfi basılı kalmış". Rengi ya da
+  stili değişmişse kısa not parantezde yazılır: "(SİYAH basılmış — rengi elle değiştirilmiş ya da
+  yanlış stil verilmiş olabilir)".
+- Soru kodu için: "Soru kodu açık: sayfa 7, soru 5 — '…' basılı kalmış".
+- Eğri ya da resim olan iz için: "Cevap açık olabilir: sayfa 7, soru 5 — …".
+- Elle bakılacaklar "Elle bakın: sayfa 7, soru 5 — …" diye başlar.
+- B'de yalnız numara yanlışsa (v2.34) rapor "A'daki soru B'de yok" demez, tek satır yazar:
+  "Soru numarası hatalı: 12. sorunun yerinde '14.' yazıyor".
 
 ## Tek cevap motoru (v2.30)
 

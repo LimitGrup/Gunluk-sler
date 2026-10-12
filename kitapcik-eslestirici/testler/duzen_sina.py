@@ -222,8 +222,8 @@ def main(app, cikti):
             _sonuc, sorunlar = m.kontrol_et(str(qa), str(qb2), yapi, lambda _x: None,
                                             yapi_b=m.yapi_cikar(str(qb2)))
             hata = [s_ for s_ in sorunlar if s_["onem"] == "HATA"]
-            acik_bulunan = [s_ for s_ in hata if "Açık kalan" in s_["aciklama"]
-                            or "Cevap yerinde" in s_["aciklama"]]
+            acik_bulunan = [s_ for s_ in hata if "Cevap açık" in s_["aciklama"]
+                            or "Soru kodu açık" in s_["aciklama"]]
             sorular_ = {(s_["test"], s_["soru"]) for s_ in acik_bulunan}
             beklenen = set() if acik is None else {str(acik[1])}
             durum = "tamam" if (len(hata) == len(acik_bulunan)

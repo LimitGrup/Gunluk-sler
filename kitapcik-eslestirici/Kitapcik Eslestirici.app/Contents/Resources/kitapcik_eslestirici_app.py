@@ -24,7 +24,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.34"
+SURUM = "2.36"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
@@ -2834,7 +2834,7 @@ def cevaplari_belirle(yapilar, a_s, b_s, yapi, log):
         for ti, no, pno, mesaj in teshis:
             test = yapi[ti]["test"] if ti < len(yapi) else ""
             uyarilar.append(f"CEVAP KONTROL ET: {kk['etiket']} kitapçığı {test} "
-                            f"{no}. soru (s.{pno + 1}) — {mesaj}.")
+                            f"{no}. soru (sayfa {pno + 1}) — {mesaj}.")
     return uyarilar
 
 
@@ -3029,13 +3029,18 @@ def _sorunlari_sirala(sorunlar):
     return sorunlar
 
 
+def _sayfa_yazi(sayfalar):
+    """[3] → 'sayfa 3', [3, 4] → 'sayfa 3 ve 4', [3, 4, 6] → 'sayfa 3, 4 ve 6'."""
+    p = [str(x) for x in sorted(sayfalar)]
+    return "sayfa " + (p[0] if len(p) == 1 else ", ".join(p[:-1]) + " ve " + p[-1])
+
+
 def _sorun_yeri(s):
-    """'A s.3, B s.5' biçiminde sorunun bulunduğu sayfalar."""
+    """'A sayfa 3, B sayfa 5' biçiminde sorunun bulunduğu sayfalar (kısaltmasız)."""
     sayfalar = {}
     for et, b in list(s["yerler"]) or list(s.get("gorunum") or []):
         sayfalar.setdefault(et, set()).add(b[0] + 1)
-    return ", ".join(f"{et} s.{'/'.join(map(str, sorted(p)))}"
-                     for et, p in sayfalar.items())
+    return ", ".join(f"{et} {_sayfa_yazi(p)}" for et, p in sayfalar.items())
 
 
 def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
@@ -3130,11 +3135,13 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                 izler = []
             for o, pno, r, cevap_rengi in izler:
                 sorun("HATA" if cevap_rengi else "UYARI", kk["etiket"],
-                      ("Cevap yerinde cevap renginde iz" if cevap_rengi else
-                       "Cevap yerinde metin olmayan iz")
-                      + f" ({r.width:.0f}×{r.height:.0f} pt): metin katmanında yok — "
-                      f"eğriye çevrilmiş ya da resme gömülü cevap harfi olabilir"
-                      + ("." if cevap_rengi else "; renkten bağımsız, elle bakın."),
+                      (f"Cevap açık olabilir: sayfa {pno + 1}, soru {o['etiket_no']} — "
+                       f"cevap yerinde cevap renginde bir iz var; metin değil, eğriye "
+                       f"çevrilmiş ya da resme gömülü cevap harfi olabilir."
+                       if cevap_rengi else
+                       f"Elle bakın: sayfa {pno + 1}, soru {o['etiket_no']} — cevap "
+                       f"yerinde metin olmayan bir iz var (eğriye çevrilmiş ya da resme "
+                       f"gömülü cevap harfi olabilir)."),
                       test_adi(o["ti"]), o["ders"], o["etiket_no"],
                       [(kk["etiket"], (pno, r.x0 - 3, r.y0 - 3, r.x1 + 3, r.y1 + 3))],
                       gorunum=[(kk["etiket"], b_) for b_ in
@@ -3156,19 +3163,26 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                             continue
                         isaret = (kk["etiket"], (r["sayfa"], r["x0"] - 3, r["y0"] - 3,
                                                  r["x1"] + 3, r["y1"] + 3))
-                        sorun("UYARI", kk["etiket"], f"Cevap renginde (magenta "
-                              f"#{renk:06X}) yazı: '{tt}' — açık kalmış cevap ya da "
-                              f"etkinlik cevabı olabilir, elle bakın.", test_adi(o["ti"]),
+                        sorun("UYARI", kk["etiket"], f"Elle bakın: sayfa "
+                              f"{r['sayfa'] + 1}, soru {o['etiket_no']} — '{tt}' cevap "
+                              f"renginde (magenta) basılmış; açık kalmış cevap ya da "
+                              f"etkinlik cevabı olabilir.", test_adi(o["ti"]),
                               o["ders"], o["etiket_no"], [isaret],
                               gorunum=[(kk["etiket"], b_) for b_ in
                                        tam_bolge.get((kk["etiket"], o["bolge"])) or [o["bolge"]]],
                               kutular=[isaret])
             for o, r, metin, renk in acik:
-                tur = "cevap harfi" if len(metin) == 1 else "soru kodu"
                 isaret = (kk["etiket"], (r["sayfa"], r["x0"] - 3, r["y0"] - 3,
                                          r["x1"] + 3, r["y1"] + 3))
-                sorun("HATA", kk["etiket"], f"Açık kalan {tur}: '{metin}' "
-                      f"(renk {renk}) — baskıda görünmemeli.", test_adi(o["ti"]),
+                # Sade satır: "Cevap açık: sayfa 7, soru 5 — 'C' harfi basılı kalmış";
+                # renk/stil değişmişse kısa notu parantezde
+                yer_ = f"sayfa {r['sayfa'] + 1}, soru {o['etiket_no']}"
+                mesaj = (f"Cevap açık: {yer_} — '{metin}' harfi basılı kalmış"
+                         if len(metin) == 1 else
+                         f"Soru kodu açık: {yer_} — '{metin}' basılı kalmış")
+                if "; " in renk:
+                    mesaj += f" ({renk.split('; ', 1)[1]})"
+                sorun("HATA", kk["etiket"], mesaj + ".", test_adi(o["ti"]),
                       o["ders"], o["etiket_no"], [isaret],
                       gorunum=[(kk["etiket"], b_) for b_ in
                                tam_bolge.get((kk["etiket"], o["bolge"])) or [o["bolge"]]],
@@ -4010,7 +4024,7 @@ def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
         for s in sorunlar:
             log(f"  {s['sira']}. {'✗' if s['onem'] == 'HATA' else '⚠'} "
                 f"[{s['kitapcik']}] {s['test']} {s['soru']} "
-                f"({_sorun_yeri(s) or 'sayfa yok'}): {s['aciklama']}")
+                f"({_sorun_yeri(s) or 'tüm kitapçık'}): {s['aciklama']}")
     return hedef
 
 
@@ -4148,6 +4162,29 @@ def gui_baslat():
     yollar = {ad: tk.StringVar(master=pencere) for ad in
               ("a", "b", "sablon", "anah_a", "anah_b", "cikti")}
 
+    # Çıktı yolu (v2.35): kullanıcı elle seçmediyse her yeni A kitapçığıyla o kitapçığın
+    # klasörüne güncellenir. Önceden yalnız ilk A'dan dolduruluyordu; uygulama kapatılmadan
+    # yeni deneme açılınca rapor ESKİ denemenin klasörüne yazılıyordu.
+    cikti_elle = {"deger": False}
+    otomatik_yaziyor = {"deger": False}
+
+    def ciktiyi_doldur(a_yolu):
+        if not a_yolu or (cikti_elle["deger"] and yollar["cikti"].get()):
+            return                       # elle seçilmiş çıktıya dokunulmaz
+        otomatik_yaziyor["deger"] = True
+        yollar["cikti"].set(str(Path(a_yolu).with_name("kazanim_tablosu.xlsx")))
+        otomatik_yaziyor["deger"] = False
+
+    def a_degisti(*_):
+        ciktiyi_doldur(yollar["a"].get().strip())
+
+    def cikti_degisti(*_):
+        if not otomatik_yaziyor["deger"]:
+            cikti_elle["deger"] = bool(yollar["cikti"].get().strip())
+
+    yollar["a"].trace_add("write", a_degisti)
+    yollar["cikti"].trace_add("write", cikti_degisti)
+
     def sec(ad, tur, kaydet=False):
         if kaydet:
             yol = filedialog.asksaveasfilename(
@@ -4157,8 +4194,6 @@ def gui_baslat():
             yol = filedialog.askopenfilename(filetypes=tur)
         if yol:
             yollar[ad].set(yol)
-            if ad == "a" and not yollar["cikti"].get():
-                yollar["cikti"].set(str(Path(yol).with_name("kazanim_tablosu.xlsx")))
 
     ana = ttk.Frame(pencere, padding=14)
     ana.pack(fill="both", expand=True)
@@ -4200,10 +4235,6 @@ def gui_baslat():
 
     satir("Çıktı Excel dosyası:", "cikti", XLSX, kaydet=True)
 
-    def ciktiyi_doldur(a_yolu):
-        if not yollar["cikti"].get():
-            yollar["cikti"].set(str(Path(a_yolu).with_name("kazanim_tablosu.xlsx")))
-
     if dnd:
         def yollari_ayikla(veri):
             try:
@@ -4216,25 +4247,28 @@ def gui_baslat():
                 dosyalar = yollari_ayikla(olay.data)
                 if dosyalar:
                     yollar[ad].set(dosyalar[0])
-                    if ad == "a":
-                        ciktiyi_doldur(dosyalar[0])
                 return getattr(olay, "action", None)
             return isleyici
 
         def pencereye_birak(olay):
-            for yol in sorted(yollari_ayikla(olay.data)):
-                u = yol.lower()
-                if u.endswith(".pdf"):
-                    hedef = "a" if not yollar["a"].get() else "b"
-                elif u.endswith((".xlsx", ".xlsm", ".csv", ".docx")):
-                    hedef = "sablon"
-                elif u.endswith(".txt"):
-                    hedef = "anah_a" if not yollar["anah_a"].get() else "anah_b"
-                else:
-                    continue
-                yollar[hedef].set(yol)
-                if hedef == "a":
-                    ciktiyi_doldur(yol)
+            dosyalar = sorted(yollari_ayikla(olay.data))
+            pdfler = [y for y in dosyalar if y.lower().endswith(".pdf")]
+            txtler = [y for y in dosyalar if y.lower().endswith(".txt")]
+            # Birlikte bırakılan iki PDF yeni A ve B'dir: eskilerin yerine geçer (v2.35;
+            # önceden A doluysa ikisi de B'ye yazılıyor, A eski denemede kalıyordu)
+            if len(pdfler) >= 2:
+                yollar["a"].set(pdfler[0])
+                yollar["b"].set(pdfler[1])
+            elif pdfler:
+                yollar["a" if not yollar["a"].get() else "b"].set(pdfler[0])
+            if len(txtler) >= 2:
+                yollar["anah_a"].set(txtler[0])
+                yollar["anah_b"].set(txtler[1])
+            elif txtler:
+                yollar["anah_a" if not yollar["anah_a"].get() else "anah_b"].set(txtler[0])
+            for yol in dosyalar:
+                if yol.lower().endswith((".xlsx", ".xlsm", ".csv", ".docx")):
+                    yollar["sablon"].set(yol)
             return getattr(olay, "action", None)
 
         try:
@@ -4244,9 +4278,11 @@ def gui_baslat():
                 giris_.drop_target_register(dnd)
                 giris_.dnd_bind("<<Drop>>", alana_birak(ad_))
             ttk.Label(ana, text="İpucu: dosyaları ilgili kutunun üzerine ya da "
-                                "pencerenin boş bir yerine sürükleyip bırakabilirsiniz "
-                                "(A ve B PDF'lerini birlikte bırakın, ikisi de dolar).",
-                      foreground="#666666").pack(anchor="w", pady=(4, 0))
+                                "pencerenin boş bir yerine sürükleyip bırakabilirsiniz. "
+                                "A ve B PDF'lerini birlikte bırakın: ikisi de dolar, "
+                                "eskilerin yerine geçer. Yeni deneme için TEMİZLE.",
+                      foreground="#666666", wraplength=740,
+                      justify="left").pack(anchor="w", pady=(4, 0))
         except Exception as h:
             logla(f"Sürükle-bırak kaydı yapılamadı: {h}")
     if not dnd:
@@ -4262,6 +4298,9 @@ def gui_baslat():
     kontrol_buton = ttk.Button(alt_cerceve, text="A–B KONTROL",
                                command=lambda: kontrol_tikla())
     kontrol_buton.pack(side="left", padx=6, ipadx=18, ipady=6)
+    temizle_buton = ttk.Button(alt_cerceve, text="TEMİZLE",
+                               command=lambda: temizle_tikla())
+    temizle_buton.pack(side="left", padx=6, ipadx=12, ipady=6)
     ttk.Label(ana, text="A–B KONTROL (baskı kontrolü): A'daki her soru metni, "
                         "şıkları ve şekilleriyle B'de var mı, numaralar branş "
                         "branş düzgün mü, metne bağlı gruplar aynı mı, açık kalan "
@@ -4311,6 +4350,7 @@ def gui_baslat():
     def bitti(cikti_yolu, mesaj="Tablo hazır.", ekler=()):
         buton.configure(state="normal")
         kontrol_buton.configure(state="normal")
+        temizle_buton.configure(state="normal")
         ekler = [e for e in ekler if e and Path(e).exists()]
         soru = ("Excel dosyası ve bakılacak soruların A/B görüntüleri (PDF) "
                 "şimdi açılsın mı?" if ekler else "Excel dosyası şimdi açılsın mı?")
@@ -4319,6 +4359,20 @@ def gui_baslat():
             subprocess.run(["open", cikti_yolu])
             for e in ekler:
                 subprocess.run(["open", e])
+
+    # TEMİZLE (v2.35): uygulamayı kapatıp açmadan yeni deneme için her şeyi boşaltır:
+    # dosya kutuları, çıktı yolu ve rapor alanı. Sınav türü olduğu gibi kalır.
+    def temizle_tikla():
+        if str(buton.cget("state")) == "disabled":
+            return                       # iş sürerken temizlenmez
+        cikti_elle["deger"] = False
+        for v in yollar.values():
+            v.set("")
+        cikti_elle["deger"] = False
+        log_kutusu.configure(state="normal")
+        log_kutusu.delete("1.0", "end")
+        log_kutusu.configure(state="disabled")
+        log("Temizlendi. Yeni A ve B kitapçıklarını seçin ya da pencereye sürükleyin.")
 
     def calistir_tikla():
         a, b = yollar["a"].get().strip(), yollar["b"].get().strip()
@@ -4330,6 +4384,7 @@ def gui_baslat():
             Path(a).with_name("kazanim_tablosu.xlsx"))
         buton.configure(state="disabled")
         kontrol_buton.configure(state="disabled")
+        temizle_buton.configure(state="disabled")
         log_kutusu.configure(state="normal")
         log_kutusu.delete("1.0", "end")
         log_kutusu.configure(state="disabled")
@@ -4373,6 +4428,7 @@ def gui_baslat():
                 return                       # vazgeçildi: kontrol başlamaz
         buton.configure(state="disabled")
         kontrol_buton.configure(state="disabled")
+        temizle_buton.configure(state="disabled")
         log_kutusu.configure(state="normal")
         log_kutusu.delete("1.0", "end")
         log_kutusu.configure(state="disabled")

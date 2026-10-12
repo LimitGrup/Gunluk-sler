@@ -127,7 +127,7 @@ def main(app, a_pdf, b_pdf, sinav, cikti):
         return m.kontrol_et(qa, b, ya, lambda _x: None, yapi_b=yb)[1]
 
     def cevap_sorunu(s):
-        return any(k in s["aciklama"] for k in ("Açık kalan", "Cevap yerinde", "Cevap renginde"))
+        return any(k in s["aciklama"] for k in ("Cevap açık", "Soru kodu açık", "Elle bakın: sayfa"))
 
     def yaz(sorunlar):
         for s in sorunlar:
