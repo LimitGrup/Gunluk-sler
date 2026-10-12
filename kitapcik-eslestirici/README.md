@@ -213,7 +213,8 @@ Her kitapçık önce **kendi içinde**, sonra **A ile B karşılıklı** denetle
 
    `testler/numara_sina.py` B'nin numaralarını 8 biçimde bozar (v2.34'te "ileri numara" eklendi:
    11'den sonra gelen soruya "13."). Mükerrer, ileri numara ve yer değiştirmiş numarada rapora
-   tek satır düşmelidir. Aşağıdaki ilk ölçüm v2.33'te, 7 senaryoyla yapıldı. Elimizdeki 5 gerçek çiftin baskı
+   tek satır düşmelidir. v2.34'te aynı 5 çiftte 8 senaryonun hepsi geçti (40/40). Aşağıdaki
+   ilk ölçüm v2.33'te, 7 senaryoyla yapıldı. Elimizdeki 5 gerçek çiftin baskı
    kopyasında (7. sınıf Limit 1, 7. sınıf Limit sözel 1, 8. sınıf MOBESE sayısal, AYT LEK 1,
    Finale TYT 1) 7 senaryonun hepsi doğru numarada HATA verdi (35/35). Senaryolar:
    - mükerrer numara;
