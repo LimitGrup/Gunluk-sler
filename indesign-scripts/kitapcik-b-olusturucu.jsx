@@ -76,7 +76,10 @@
 //   özet bu soruları "yer değiştirdi" saymaz ve cevap anahtarı kâğıttaki numaraya göre yazılır.
 //   BÖLÜM İŞARETİ — üst banttaki branş adı ("TÜRKÇE", "MATEMATİK") ana sayfada Bölüm İşareti olarak
 //   duruyorsa sayfanın branş etiketi odur; farklı branş sayfaları arasında takas yapılmaz (numaralar
-//   branşlar arasında sürse ve test girişi yalnız ana sayfada olsa bile branş karışmaz).)
+//   branşlar arasında sürse ve test girişi yalnız ana sayfada olsa bile branş karışmaz).
+//   GEREKSİZ GERİ ALMA YOK — A'da bir soru üst banda/sabit öğeye zaten 1-3 pt taşıyorsa (tasarım kaçıklığı)
+//   B'de aynı derinlikteki taşma bindirme sayılmaz (AYT s.21 bu yüzden A düzeninde kalıyordu). Sayfa içi
+//   blok sırasında bloklar arası boşluk A'dakinden dar olmaz, A'da 8 pt'den darsa A'daki kadar olur.)
 //  Limit Yayınları — A kitapçığından otomatik B kitapçığı üretimi
 //  (Lise AYT/TYT + Ortaokul 5-8. sınıf denemeleri)
 // -------------------------------------------------------------
@@ -2731,7 +2734,9 @@
             }
             if (fwE === null || regE.length === 0) { return null; }
             var gapA = fwFirst ? (regO.top - fwO.bot) : (fwO.top - regO.bot);
-            if (gapA < 8) { gapA = 8; }
+            // v4.26: bloklar arası boşluk A'dakinden dar olmaz; A'da 8 pt'den dar tasarlanmışsa A'daki kadar
+            // (önceden her zaman en az 8 pt isteniyor, A'da 2 pt aralıklı sayfa 4 pt farkla sığmıyordu)
+            if (gapA < 2) { gapA = 2; }
             var gMin = (gapA < ANCHOR_MIN_GAP) ? gapA : ANCHOR_MIN_GAP;
             var fwY, dR, lim = pdO.QB - 0.5;
             if (fwFirst) {
@@ -3570,7 +3575,7 @@
                 if (itA.kind === "soru") { continue; }
                 var gb4;
                 try { gb4 = itA.tf.geometricBounds; } catch (eR2) { continue; }
-                var touch = false, touchD = 0;
+                var touch = false, touchD = 0, softD = 0;
                 var fr0 = [itA.y1, itA.x1, itA.y2, itA.x2];
                 for (var o5 = 0; o5 < origQ0.length; o5++) {
                     if (dOv0(fr0, origQ0[o5])) {
@@ -3578,11 +3583,17 @@
                         // v4.24: A'daki temasın dikey derinliği (B'de bundan derin değilse tasarım gereğidir)
                         var dT = ((fr0[2] < origQ0[o5][2]) ? fr0[2] : origQ0[o5][2]) - ((fr0[0] > origQ0[o5][0]) ? fr0[0] : origQ0[o5][0]);
                         if (dT > touchD) { touchD = dT; }
+                    } else {
+                        // v4.26: A'da 3 pt'ye kadar küçük taşma (ör. sağ sütun sorusu üst bandın alt kenarına 2-3 pt
+                        // giriyor): tasarımın kaçıklığıdır; B'de aynı derinlikteki taşma bindirme sayılmaz
+                        var dvS = ((fr0[2] < origQ0[o5][2]) ? fr0[2] : origQ0[o5][2]) - ((fr0[0] > origQ0[o5][0]) ? fr0[0] : origQ0[o5][0]);
+                        var dhS = ((fr0[3] < origQ0[o5][3]) ? fr0[3] : origQ0[o5][3]) - ((fr0[1] > origQ0[o5][1]) ? fr0[1] : origQ0[o5][1]);
+                        if (dvS > 0 && dhS > 3 && dvS > softD) { softD = dvS; }
                     }
                 }
                 fixRects.push([gb4[0], gb4[1], gb4[2], gb4[3],
                                "[" + itA.kind + " \u2018" + itA.etiket + "\u2019 y" +
-                               Math.round(itA.y1) + ".." + Math.round(itA.y2) + "]", touch, touchD]);
+                               Math.round(itA.y1) + ".." + Math.round(itA.y2) + "]", touch, touchD, softD]);
             }
             // içerik × içerik → geri al (kanıtlı felaket)
             for (var a2 = 0; a2 < contRects.length; a2++) {
@@ -3609,6 +3620,9 @@
                                     " pt daha fazla kesişiyor (A'da da bu çerçeve bir soruya değiyordu); baskı öncesi göz atın.");
                             }
                         } else {
+                            var dSoft = ((contRects[a2][2] < fixRects[f2][2]) ? contRects[a2][2] : fixRects[f2][2]) -
+                                        ((contRects[a2][0] > fixRects[f2][0]) ? contRects[a2][0] : fixRects[f2][0]);
+                            if (fixRects[f2][7] > 0 && dSoft <= fixRects[f2][7] + 1) { continue; }
                             auditLog(pi2, " bindirme saptandı (" +
                                 contRects[a2][4] + " × " + fixRects[f2][4] + ") — sayfa A düzenine geri alındı.");
                             return false;
