@@ -13,14 +13,18 @@ Kullanım:  python3 ornek_pdf_uret.py <çıktı_klasörü>
   tyt_A.pdf, tyt_B.pdf                    — sabit TYT yapısı için çift
 """
 import json
+import os
 import random
 import sys
 from pathlib import Path
 
 import pymupdf as fitz
 
-FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+# DejaVu Sans (2.37). Linux'ta sistemdeki; başka sistemde (Windows derlemesi)
+# KITAPCIK_TEST_FONT_DIR ortam değişkenindeki klasörden
+_FONT_DIR = os.environ.get("KITAPCIK_TEST_FONT_DIR", "/usr/share/fonts/truetype/dejavu")
+FONT = os.path.join(_FONT_DIR, "DejaVuSans.ttf")
+FONT_B = os.path.join(_FONT_DIR, "DejaVuSans-Bold.ttf")
 MAGENTA = (0.93, 0.0, 0.55)
 GRI = (0.55, 0.55, 0.55)
 SIYAH = (0, 0, 0)

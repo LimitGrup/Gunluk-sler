@@ -38,6 +38,14 @@ jobs:
           python -m pip install pymupdf==1.28.2 numpy==2.5.3 scipy==1.18.1 \
             openpyxl==3.1.5 python-docx==1.2.0 tkinterdnd2 pyinstaller
 
+      - name: Test yazı tipi (örnek PDF'ler Linux'taki gibi DejaVu Sans 2.37 ile üretilir)
+        run: |
+          curl -sSL -o "$RUNNER_TEMP/dejavu.zip" \
+            https://github.com/dejavu-fonts/dejavu-fonts/releases/download/version_2_37/dejavu-fonts-ttf-2.37.zip
+          python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])" \
+            "$RUNNER_TEMP/dejavu.zip" "$RUNNER_TEMP/dejavu"
+          echo "KITAPCIK_TEST_FONT_DIR=$RUNNER_TEMP/dejavu/dejavu-fonts-ttf-2.37/ttf" >> "$GITHUB_ENV"
+
       - name: Motor testleri (Windows)
         run: python kitapcik-eslestirici/windows/windows_sina.py "$APP" "$RUNNER_TEMP/sina"
 
