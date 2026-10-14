@@ -1,0 +1,89 @@
+# Kitapçık Eşleştirici — Windows sürümü
+# Mac uygulamasıyla aynı Python dosyasından Windows .exe paketi üretir. Önce
+# motor testleri Windows'ta çalıştırılır, sonra .exe derlenir ve açılıp sınanır
+# (KONTROL, EŞLEŞTİR ve pencere). Paket, çalışmanın "Artifacts" bölümünden
+# indirilir.
+name: Windows .exe (Kitapçık Eşleştirici)
+
+on:
+  push:
+    paths:
+      - "kitapcik-eslestirici/**"
+      - ".github/workflows/windows-exe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: "1"
+      APP: kitapcik-eslestirici/Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Kütüphaneler (Mac/Linux'ta sınanan sürümler)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pymupdf==1.28.2 numpy==2.5.3 scipy==1.18.1 \
+            openpyxl==3.1.5 python-docx==1.2.0 tkinterdnd2 pyinstaller
+
+      - name: Motor testleri (Windows)
+        run: python kitapcik-eslestirici/windows/windows_sina.py "$APP" "$RUNNER_TEMP/sina"
+
+      - name: Betik olarak — KONTROL, EŞLEŞTİR ve pencere
+        run: |
+          mkdir -p "$RUNNER_TEMP/betik"
+          cp "$RUNNER_TEMP"/sina/ornek/ortaokul_A.pdf "$RUNNER_TEMP"/sina/ornek/ortaokul_B.pdf \
+             "$RUNNER_TEMP"/sina/ornek/ortaokul_B_hatali.pdf "$RUNNER_TEMP/betik/"
+          KITAPCIK_PAKET_SINA="$RUNNER_TEMP/betik" timeout 900 python "$APP" || true
+          cat "$RUNNER_TEMP/betik/paket_sina.txt"
+          grep -q "SONUÇ: tamam" "$RUNNER_TEMP/betik/paket_sina.txt"
+
+      - name: .exe derle
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed \
+            --name "Kitapcik Eslestirici" \
+            --icon "$GITHUB_WORKSPACE/kitapcik-eslestirici/windows/kitapcik.ico" \
+            --collect-all tkinterdnd2 --collect-data docx \
+            --distpath "$RUNNER_TEMP/dist" --workpath "$RUNNER_TEMP/build" \
+            --specpath "$RUNNER_TEMP" "$APP"
+
+      - name: .exe sına — KONTROL, EŞLEŞTİR ve pencere
+        run: |
+          mkdir -p "$RUNNER_TEMP/paket"
+          cp "$RUNNER_TEMP"/betik/ortaokul_*.pdf "$RUNNER_TEMP/paket/"
+          KITAPCIK_PAKET_SINA="$RUNNER_TEMP/paket" timeout 900 \
+            "$RUNNER_TEMP/dist/Kitapcik Eslestirici/Kitapcik Eslestirici.exe" || true
+          cat "$RUNNER_TEMP/paket/paket_sina.txt"
+          grep -q "SONUÇ: tamam" "$RUNNER_TEMP/paket/paket_sina.txt"
+
+      - name: Paketi hazırla
+        run: |
+          python - <<'PY'
+          import os, re
+          from pathlib import Path
+          kaynak = Path("kitapcik-eslestirici/windows/Okubeni.txt").read_text(encoding="utf-8")
+          hedef = Path(os.environ["RUNNER_TEMP"]) / "dist" / "Kitapcik Eslestirici" / "Okubeni.txt"
+          hedef.write_text(kaynak.replace("\n", "\r\n"), encoding="utf-8-sig", newline="")
+          app = Path(os.environ["APP"]).read_text(encoding="utf-8")
+          surum = re.search(r'^SURUM = "([\d.]+)"', app, re.M).group(1)
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+              f.write(f"SURUM={surum.replace('.', '_')}\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kitapcik_Eslestirici_Windows_v${{ env.SURUM }}
+          path: ${{ runner.temp }}/dist/
+          retention-days: 30

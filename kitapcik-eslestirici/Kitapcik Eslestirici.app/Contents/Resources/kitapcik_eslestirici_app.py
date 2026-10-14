@@ -6,7 +6,8 @@
 Pencereli sürüm: A/B kitapçık PDF'lerini dosya seçiciyle seçin, EŞLEŞTİR'e
 basın; kazanım tablosu Excel'i otomatik oluşsun. Terminal bilgisi gerekmez.
 
-Çalıştırma: "Kitapcik Eslestirici.app" uygulamasına çift tıklayın
+Çalıştırma: Mac'te "Kitapcik Eslestirici.app", Windows'ta "Kitapcik Eslestirici.exe"
+            uygulamasına çift tıklayın
             (veya terminalden: python3 kitapcik_eslestirici_app.py)
 ==============================================================================
 """
@@ -24,10 +25,18 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.39"
+SURUM = "2.40"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
-LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
+WINDOWS = sys.platform.startswith("win")
+DONDURULMUS = getattr(sys, "frozen", False)      # Windows .exe (PyInstaller) paketi
+if WINDOWS:
+    LOG_DOSYASI = (Path(os.environ.get("LOCALAPPDATA") or Path.home())
+                   / "KitapcikEslestirici" / "KitapcikEslestirici.log")
+    LOG_YERI = str(LOG_DOSYASI)
+else:
+    LOG_DOSYASI = Path.home() / "Library" / "Logs" / "KitapcikEslestirici.log"
+    LOG_YERI = "Library/Logs/KitapcikEslestirici.log"
 
 
 def logla(mesaj):
@@ -40,6 +49,16 @@ def logla(mesaj):
 
 
 def hata_penceresi(mesaj):
+    if os.environ.get("KITAPCIK_PAKET_SINA"):     # derleme denetimi: pencere açma
+        logla(mesaj)
+        return
+    if WINDOWS:
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(0, mesaj, "Kitapçık Eşleştirici", 0x10)
+        except Exception:
+            pass
+        return
     try:
         subprocess.run(["osascript", "-e",
                         'display dialog "' + mesaj.replace('"', "'") +
@@ -47,6 +66,22 @@ def hata_penceresi(mesaj):
                         'with title "Kitapçık Eşleştirici"'], timeout=60)
     except Exception:
         pass
+
+def dosya_ac(yol):
+    """Dosyayı sistemin varsayılan uygulamasıyla açar (Mac: open, Windows:
+    ilişkili program)."""
+    if WINDOWS:
+        os.startfile(str(yol))
+    elif sys.platform == "darwin":
+        subprocess.run(["open", str(yol)])
+    else:
+        subprocess.run(["xdg-open", str(yol)])
+
+
+def pip_komutu(paketler):
+    """Kullanıcıya gösterilecek elle kurulum komutu."""
+    return ("py -m pip install --user " if WINDOWS
+            else "python3 -m pip install --user ") + paketler
 
 # ----------------------------------------------------------------------------
 # SINAV YAPILARI
@@ -144,6 +179,14 @@ def bagimliliklari_yukle():
 
 
 def eksikleri_bul():
+    if DONDURULMUS:            # .exe paketinde kütüphaneler içindedir; yüklenebiliyor mu
+        eksik = []
+        for p in GEREKLI:
+            try:
+                importlib.import_module({"pymupdf": "pymupdf", "python-docx": "docx"}.get(p, p))
+            except Exception:
+                eksik.append(p)
+        return eksik
     importlib.invalidate_caches()
     return [p for p in GEREKLI if importlib.util.find_spec({"pymupdf": "fitz", "python-docx": "docx"}.get(p, p)) is None
         and not (p == "pymupdf" and importlib.util.find_spec("fitz"))]
@@ -910,8 +953,8 @@ def _konular_kaynagi(yol):
             import docx
         except Exception:
             return None, ("hata: Word şablonu için 'python-docx' kütüphanesi "
-                          "kurulamadı. Terminale şunu yapıştırın: "
-                          "python3 -m pip install --user python-docx")
+                          "kurulamadı. " + ("Komut İstemi'ne" if WINDOWS else "Terminale")
+                          + " şunu yapıştırın: " + pip_komutu("python-docx"))
         belge = docx.Document(yol)
         satirlar = []
         for tablo in belge.tables:
@@ -3982,6 +4025,16 @@ def gui_baslat():
 
     # --- eksik kütüphane kontrolü ve otomatik kurulum (görünür pencereyle) ---
     eksik = eksikleri_bul()
+    if eksik and DONDURULMUS:
+        # .exe paketinde pip ile kurulum yapılamaz (sys.executable uygulamanın
+        # kendisidir); isteğe bağlı olanlar eksikse özellik kapalı kalır
+        kritik = [p for p in eksik if p not in {"tkinterdnd2", "python-docx"}]
+        logla(f"Pakette yüklenemeyen kütüphane: {eksik}")
+        if kritik:
+            hata_penceresi("Uygulama paketi eksik: " + ", ".join(kritik)
+                           + ". Uygulamayı yeniden indirip kurun.")
+            return
+        eksik = []
     if eksik:
         kok = tk.Tk()
         kok.title("Kitapçık Eşleştirici")
@@ -4018,8 +4071,9 @@ def gui_baslat():
             if kritik:
                 messagebox.showerror(
                     "Kurulamadı",
-                    "Otomatik kurulum başarısız oldu.\nTerminale şunu yapıştırın:\n\n"
-                    f"python3 -m pip install --user {' '.join(eksik)}\n\n"
+                    "Otomatik kurulum başarısız oldu.\n"
+                    + ("Komut İstemi'ne" if WINDOWS else "Terminale") + " şunu yapıştırın:\n\n"
+                    f"{pip_komutu(' '.join(eksik))}\n\n"
                     "Sonra uygulamayı yeniden açın.\n\nHata:\n" + p.stderr[-400:],
                     parent=kok)
                 kok.destroy()
@@ -4255,7 +4309,7 @@ def gui_baslat():
               justify="left").pack(side="bottom", anchor="w")
 
     log_kutusu = scrolledtext.ScrolledText(ana, height=16, state="disabled",
-                                           font=("Menlo", 11))
+                                           font=("Consolas" if WINDOWS else "Menlo", 11))
     log_kutusu.pack(fill="both", expand=True, pady=(10, 8))
     kuyruk = queue.Queue()
     kayit_kuyrugu = queue.Queue()
@@ -4276,9 +4330,12 @@ def gui_baslat():
             if isinstance(oge, tuple) and oge and oge[0] == "KAYIT":
                 messagebox.showinfo(
                     "Kayıt izni gerekli",
-                    "macOS, çıktı klasörüne doğrudan yazmaya izin vermedi.\n"
-                    "Şimdi açılacak pencerede kayıt konumunu seçin — seçtiğiniz "
-                    "konuma yazma izni verilmiş olur.", parent=pencere)
+                    ("Çıktı klasörüne yazılamadı (dosya açık ya da klasör yazmaya "
+                     "kapalı olabilir).\nŞimdi açılacak pencerede başka bir kayıt "
+                     "konumu seçin." if WINDOWS else
+                     "macOS, çıktı klasörüne doğrudan yazmaya izin vermedi.\n"
+                     "Şimdi açılacak pencerede kayıt konumunu seçin — seçtiğiniz "
+                     "konuma yazma izni verilmiş olur."), parent=pencere)
                 pdf_mi = str(oge[1]).lower().endswith(".pdf")   # KONTROL raporu
                 yol = filedialog.asksaveasfilename(
                     parent=pencere, defaultextension=".pdf" if pdf_mi else ".xlsx",
@@ -4302,9 +4359,9 @@ def gui_baslat():
                         "şimdi açılsın mı?" if ekler else "Excel dosyası şimdi açılsın mı?")
         if cikti_yolu and messagebox.askyesno(
                 "Tamamlandı", f"{mesaj}\n{soru}", parent=pencere):
-            subprocess.run(["open", cikti_yolu])
+            dosya_ac(cikti_yolu)
             for e in ekler:
-                subprocess.run(["open", e])
+                dosya_ac(e)
 
     # TEMİZLE (v2.35): uygulamayı kapatıp açmadan yeni deneme için her şeyi boşaltır:
     # dosya kutuları, çıktı yolu ve rapor alanı. Sınav türü olduğu gibi kalır.
@@ -4400,10 +4457,61 @@ def gui_baslat():
     pencere.focus_force()
 
     kuyrugu_isle()
+    if _PAKET_SINA:                    # derleme denetimi: pencere açılıp kapanır
+        _PAKET_SINA["pencere"] = "açıldı" + (" (sürükle-bırak açık)" if dnd else "")
+        pencere.after(2500, pencere.destroy)
     pencere.mainloop()
 
 
+# Derleme denetimi (yalnız KITAPCIK_PAKET_SINA ortam değişkeniyle; normal
+# kullanımda çalışmaz): Windows .exe paketi derlendikten sonra kütüphanelerin
+# pakette olduğunu, KONTROL ile EŞLEŞTİR'in çalıştığını ve pencerenin açıldığını
+# sınar. Sonuç <klasör>/paket_sina.txt dosyasına yazılır.
+_PAKET_SINA = {}
+
+
+def _paket_sinamasi(klasor):
+    klasor = Path(klasor)
+    satirlar, tamam = [], True
+    try:
+        eksik = eksikleri_bul()
+        bagimliliklari_yukle()
+        satirlar.append(f"kütüphaneler: {'eksik ' + ', '.join(eksik) if eksik else 'tam'}")
+        tamam &= not eksik
+        a, b = klasor / "ortaokul_A.pdf", klasor / "ortaokul_B_hatali.pdf"
+        rapor = kontrol_calistir(str(a), str(b), "ORTAOKUL", None, None,
+                                 str(klasor / "paket_kontrol.pdf"), lambda _m: None)
+        with fitz.open(rapor) as d:
+            satirlar.append(f"KONTROL: {Path(rapor).name}, {d.page_count} sayfa")
+        tablo = klasor / "paket_tablo.xlsx"
+        calistir(str(a), str(klasor / "ortaokul_B.pdf"), "ORTAOKUL", None, None, None,
+                 str(tablo), lambda _m: None)
+        satirlar.append(f"EŞLEŞTİR: {tablo.name} {'yazıldı' if tablo.exists() else 'YOK'}")
+        tamam &= tablo.exists()
+        _PAKET_SINA["pencere"] = "açılmadı"
+        gui_baslat()
+        satirlar.append(f"pencere: {_PAKET_SINA['pencere']}")
+        tamam &= _PAKET_SINA["pencere"].startswith("açıldı")
+    except Exception:
+        satirlar.append("HATA:\n" + traceback.format_exc())
+        tamam = False
+    satirlar.append("SONUÇ: " + ("tamam" if tamam else "SORUN"))
+    (klasor / "paket_sina.txt").write_text("\n".join(satirlar) + "\n", encoding="utf-8")
+    return 0 if tamam else 1
+
+
 if __name__ == "__main__":
+    if DONDURULMUS and (sys.stdout is None or sys.stderr is None):
+        # Pencereli .exe'de konsol yok: kütüphane uyarıları günlüğe yazılsın
+        try:
+            LOG_DOSYASI.parent.mkdir(parents=True, exist_ok=True)
+            _gunluk = open(LOG_DOSYASI, "a", encoding="utf-8", buffering=1)
+        except OSError:
+            _gunluk = open(os.devnull, "w")
+        sys.stdout = sys.stdout or _gunluk
+        sys.stderr = sys.stderr or _gunluk
+    if os.environ.get("KITAPCIK_PAKET_SINA"):
+        sys.exit(_paket_sinamasi(os.environ["KITAPCIK_PAKET_SINA"]))
     try:
         logla(f"--- Uygulama başlatılıyor --- Python {sys.version.split()[0]} ---")
         gui_baslat()
@@ -4412,4 +4520,4 @@ if __name__ == "__main__":
         logla("BAŞLATMA HATASI:\n" + detay)
         print(detay)
         hata_penceresi("Uygulama başlatılırken bir hata oluştu. Ayrıntı şu dosyaya "
-                       "kaydedildi: Library/Logs/KitapcikEslestirici.log")
+                       f"kaydedildi: {LOG_YERI}")

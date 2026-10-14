@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.39)
+# Kitapçık Eşleştirici (v2.40)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -6,6 +6,39 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.pdf` (tek PDF: özet + sorunlu soruların A/B görüntüleri) |
+
+## Windows sürümü (v2.40)
+
+Uygulama Windows'ta da çalışır. Mac ve Windows aynı Python dosyasını kullanır
+(`Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py`): EŞLEŞTİR ve
+KONTROL ikisinde de aynıdır. Yalnız şu küçük kısımlar sisteme göre seçilir:
+
+| | Mac | Windows |
+|---|---|---|
+| Başlatma | `Kitapcik Eslestirici.app` | `Kitapcik Eslestirici.exe` |
+| Biten raporu açma | `open` | sistemin varsayılan programı |
+| Günlük dosyası | `~/Library/Logs/KitapcikEslestirici.log` | `%LOCALAPPDATA%\KitapcikEslestirici\KitapcikEslestirici.log` |
+| Başlatma hatası penceresi | macOS iletişim kutusu | Windows ileti kutusu |
+| Rapor alanı yazı tipi | Menlo | Consolas |
+
+Mac'te davranış değişmedi.
+
+- **Kurulum:** Windows paketi bir klasördür. İçinde `Kitapcik Eslestirici.exe`, `_internal` ve
+  `Okubeni.txt` vardır. Python ya da kütüphane kurmak gerekmez, hepsi paketin içindedir.
+  - Klasör kalıcı bir yere konur ve `.exe`'ye çift tıklanır.
+  - İlk açılışta Windows "bilgisayarınızı korudu" diyebilir; uygulama imzalı değildir.
+    "Ek bilgi" → "Yine de çalıştır" denir.
+- **Derleme:** `.github/workflows/windows-exe.yml`. `kitapcik-eslestirici/` altında bir
+  değişiklik gönderildiğinde GitHub'ın Windows makinesi sırayla şunları yapar:
+  1. Motor testlerini Windows'ta çalıştırır (`windows/windows_sina.py`: KONTROL, EŞLEŞTİR,
+     cevap, tire, kesir, düzen).
+  2. Uygulamayı betik olarak açıp sınar.
+  3. `.exe`'yi PyInstaller ile derler.
+  4. `.exe`'yi açıp KONTROL, EŞLEŞTİR ve pencereyi sınar. Bu, `KITAPCIK_PAKET_SINA` ortam
+     değişkeniyle çalışan deneme kipidir; normal kullanımda devreye girmez.
+
+  Paket, çalışmanın "Artifacts" bölümünden indirilir.
+  Kütüphane sürümleri Mac/Linux'ta sınananlarla aynıdır.
 
 ## KONTROL tek PDF verir; sayfa süsü şekil sayılmaz (v2.39)
 
