@@ -277,6 +277,12 @@ tr.sel td { background: var(--accent-soft); }
   .axis-row .seg { grid-column: 2 / 4; justify-self: start; }
 }
 
+table.k-sutun .t, table.k-cizgi .p { display: none; }
+.kind-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+.kind-row label { color: var(--muted); }
+.form.tek .k-iklim, .form:not(.tek) .k-tek { display: none; }
+#applyAxes { min-height: 38px; padding: 6px 18px; font-size: 15px; }
+
 /* Guide */
 .guide { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px; display: grid; gap: 12px; }
 .guide h2 { font-size: 17px; }
@@ -291,7 +297,7 @@ tr.sel td { background: var(--accent-soft); }
   <header class="top">
     <div class="brand">
       <h1>İklim Grafiği <span>Çizici</span></h1>
-      <p class="lede">Sıcaklık–yağış grafiğinin görselini ver; uygulama değerleri okusun ve grafiği yeniden çizsin. Sonucu Illustrator'a yapıştırınca sütunlar, çizgi ve yazılar ayrı ayrı düzenlenebilir vektör olur.</p>
+      <p class="lede">Ders kitaplarındaki iklim, sütun ve çizgi grafiklerinin görselini ver; uygulama değerleri okusun ve grafiği yeniden çizsin. Sonucu Illustrator'a yapıştırınca sütunlar, çizgiler ve yazılar ayrı ayrı düzenlenebilir vektör olur.</p>
     </div>
     <div class="top-actions">
       <label class="btn primary big" for="fileIn"><input type="file" id="fileIn" accept="image/*">Görsel aç</label>
@@ -346,9 +352,19 @@ tr.sel td { background: var(--accent-soft); }
           <b id="stripName">Eksen sayıları</b>
           <span class="note">Eksende yazan en alttaki ve en üstteki sayı</span>
         </div>
+        <div class="kind-row">
+          <label for="kindSel">Grafik türü</label>
+          <select id="kindSel">
+            <option value="auto">Otomatik</option>
+            <option value="iklim">İklim grafiği (sütun + çizgi, iki eksen)</option>
+            <option value="sutun">Sütun grafiği</option>
+            <option value="cizgi">Çizgi grafiği</option>
+          </select>
+          <span class="note" id="kindNote"></span>
+        </div>
         <div class="axis-row" data-side="L">
-          <span class="ax-name"><i class="bar-sw mag"></i>Sol eksen</span>
-          <div class="seg" role="group" aria-label="Sol eksen neyi gösteriyor">
+          <span class="ax-name"><i class="bar-sw mag"></i><span id="leftName">Sol eksen</span></span>
+          <div class="seg" id="leftRoles" role="group" aria-label="Sol eksen neyi gösteriyor">
             <button type="button" data-side="L" data-role="t">Sıcaklık</button>
             <button type="button" data-side="L" data-role="p">Yağış</button>
           </div>
@@ -356,7 +372,7 @@ tr.sel td { background: var(--accent-soft); }
           <label>en üst<input id="L_hi" inputmode="decimal" autocomplete="off" placeholder="ör. 40"></label>
           <label>aralık<input id="L_step" inputmode="decimal" autocomplete="off" placeholder="oto"></label>
         </div>
-        <div class="axis-row" data-side="R">
+        <div class="axis-row" data-side="R" id="rightRow">
           <span class="ax-name"><i class="bar-sw cyan"></i>Sağ eksen</span>
           <div class="seg" role="group" aria-label="Sağ eksen neyi gösteriyor">
             <button type="button" data-side="R" data-role="t">Sıcaklık</button>
@@ -368,7 +384,7 @@ tr.sel td { background: var(--accent-soft); }
         </div>
         <div class="strip-foot">
           <label class="chk" id="sameAxesWrap" hidden><input type="checkbox" id="sameAxes"> Bu sayılar bütün grafiklerde aynı</label>
-          <button type="button" class="btn small primary" id="applyAxes">Oku</button>
+          <button type="button" class="btn primary" id="applyAxes">Grafiği oluştur</button>
         </div>
         <div class="ask" id="askBox" hidden>
           <div class="row">
@@ -380,10 +396,10 @@ tr.sel td { background: var(--accent-soft); }
       </div>
 
       <div class="key" aria-hidden="true">
-        <span><i class="k-line k-mag"></i>Sol eksen</span>
-        <span><i class="k-line k-cyan"></i>Sağ eksen</span>
-        <span><i class="k-bar"></i>Okunan sütun tepesi</span>
-        <span><i class="k-dot"></i>Okunan sıcaklık</span>
+        <span><i class="k-line k-mag"></i><span id="keyL">Sol eksen</span></span>
+        <span id="keyR"><i class="k-line k-cyan"></i>Sağ eksen</span>
+        <span id="keyBar"><i class="k-bar"></i>Okunan sütun tepesi</span>
+        <span id="keyDot"><i class="k-dot"></i><span id="keyDotTxt">Okunan sıcaklık</span></span>
       </div>
     </section>
 
@@ -408,16 +424,16 @@ tr.sel td { background: var(--accent-soft); }
     <section class="card" aria-labelledby="h3s">
       <h2 id="h3s">Okunan değerler</h2>
       <div class="rounding">
-        <label>Sıcaklık yuvarlama
+        <label id="tRoundLab"><span id="tRoundTxt">Sıcaklık yuvarlama</span>
           <select id="tRound"><option value="0.1">0,1</option><option value="0.5">0,5</option><option value="1">1</option></select>
         </label>
-        <label>Yağış yuvarlama
+        <label id="pRoundLab"><span id="pRoundTxt">Yağış yuvarlama</span>
           <select id="pRound"><option value="1">1</option><option value="5">5</option><option value="10">10</option></select>
         </label>
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>#</th><th>Etiket</th><th>Sıcaklık</th><th>Yağış</th></tr></thead>
+          <thead><tr><th>#</th><th>Etiket</th><th class="t" id="thT">Sıcaklık</th><th class="p" id="thP">Yağış</th></tr></thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
@@ -431,7 +447,7 @@ tr.sel td { background: var(--accent-soft); }
 
     <section class="card" aria-labelledby="h4s">
       <h2 id="h4s">Görünüm</h2>
-      <div class="form">
+      <div class="form" id="styleForm">
         <fieldset>
           <legend>Ölçü</legend>
           <div class="f2">
@@ -450,10 +466,11 @@ tr.sel td { background: var(--accent-soft); }
         <fieldset>
           <legend>Başlıklar</legend>
           <div class="f2">
-            <div class="f"><label>Sıcaklık ekseni<input id="st_tTitle" autocomplete="off"></label></div>
-            <div class="f"><label>Yağış ekseni<input id="st_pTitle" autocomplete="off"></label></div>
+            <div class="f k-iklim"><label>Sıcaklık ekseni<input id="st_tTitle" autocomplete="off"></label></div>
+            <div class="f k-iklim"><label>Yağış ekseni<input id="st_pTitle" autocomplete="off"></label></div>
+            <div class="f k-tek"><label>Değer ekseni<input id="st_yTitle" autocomplete="off" placeholder="ör. Gün sayısı"></label></div>
             <div class="f"><label>Başlık yeri
-              <select id="st_titleMode"><option value="h">Eksenin üstünde</option><option value="v">Eksen boyunca</option><option value="none">Yok</option></select></label></div>
+              <select id="st_titleMode"><option value="h">Eksenin üstünde</option><option value="v">Eksen boyunca</option><option value="side">Eksenin yanında, satırlara bölünmüş</option><option value="none">Yok</option></select></label></div>
             <div class="f"><label>Yatay eksen başlığı<input id="st_xTitle" autocomplete="off" placeholder="ör. Aylar"></label></div>
           </div>
         </fieldset>
@@ -462,7 +479,9 @@ tr.sel td { background: var(--accent-soft); }
           <div class="colorline">
             <input type="color" id="st_barColor" aria-label="Sütun rengi"><span class="hex" id="st_barHex"></span>
             <label class="chk"><input type="checkbox" id="st_barStroke"> Siyah kontur</label>
-            <label class="chk"><input type="checkbox" id="st_barGrad"> Degrade</label>
+            <label class="chk"><input type="checkbox" id="st_barGrad"> Renk geçişi</label>
+            <select id="st_barGradDir" aria-label="Renk geçişinin yönü"><option value="h">Yatay ışıklı</option><option value="v">Yukarıdan aşağı</option></select>
+            <span class="colorline" id="barColor2Wrap" hidden><input type="color" id="st_barColor2" aria-label="Sütunun üst rengi"><span class="hex">üst renk</span></span>
           </div>
           <div class="f2"><div class="f"><label>Sütun genişliği (%)<input type="number" id="st_barW" min="10" max="100" step="5"></label></div></div>
         </fieldset>
@@ -477,13 +496,14 @@ tr.sel td { background: var(--accent-soft); }
             <div class="f"><label>Kalınlık (pt)<input type="number" id="st_lineW" min="0.25" max="5" step="0.25"></label></div>
             <div class="f"><label>Nokta çapı (pt)<input type="number" id="st_dotD" min="1" max="8" step="0.5"></label></div>
           </div>
-          <label class="chk"><input type="checkbox" id="st_useImgColors"> Renkleri görseldeki gibi yap</label>
+          <label class="chk"><input type="checkbox" id="st_valLabels"> Değerleri sütunların / noktaların üstüne yaz</label>
+          <label class="chk"><input type="checkbox" id="st_useImgColors"> Renkleri ve görünümü görseldeki gibi yap</label>
         </fieldset>
         <fieldset>
           <legend>Eksen çizgileri</legend>
           <div class="f2">
             <div class="f"><label>Kılavuz çizgisi
-              <select id="st_grid"><option value="none">Yok</option><option value="solid">Düz</option><option value="dash">Kesikli</option></select></label></div>
+              <select id="st_grid"><option value="none">Yok</option><option value="solid">Düz</option><option value="dash">Kesikli</option><option value="dot">Noktalı</option></select></label></div>
             <div class="f"><label>Çentikler
               <select id="st_tick"><option value="out">Dışa</option><option value="in">İçe</option><option value="cross">Kesişen (+)</option><option value="none">Yok</option></select></label></div>
           </div>
@@ -559,8 +579,8 @@ tr.sel td { background: var(--accent-soft); }
       <div>
         <h3>Üç adım</h3>
         <ol>
-          <li><b>Görsel aç</b> ya da görseli <kbd>Ctrl</kbd>+<kbd>V</kbd> ile yapıştır. Görseldeki grafikler kendiliğinden bulunur, sütunlar ve sıcaklık çizgisi işaretlenir.</li>
-          <li>Görselin altındaki kutulara her eksenin en alttaki ve en üstteki sayısını yaz (claude.ai'de Claude bunu kendisi okur). Değerler hemen çıkar.</li>
+          <li><b>Görsel aç</b> ya da görseli <kbd>Ctrl</kbd>+<kbd>V</kbd> ile yapıştır. Grafiğin türü (iklim, sütun, çizgi) ve görseldeki grafikler kendiliğinden bulunur; sütunlar ve çizgiler işaretlenir.</li>
+          <li>Görselin altındaki kutulara eksendeki en alttaki ve en üstteki sayıyı yaz, <b>Grafiği oluştur</b>'a bas (claude.ai'de Claude sayıları kendisi okur).</li>
           <li>Sağdaki yeni grafiği görselle karşılaştır, <b>Illustrator için kopyala</b>'ya bas ve Illustrator'da <kbd>Ctrl</kbd>+<kbd>V</kbd> yap.</li>
         </ol>
       </div>
@@ -576,6 +596,8 @@ tr.sel td { background: var(--accent-soft); }
         <h3>İpuçları</h3>
         <ul>
           <li>Bir değer yanlışsa tablodan düzelt ya da görseldeki işareti sürükle.</li>
+          <li>Yatay eksende 1980, 1990… gibi etiketler varsa tabloya ilk ikisini yaz; kalanı aynı adımla dolar.</li>
+          <li>Tür yanlış anlaşıldıysa <b>Grafik türü</b>'nden elle seç.</li>
           <li><b>Renk maskesi</b>, hangi piksellerin sütun (pembe) ve çizgi (camgöbeği) sayıldığını gösterir.</li>
           <li>Renkler ekranda RGB'dir; CMYK belgeye yapıştırınca Illustrator dönüştürür.</li>
         </ul>
@@ -704,9 +726,75 @@ function avgColor(x, y, rad) {
 /* ---------------- axes ---------------- */
 const axisByRole = (role) => (S.axes.L.role === role ? S.axes.L : S.axes.R);
 const sideOf = (A) => (A === S.axes.L ? "sol" : "sag");
-const axisReady = (A) => A.yLo !== null && A.yHi !== null && Math.abs(A.yLo - A.yHi) > 2;
-const axisValued = (A) => A.lo !== null && A.hi !== null && isFinite(A.lo) && isFinite(A.hi) && A.hi !== A.lo;
-const sheetValued = (sh) => axisValued(sh.axes.L) && axisValued(sh.axes.R);
+const axisReady = (A) => !!A && A.yLo !== null && A.yHi !== null && Math.abs(A.yLo - A.yHi) > 2;
+const axisValued = (A) => !!A && A.lo !== null && A.hi !== null && isFinite(A.lo) && isFinite(A.hi) && A.hi !== A.lo;
+// Grafik türü: iklim (sütun + çizgi, iki eksen), sutun (tek eksen), cizgi (tek eksen)
+const KIND_NAMES = { iklim: "İklim grafiği", sutun: "Sütun grafiği", cizgi: "Çizgi grafiği" };
+function kindOf(sh) {
+  const sel = $("kindSel") ? $("kindSel").value : "auto";
+  if (sel !== "auto") return sel;
+  return sh.kind === "sutun" || sh.kind === "cizgi" ? sh.kind : "iklim";
+}
+function barAxisOf(sh) {
+  const k = kindOf(sh);
+  if (k === "cizgi") return null;
+  if (k === "sutun") return sh.axes.L;
+  return sh.axes.L.role === "p" ? sh.axes.L : sh.axes.R;
+}
+function lineAxisOf(sh) {
+  const k = kindOf(sh);
+  if (k === "sutun") return null;
+  if (k === "cizgi") return sh.axes.L;
+  return sh.axes.L.role === "t" ? sh.axes.L : sh.axes.R;
+}
+const usedAxes = (sh) => (kindOf(sh) === "iklim" ? [sh.axes.L, sh.axes.R] : [sh.axes.L]);
+const sheetValued = (sh) => usedAxes(sh).every(axisValued);
+
+// Yazı pikseli: koyu; ClearType yazılardaki renkli kenarları da sayar, doygun çizgi ve sütunları saymaz
+function isTextPx(x, y) {
+  const q = (y * S.W + x) * 4, p = S.px;
+  const r = p[q], g = p[q + 1], b = p[q + 2];
+  const lum = 0.3 * r + 0.59 * g + 0.11 * b, c = Math.max(r, g, b) - Math.min(r, g, b);
+  return lum < 150 && (c < 130 || lum < 80);
+}
+// Çentiğin dış tarafında sayı etiketi var mı? Yazı, çentik satırının üstünde ve altında da
+// birkaç farklı sütunda iz bırakır; kılavuz çizgisi ya da dikey kenar bırakmaz.
+function hasLabel(xFrom, dir, y, d) {
+  const W = S.W, H = S.H;
+  let x = xFrom, n = 0;
+  while (n < 16 && x > 0 && x < W - 1 && isAxisInk(x, y)) { x += dir; n++; }
+  const ry = Math.max(4, Math.round(d * 0.22)), skip = Math.max(1, Math.round(d * 0.04));
+  const span = Math.max(40, Math.round(d * 1.3)), gapMax = Math.max(8, Math.round(d * 0.35));
+  const up = new Set(), dn = new Set();
+  let started = false;
+  for (let k = 1; k <= span; k++) {
+    const xx = x + dir * k;
+    if (xx < 0 || xx >= W) break;
+    let any = false, full = true;
+    for (let yy = y - ry; yy <= y + ry; yy++) {
+      const ink = yy >= 0 && yy < H && isTextPx(xx, yy);
+      if (!ink) full = false;
+      if (!ink || Math.abs(yy - y) <= skip) continue;
+      any = true;
+      (yy < y ? up : dn).add(xx);
+    }
+    if (full) break;
+    if (any) started = true;
+    else if (!started && k > gapMax) break;
+  }
+  return up.size >= 2 && dn.size >= 2 && new Set([...up, ...dn]).size >= 3;
+}
+function labelledSide(ax) {
+  if (!ax || !ax.grid) return null;
+  let left = 0, right = 0;
+  for (const ty of ax.grid.on) {
+    const yy = Math.round(ty - 0.5);
+    if (hasLabel(ax.x0 - 1, -1, yy, ax.grid.d)) left++;
+    if (hasLabel(ax.x1 + 1, 1, yy, ax.grid.d)) right++;
+  }
+  const need = Math.max(2, Math.ceil(ax.grid.on.length * 0.6));
+  return left >= need && left >= right ? "L" : right >= need ? "R" : null;
+}
 const valAt = (A, y) => A.lo + (A.yLo - y) / (A.yLo - A.yHi) * (A.hi - A.lo);
 const yAtVal = (A, v) => A.yLo - (v - A.lo) / (A.hi - A.lo) * (A.yLo - A.yHi);
 
@@ -867,7 +955,11 @@ function findAxes() {
   const right = choose(pick(xr, R.x1 - 2, ER), null) || null;
   const leftF = (left && left.grid && left.grid.on.length >= 3) ? left : (tickOnly(R.x0 + 1, xl, "L", EL) || left);
   const rightF = (right && right.grid && right.grid.on.length >= 3) ? right : (tickOnly(xr, R.x1 - 1, "R", ER) || right);
+  if (leftF) leftF.side = labelledSide(leftF);
+  if (rightF) rightF.side = labelledSide(rightF);
   S.axX.L = leftF; S.axX.R = rightF;
+  // Sağda sayı etiketli bir eksen yoksa tek eksenli grafiktir (sütun ya da çizgi)
+  S.sheet.twoAxes = !!(rightF && rightF.grid && rightF.grid.on.length >= 3 && rightF.side === "R");
   // Yatay eksen çizgisi (sütunların tabanı)
   let xAxisY = null;
   {
@@ -886,7 +978,10 @@ function findAxes() {
   S.xAxisY = xAxisY;
   const msgs = [];
   let ok = true;
-  for (const [k, ax, name] of [["L", leftF, "Sol"], ["R", rightF, "Sağ"]]) {
+  const sel = $("kindSel") ? $("kindSel").value : "auto";
+  const both = sel === "iklim" || (sel === "auto" && (S.sheet.claudeKind ? S.sheet.claudeKind === "iklim" : S.sheet.twoAxes));
+  const axList = both ? [["L", leftF, "Sol"], ["R", rightF, "Sağ"]] : [["L", leftF, "Değer"]];
+  for (const [k, ax, name] of axList) {
     const A = S.axes[k];
     if (!ax || !ax.grid) {
       ok = false;
@@ -951,39 +1046,6 @@ function detectPanels(debug) {
     prevOpen = open;
   }
   // 2) Çentikli ve yanında sayı etiketi olan çizgiler eksendir
-  // Yazı pikseli: koyu; ClearType yazılardaki renkli kenarları da sayar, doygun çizgi ve sütunları saymaz
-  const isText = (x, y) => {
-    const q = (y * W + x) * 4, p = S.px;
-    const r = p[q], g = p[q + 1], b = p[q + 2];
-    const lum = 0.3 * r + 0.59 * g + 0.11 * b, c = Math.max(r, g, b) - Math.min(r, g, b);
-    return lum < 150 && (c < 130 || lum < 80);
-  };
-  // Çentiğin dış tarafında sayı etiketi var mı? Yazı, çentik satırının üstünde ve altında da
-  // birkaç farklı sütunda iz bırakır; kılavuz çizgisi ya da dikey kenar bırakmaz.
-  const labelInk = (xFrom, dir, y, d) => {
-    let x = xFrom, n = 0;
-    while (n < 16 && x > 0 && x < W - 1 && isAxisInk(x, y)) { x += dir; n++; }
-    const ry = Math.max(4, Math.round(d * 0.22)), skip = Math.max(1, Math.round(d * 0.04));
-    const span = Math.max(40, Math.round(d * 1.3)), gapMax = Math.max(8, Math.round(d * 0.35));
-    const up = new Set(), dn = new Set();
-    let started = false;
-    for (let k = 1; k <= span; k++) {
-      const xx = x + dir * k;
-      if (xx < 0 || xx >= W) break;
-      let any = false, full = true;
-      for (let yy = y - ry; yy <= y + ry; yy++) {
-        const ink = yy >= 0 && yy < H && isText(xx, yy);
-        if (!ink) full = false;
-        if (!ink || Math.abs(yy - y) <= skip) continue;
-        any = true;
-        (yy < y ? up : dn).add(xx);
-      }
-      if (full) break;                       // başka bir dikey çizgiye gelindi
-      if (any) started = true;
-      else if (!started && k > gapMax) break; // yazı çentiğe yakın başlamalı
-    }
-    return up.size >= 2 && dn.size >= 2 && new Set([...up, ...dn]).size >= 3;
-  };
   const axes = [];
   for (const l of lines) {
     if (l.x1 - l.x0 > 3) continue;
@@ -998,14 +1060,7 @@ function detectPanels(debug) {
     }
     const g = tickGrid(ys);
     if (!g || g.on.length < 3 || g.slots - g.on.length > 2) continue;
-    let left = 0, right = 0;
-    for (const ty of g.on) {
-      const yy = Math.round(ty - 0.5);
-      if (labelInk(l.x0 - 1, -1, yy, g.d)) left++;
-      if (labelInk(l.x1 + 1, 1, yy, g.d)) right++;
-    }
-    const need = Math.max(2, Math.ceil(g.on.length * 0.6));
-    const side = left >= need && left >= right ? "L" : right >= need ? "R" : null;
+    const side = labelledSide({ x0: l.x0, x1: l.x1, grid: g });
     if (side) axes.push({ ...l, g, side });
   }
   // 3) Soldaki ekseni, aynı tabanda sağdaki en yakın eksenle eşle
@@ -1049,7 +1104,7 @@ function detectPanels(debug) {
     if (inside) boxes.splice(i, 1);
   }
   if (debug) return { axes: axes.map((a) => [a.side, a.x0, a.x1, a.y0, a.y1, a.g.on.length]), boxes: boxes.map((b) => [b.A && b.A.x0, b.B && b.B.x0, b.top, b.bot]) };
-  if (!boxes.length) return [];
+  if (boxes.length < 2) return [];
   // 4) Bölgeler: eksenlerin çevresine yazılar için pay bırak, komşu grafiklerin eksenlerini dışarıda tut
   const regs = boxes.map((b) => {
     const h = b.bot - b.top;
@@ -1154,10 +1209,15 @@ function scanBars(xa, xb, yZero, yTop, lineM) {
     let found = -1;
     for (let y = Math.min(S.H - 1, z + 2); y >= Math.max(0, z - 5); y--) if (m(x, y)) { found = y; break; }
     if (found < 0) { cols.push(null); continue; }
-    // Yukarı doğru tara; sütunun önünden geçen sıcaklık çizgisini atla
+    // Yukarı doğru tara; sütunun önünden geçen sıcaklık çizgisini atla.
+    // Renk geçişli (degrade) sütunlarda rengi adım adım izle.
     let top = found, gap = 0;
+    let pi = (found * S.W + x) * 4;
+    let pr = S.px[pi], pg = S.px[pi + 1], pb = S.px[pi + 2];
     for (let y = found - 1; y >= yTop; y--) {
-      if (m(x, y)) { top = y; gap = 0; }
+      const q = (y * S.W + x) * 4, r = S.px[q], g = S.px[q + 1], b = S.px[q + 2];
+      const near = Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b - pb) <= 36 && (Math.max(r, g, b) - Math.min(r, g, b)) >= 40;
+      if (m(x, y) || (gap === 0 && near)) { top = y; gap = 0; pr = r; pg = g; pb = b; }
       else if (lineM && lineM(x, y)) { gap = 0; }
       else if (++gap > 3) break;
     }
@@ -1366,83 +1426,237 @@ function requestedCount() {
   return null;
 }
 
+// Yatay eksenin altındaki etiketlerin (1980, O, kış…) ortaları: kategori yerleri
+function labelCenters(xa, xb, yBase) {
+  const H = S.H;
+  let y0 = -1;
+  for (let y = Math.ceil(yBase) + 2; y < Math.min(H, yBase + 40); y++) {
+    let n = 0;
+    for (let x = xa; x < xb; x++) if (isTextPx(x, y)) n++;
+    if (n >= 2) { y0 = y; break; }
+  }
+  if (y0 < 0) return [];
+  let y1 = y0;
+  while (y1 + 1 < H && y1 - y0 < 40) {
+    let n = 0;
+    for (let x = xa; x < xb; x++) if (isTextPx(x, y1 + 1)) n++;
+    if (!n) break;
+    y1++;
+  }
+  const hgt = y1 - y0 + 1;
+  const gapMin = Math.max(5, Math.round(hgt * 0.55));
+  const blobs = [];
+  let cur = null, gap = 0;
+  for (let x = xa; x <= xb; x++) {
+    let ink = false;
+    if (x < xb) for (let y = y0; y <= y1 && !ink; y++) if (isTextPx(x, y)) ink = true;
+    if (ink) {
+      if (cur && gap < gapMin) { cur.x1 = x; } else { cur = { x0: x, x1: x }; blobs.push(cur); }
+      gap = 0;
+    } else if (cur) gap++;
+  }
+  return blobs.filter((b) => b.x1 - b.x0 >= 1).map((b) => (b.x0 + b.x1 + 1) / 2);
+}
+
+// Çizgi grafiği: kategoriler önce etiketlerden, yoksa noktalardan, yoksa çizginin uçlarından
+function lineCats(lm, nReq, xa, xb, yTop, yBot, yBase) {
+  const labs = labelCenters(xa, xb, yBase);
+  if (labs.length >= 2 && (!nReq || labs.length === nReq)) return { cats: labs.map((x) => ({ x, bar: null })), N: labs.length, extra: 0, pitch: (labs[labs.length - 1] - labs[0]) / (labs.length - 1) };
+  // noktalar: çizginin kalınlaştığı yerler
+  const th = [];
+  for (let x = xa; x < xb; x++) {
+    let best = 0, run = 0;
+    for (let y = Math.max(0, Math.floor(yTop)); y < Math.min(S.H, Math.ceil(yBot)); y++) {
+      if (lm(x, y)) { run++; if (run > best) best = run; } else run = 0;
+    }
+    th.push(best);
+  }
+  const nz = th.filter((v) => v > 0);
+  const base = median(nz);
+  const peaks = [];
+  let inP = false, p0 = 0;
+  for (let i = 0; i <= th.length; i++) {
+    const hi = i < th.length && th[i] >= Math.max(base * 1.8, base + 3);
+    if (hi && !inP) { inP = true; p0 = i; }
+    if (!hi && inP) { inP = false; peaks.push(xa + (p0 + i) / 2); }
+  }
+  if (peaks.length >= 2 && (!nReq || peaks.length === nReq)) return { cats: peaks.map((x) => ({ x, bar: null })), N: peaks.length, extra: 0, pitch: (peaks[peaks.length - 1] - peaks[0]) / (peaks.length - 1) };
+  return lineCategories(lm, nReq || labs.length || peaks.length || 12, xa, xb, yTop, yBot);
+}
+
+// Kılavuz çizgilerinin biçimi: yok, düz, kesikli ya da noktalı
+function gridStyleFrom(A, xa, xb) {
+  if (!A || !axisReady(A) || !(A.nTicks > 2)) return null;
+  const n = A.nTicks, styles = [];
+  for (let i = 1; i < n; i++) {
+    const yc = A.yLo + (A.yHi - A.yLo) * i / (n - 1);
+    let best = null;
+    for (const yy of [Math.floor(yc - 1), Math.floor(yc), Math.floor(yc + 1)]) {
+      if (yy < 0 || yy >= S.H) continue;
+      let ink = 0, runs = 0, run = 0, tot = 0;
+      for (let x = xa + 3; x < xb - 3; x++) {
+        const i4 = (yy * S.W + x) * 4, r = S.px[i4], g = S.px[i4 + 1], b = S.px[i4 + 2];
+        const isG = (Math.max(r, g, b) - Math.min(r, g, b)) < 40 && (0.3 * r + 0.59 * g + 0.11 * b) < 225;
+        tot++;
+        if (isG) { ink++; run++; } else { if (run) runs++; run = 0; }
+      }
+      if (run) runs++;
+      const f = ink / Math.max(1, tot);
+      if (!best || f > best.f) best = { f, avg: runs ? ink / runs : 0 };
+    }
+    if (best) styles.push(best);
+  }
+  if (!styles.length) return null;
+  const f = median(styles.map((q) => q.f)), avg = median(styles.map((q) => q.avg));
+  if (f < 0.12) return "none";
+  if (f > 0.85) return "solid";
+  return avg <= 2.6 ? "dot" : "dash";
+}
+
+// Sütunların üstünde sayı yazıyor mu?
+function barsHaveLabels(bars) {
+  if (!bars.length) return false;
+  let hit = 0;
+  for (const b of bars) {
+    const x0 = Math.round(b.cx - b.w / 2), x1 = Math.round(b.cx + b.w / 2);
+    const hBand = Math.max(8, Math.round(b.w * 0.5));
+    let n = 0;
+    for (let y = Math.max(0, Math.round(b.top) - hBand - 3); y < Math.round(b.top) - 2; y++) for (let x = x0; x <= x1; x++) if (isTextPx(x, y)) n++;
+    if (n >= 6) hit++;
+  }
+  return hit >= Math.ceil(bars.length * 0.6);
+}
+
+// Sütunun dolgu biçimi: düz, dikey geçişli ya da yatay ışıklı (degrade)
+function barStyleFrom(bars, yZero) {
+  if (!bars.length) return null;
+  const b = bars.reduce((a, c) => (yZero - c.top > yZero - a.top ? c : a));
+  const xc = Math.floor(b.cx), h = yZero - b.top;
+  if (h < 8) return null;
+  const top = avgColor(xc, Math.round(b.top + Math.max(2, h * 0.08)), 1), bot = avgColor(xc, Math.round(yZero - Math.max(2, h * 0.08)), 1);
+  const lx = Math.round(b.cx - b.w * 0.3), rx = Math.round(b.cx + b.w * 0.3), my = Math.round((b.top + yZero) / 2);
+  const left = avgColor(lx, my, 1), mid = avgColor(xc, my, 1), right = avgColor(rx, my, 1);
+  const d = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  const lum = (p) => 0.3 * p[0] + 0.59 * p[1] + 0.11 * p[2];
+  if (d(top, bot) > 45) return { grad: "v", top, bot };
+  if (lum(mid) - (lum(left) + lum(right)) / 2 > 30 || Math.max(lum(left), lum(right)) - Math.min(lum(left), lum(right)) > 40) return { grad: "h", top: mid, bot: left };
+  return { grad: "none", top: bot, bot };
+}
+
 function readValues() {
   if (!S.src) return;
-  const tA0 = axisByRole("t"), pA0 = axisByRole("p");
-  if (!axisReady(tA0) || !axisReady(pA0)) {
+  const sh = S.sheet;
+  const sel = $("kindSel").value;
+  let kind = sel !== "auto" ? sel : sh.claudeKind || (sh.twoAxes ? "iklim" : "single");
+  const two = kind === "iklim";
+  const bA0 = two ? axisByRole("p") : S.axes.L;
+  const lA0 = two ? axisByRole("t") : S.axes.L;
+  if (!axisReady(bA0) || !axisReady(lA0)) {
     S.rows = [];
     S.readMsg = ["Eksen çizgileri bulunamadı. “Bölge seç” ile grafiği çerçevele ya da renkli çizgileri eksendeki en alt ve en üst sayıya sürükle.", true];
     afterRead();
     return;
   }
   // Sayılar henüz girilmediyse konumları geçici bir ölçekle ölç; değerler sayılar gelince hesaplanır
-  const tA = axisValued(tA0) ? tA0 : { ...tA0, lo: 0, hi: 1 };
-  const pA = axisValued(pA0) ? pA0 : { ...pA0, lo: 0, hi: 1 };
+  const bA = axisValued(bA0) ? bA0 : { ...bA0, lo: 0, hi: 1 };
+  const lA = axisValued(lA0) ? lA0 : { ...lA0, lo: 0, hi: 1 };
   const R = S.region;
   const [xa, xb] = plotXRange();
-  const zeroVal = (pA.lo <= 0 && pA.hi >= 0) ? 0 : Math.min(pA.lo, pA.hi);
-  const yZero = yAtVal(pA, zeroVal);
-  const plotTop = Math.min(tA.yHi, pA.yHi, tA.yLo, pA.yLo);
-  const plotBot = Math.max(tA.yHi, pA.yHi, tA.yLo, pA.yLo);
+  const zeroVal = (bA.lo <= 0 && bA.hi >= 0) ? 0 : Math.min(bA.lo, bA.hi);
+  const yZero = yAtVal(bA, zeroVal);
+  const plotTop = Math.min(lA.yHi, bA.yHi, lA.yLo, bA.yLo);
+  const plotBot = Math.max(lA.yHi, bA.yHi, lA.yLo, bA.yLo);
   const yTop = Math.max(R.y0, Math.floor(plotTop - (plotBot - plotTop) * 0.12));
   const yBot = Math.min(R.y1, Math.ceil(plotBot + 3));
 
-  if (S.barAuto) S.barColor = autoBarColor(xa, xb, yZero);
-  if (S.lineAuto) S.lineColor = autoLineColor(xa, xb, yTop, yBot, S.barColor) || S.barColor;
-  const same = sameColor(S.lineColor, S.barColor);
-  const lm = S.lineColor ? makeMatcher(S.lineColor, S.lineTol) : null;
-  let bars = S.barColor ? scanBars(xa, xb, yZero, yTop, same ? null : lm) : [];
+  let bars = [], lm = null, same = false;
+  if (kind !== "cizgi") {
+    if (S.barAuto) S.barColor = autoBarColor(xa, xb, yZero);
+    if (two) {
+      if (S.lineAuto) S.lineColor = autoLineColor(xa, xb, yTop, yBot, S.barColor) || S.barColor;
+      same = sameColor(S.lineColor, S.barColor);
+      lm = S.lineColor ? makeMatcher(S.lineColor, S.lineTol) : null;
+    }
+    bars = S.barColor ? scanBars(xa, xb, yZero, yTop, two && !same ? lm : null) : [];
+    if (kind === "single") {
+      const ws = bars.map((b) => b.w);
+      const okBars = bars.length >= 2 && median(ws) >= 3 && Math.max(...ws) / Math.max(1, Math.min(...ws)) < 4 &&
+        bars.filter((b) => yZero - b.top >= 2).length >= 2;
+      kind = okBars ? "sutun" : "cizgi";
+    }
+  }
+  if (kind === "cizgi") {
+    bars = [];
+    if (S.lineAuto) S.lineColor = autoLineColor(xa, xb, yTop, yBot, null) || [40, 40, 40];
+    lm = makeMatcher(S.lineColor, S.lineTol);
+  }
+  if (kind === "sutun") lm = null;
+  sh.kind = kind;
   S.lastBars = bars.map((b) => ({ ...b }));
 
   const nReq = requestedCount();
   let built = null;
   if (bars.length) built = buildCategories(bars, nReq, xa, xb);
-  else if (lm) built = lineCategories(lm, nReq, xa, xb, yTop, yBot);
+  else if (lm) built = kind === "cizgi" ? lineCats(lm, nReq, xa, xb, yTop, yBot, Math.max(yZero, plotBot)) : lineCategories(lm, nReq, xa, xb, yTop, yBot);
   const notes = [];
   if (!built) {
     S.rows = [];
-    S.readMsg = ["Sütun ya da çizgi bulunamadı. 2. adımda renkleri görselden seç ya da toleransı artır.", true];
+    S.readMsg = ["Sütun ya da çizgi bulunamadı. “Okuma ayarları”nda renkleri görselden seç ya da toleransı artır.", true];
     afterRead();
     return;
   }
   const labels = labelsFor(built.N);
   S.barHalf = bars.length ? median(bars.map((b) => b.w)) / 2 : Math.max(3, built.pitch * 0.3);
+  sh.valueLabels = kind === "sutun" ? barsHaveLabels(bars) : false;
+  sh.gridStyle = gridStyleFrom(two ? S.axes.L : S.axes.L, xa, xb);
+  sh.barStyle = kind !== "cizgi" ? barStyleFrom(bars, yZero) : null;
   const cl = (S.claude && S.claude.labels && S.claude.labels.length === built.N) ? S.claude : null;
-  const valued = axisValued(tA0) && axisValued(pA0);
-  const pRange = Math.abs(pA.hi - pA.lo), tRange = Math.abs(tA.hi - tA.lo);
+  const clBar = cl ? (two ? cl.p : cl.values) : null, clLine = cl ? (two ? cl.t : cl.values) : null;
+  const valued = axisValued(bA0) && axisValued(lA0);
+  const bRange = Math.abs(bA.hi - bA.lo), lRange = Math.abs(lA.hi - lA.lo);
+  const okNum = (v) => v !== null && v !== undefined && isFinite(v);
   let missLine = 0, approxLine = 0, fromClaude = 0;
 
   S.rows = built.cats.map((c, k) => {
     const row = { label: labels[k], x: c.x, barY: null, barSrc: "px", lineY: null, lineSrc: "px", warnT: null, warnP: null };
-    if (c.bar) row.barY = c.bar.top;
-    else if (bars.length) {
-      const cv = cl ? cl.p[k] : null;
-      if (valued && cv !== null && cv !== undefined && isFinite(cv) && cv > pRange * 0.02) { row.barY = yAtVal(pA, cv); row.barSrc = "claude"; fromClaude++; }
-      else { row.barY = yZero; row.barSrc = "zero"; }
+    if (kind !== "cizgi") {
+      const cv = clBar ? clBar[k] : null;
+      if (c.bar) {
+        row.barY = c.bar.top;
+        // Claude'un okuduğu sayı ölçülene çok yakınsa tam sayıyı kullan (sütunun üstünde yazan değer)
+        if (valued && okNum(cv)) {
+          const diff = Math.abs(valAt(bA, row.barY) - cv);
+          if (diff <= bRange * 0.04) row.barY = yAtVal(bA, cv);
+          else if (diff > bRange * 0.12) row.warnP = cv;
+        }
+      } else if (bars.length) {
+        if (valued && okNum(cv) && cv > bRange * 0.02) { row.barY = yAtVal(bA, cv); row.barSrc = "claude"; fromClaude++; }
+        else { row.barY = yZero; row.barSrc = "zero"; }
+      }
     }
     if (lm) {
+      const cv = clLine ? clLine[k] : null;
       const r = readLineAt(c.x, lm, c.bar, yTop, yBot, same);
-      if (r) { row.lineY = r.y; if (r.approx) { row.lineSrc = "approx"; approxLine++; } }
-    }
-    if (row.lineY === null) {
-      const cv = cl ? cl.t[k] : null;
-      if (valued && cv !== null && cv !== undefined && isFinite(cv)) { row.lineY = yAtVal(tA, cv); row.lineSrc = "claude"; fromClaude++; }
+      if (r) {
+        row.lineY = r.y;
+        if (r.approx) { row.lineSrc = "approx"; approxLine++; }
+        if (valued && okNum(cv)) {
+          const diff = Math.abs(valAt(lA, row.lineY) - cv);
+          if (diff <= lRange * 0.03) row.lineY = yAtVal(lA, cv);
+          else if (diff > lRange * 0.12) row.warnT = cv;
+        }
+      } else if (valued && okNum(cv)) { row.lineY = yAtVal(lA, cv); row.lineSrc = "claude"; fromClaude++; }
       else missLine++;
-    }
-    if (cl && valued) {
-      const ct = cl.t[k], cp = cl.p[k];
-      if (row.lineY !== null && row.lineSrc !== "claude" && isFinite(ct) && ct !== null && Math.abs(valAt(tA, row.lineY) - ct) > tRange * 0.12) row.warnT = ct;
-      if (row.barY !== null && row.barSrc === "px" && isFinite(cp) && cp !== null && Math.abs(valAt(pA, row.barY) - cp) > pRange * 0.12) row.warnP = cp;
     }
     return row;
   });
 
   const found = built.cats.filter((c) => c.bar).length;
-  notes.push(`${built.N} kategori, ${found} sütun bulundu`);
+  notes.push(`${KIND_NAMES[kind]} · ${built.N} kategori` + (kind !== "cizgi" ? `, ${found} sütun bulundu` : ""));
   if (bars.length && found < built.N) notes.push(`${built.N - found} sütun yok sayıldı (0 ya da Claude'un değeri)`);
   if (built.extra > 0) notes.push(`${built.extra} fazla sütun atlandı`);
-  if (missLine) notes.push(`${missLine} sıcaklık noktası bulunamadı`);
-  if (approxLine) notes.push(`${approxLine} nokta yakın sütundan tahmin edildi`);
+  if (missLine) notes.push(`${missLine} nokta bulunamadı`);
+  if (approxLine) notes.push(`${approxLine} nokta yakından tahmin edildi`);
   if (fromClaude) notes.push(`${fromClaude} değer Claude'un okumasından`);
   S.readMsg = [notes.join(" · ") + ".", missLine > 0 || built.extra > 0];
   afterRead();
@@ -1456,18 +1670,43 @@ function afterRead() {
 
 /* ---------------- values / table ---------------- */
 function valT(A, r) {
-  if (r.lineY === null || !axisValued(A)) return null;
+  if (!A || r.lineY === null || !axisValued(A)) return null;
   return roundTo(valAt(A, r.lineY), Number($("tRound").value));
 }
 function valP(A, r) {
-  if (r.barY === null || !axisValued(A)) return null;
+  if (!A || r.barY === null || !axisValued(A)) return null;
   const v = roundTo(valAt(A, r.barY), Number($("pRound").value));
   return v < 0 ? 0 : v;
 }
-const rowT = (r) => valT(axisByRole("t"), r);
-const rowP = (r) => valP(axisByRole("p"), r);
+const rowT = (r) => valT(lineAxisOf(S.sheet), r);
+const rowP = (r) => valP(barAxisOf(S.sheet), r);
+
+// 1980, 1990 yazılınca kalan etiketleri aynı adımla doldur
+function fillLabelSequence() {
+  const L = S.rows.map((r) => r.label);
+  const a = parseNum(L[0]), b = parseNum(L[1]);
+  if (a === null || b === null || b === a || S.rows.length < 3) return false;
+  const free = S.rows.slice(2).every((r, i) => r.autoLabel || r.label === "" || r.label === String(i + 3));
+  if (!free) return false;
+  const d = b - a;
+  S.rows.forEach((r, i) => { if (i >= 2) { r.label = fmt(a + d * i); r.autoLabel = true; } });
+  return true;
+}
+function syncTableHead() {
+  const k = kindOf(S.sheet);
+  const tbl = $("tbody").closest("table");
+  tbl.classList.toggle("k-sutun", k === "sutun");
+  tbl.classList.toggle("k-cizgi", k === "cizgi");
+  $("thT").textContent = k === "iklim" ? "Sıcaklık" : "Değer";
+  $("thP").textContent = k === "iklim" ? "Yağış" : "Değer";
+  $("tRoundLab").hidden = k === "sutun";
+  $("pRoundLab").hidden = k === "cizgi";
+  $("tRoundTxt").textContent = k === "iklim" ? "Sıcaklık yuvarlama" : "Yuvarlama";
+  $("pRoundTxt").textContent = k === "iklim" ? "Yağış yuvarlama" : "Yuvarlama";
+}
 
 function renderTable() {
+  syncTableHead();
   const tb = $("tbody");
   tb.textContent = "";
   if (!S.rows.length) {
@@ -1498,19 +1737,24 @@ function renderTable() {
       td.append(inp);
       return td;
     };
-    const tdL = mk("lab", r.label, (v) => { r.label = v.trim(); updateOutput(); }, "Etiket");
+    const tdL = mk("lab", r.label, (v) => {
+      r.label = v.trim();
+      r.autoLabel = false;
+      if (i === 1 && fillLabelSequence()) { renderTable(); return; }
+      updateOutput();
+    }, "Etiket");
     const tdT = mk("v t" + cellCls(r, "t"), fmt(rowT(r)), (v) => {
       const n = parseNum(v);
-      r.lineY = n === null ? null : yAtVal(axisByRole("t"), n);
+      r.lineY = n === null ? null : yAtVal(lineAxisOf(S.sheet), n);
       r.lineSrc = "el"; r.warnT = null;
       refreshRow(i); render();
-    }, "Sıcaklık");
+    }, kindOf(S.sheet) === "iklim" ? "Sıcaklık" : "Değer");
     const tdP = mk("v p" + cellCls(r, "p"), fmt(rowP(r)), (v) => {
       const n = parseNum(v);
-      r.barY = n === null ? null : yAtVal(axisByRole("p"), Math.max(0, n));
+      r.barY = n === null ? null : yAtVal(barAxisOf(S.sheet), Math.max(0, n));
       r.barSrc = "el"; r.warnP = null;
       refreshRow(i); render();
-    }, "Yağış");
+    }, kindOf(S.sheet) === "iklim" ? "Yağış" : "Değer");
     if (r.warnT !== null) tdT.title = "Claude: " + fmt(r.warnT);
     if (r.warnP !== null) tdP.title = "Claude: " + fmt(r.warnP);
     tr.append(tdI, tdL, tdT, tdP);
@@ -1541,8 +1785,8 @@ function markSel() {
 const MM = 72 / 25.4;
 const ST_DEFAULT = {
   wMm: 100, hMm: 62, cols: 2, gapMm: 10, letters: "auto", letterFmt: "A)",
-  tTitle: "Sıcaklık (°C)", pTitle: "Yağış (mm)", titleMode: "h", xTitle: "",
-  barColor: "#3d8fd1", barW: 60, barStroke: false, barGrad: false,
+  tTitle: "Sıcaklık (°C)", pTitle: "Yağış (mm)", yTitle: "", titleMode: "h", xTitle: "",
+  barColor: "#3d8fd1", barColor2: "#9fd0f5", barW: 60, barStroke: false, barGrad: false, barGradDir: "h", valLabels: false,
   lineColor: "#e3262b", lineW: 1, dots: true, dotD: 2.5, smooth: false, useImgColors: true,
   grid: "none", tick: "out", frame: false, xTicks: false,
   legend: "none", legBar: "Yağış", legLine: "Sıcaklık", fontSize: 7, font: "Helvetica Neue",
@@ -1563,14 +1807,14 @@ const n2 = (v) => String(Math.round(v * 100) / 100);
 const idSafe = (s) => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i").replace(/[^A-Za-z0-9]/g, "") || "x";
 
 function panelOf(sh) {
-  const tA = sh.axes.L.role === "t" ? sh.axes.L : sh.axes.R;
-  const pA = tA === sh.axes.L ? sh.axes.R : sh.axes.L;
+  const kind = kindOf(sh);
+  const bA = barAxisOf(sh), lA = lineAxisOf(sh);
   const side = (A) => (A === sh.axes.L ? "sol" : "sag");
+  const info = (A) => (A ? { side: side(A), lo: A.lo, hi: A.hi, step: A.step } : null);
   return {
-    name: sh.name,
-    t: { side: side(tA), lo: tA.lo, hi: tA.hi, step: tA.step },
-    p: { side: side(pA), lo: pA.lo, hi: pA.hi, step: pA.step },
-    rows: sh.rows.map((r) => ({ label: r.label, t: valT(tA, r), p: valP(pA, r) })),
+    name: sh.name, kind,
+    t: info(lA), p: info(bA),
+    rows: sh.rows.map((r) => ({ label: r.label, t: valT(lA, r), p: valP(bA, r) })),
   };
 }
 const currentPanel = () => panelOf(S.sheet);
@@ -1579,7 +1823,7 @@ function livePanels() { return readySheets().map(panelOf); }
 
 // Illustrator scriptinin (iklim-grafigi.jsx) “Veri” sekmesine yapıştırılacak metin
 function scriptText() {
-  const list = livePanels();
+  const list = livePanels().filter((P) => P.kind === "iklim");
   const many = list.length > 1;
   const ax = (k, A) => `@${k};${A.side};${fmt(A.lo)};${fmt(A.hi)};${fmt(A.step)}`;
   return list.map((P) => [many ? `[${P.name}]` : null, ax("sicaklik", P.t), ax("yagis", P.p)]
@@ -1647,10 +1891,11 @@ function hexToRgb(h) { const m = /^#?([0-9a-f]{6})$/i.exec(h || ""); if (!m) ret
 function rgbToHex(c) { return "#" + c.map((v) => clamp(Math.round(v), 0, 255).toString(16).padStart(2, "0")).join(""); }
 const mixHex = (h, to, t) => { const a = hexToRgb(h), b = hexToRgb(to); return rgbToHex(a.map((v, i) => v + (b[i] - v) * t)); };
 
-function svgText(str, x, y, anchor, size, rot) {
+function svgText(str, x, y, anchor, size, rot, bold) {
   const a = anchor === "middle" || anchor === "end" ? ` text-anchor="${anchor}"` : "";
   const tr = rot ? ` transform="rotate(${rot} ${n2(x)} ${n2(y)})"` : "";
-  return `<text x="${n2(x)}" y="${n2(y)}" font-family="${xmlEsc(ST.font)}" font-size="${n2(size)}" fill="#000000"${a}${tr}>${xmlEsc(str)}</text>`;
+  const b = bold ? ' font-weight="bold"' : "";
+  return `<text x="${n2(x)}" y="${n2(y)}" font-family="${xmlEsc(ST.font)}" font-size="${n2(size)}"${b} fill="#000000"${a}${tr}>${xmlEsc(str)}</text>`;
 }
 const svgLine = (x1, y1, x2, y2, col, w, dash) =>
   `<line x1="${n2(x1)}" y1="${n2(y1)}" x2="${n2(x2)}" y2="${n2(y2)}" fill="none" stroke="${col}" stroke-width="${n2(w)}"${dash ? ` stroke-dasharray="${dash}"` : ""}/>`;
@@ -1678,45 +1923,68 @@ function legendItem(kind, x, cy, align) {
   m += svgText(label, x0 + sw + fs * 0.45, cy + capH / 2, "start", fs);
   return { m, w };
 }
-function legendCentered(cx, cy) {
+function legendCentered(cx, cy, kinds) {
+  kinds = kinds || ["bar", "line"];
   const gap = ST.fontSize * 2;
-  const wb = legendItem("bar", 0, cy, "start").w, wl = legendItem("line", 0, cy, "start").w;
-  const x = cx - (wb + gap + wl) / 2;
-  return legendItem("bar", x, cy, "start").m + legendItem("line", x + wb + gap, cy, "start").m;
+  const ws = kinds.map((k) => legendItem(k, 0, cy, "start").w);
+  let x = cx - (ws.reduce((a, b) => a + b, 0) + gap * (kinds.length - 1)) / 2;
+  return kinds.map((k, i) => { const m = legendItem(k, x, cy, "start").m; x += ws[i] + gap; return m; }).join("");
+}
+const kindsOf = (P) => (P.kind === "sutun" ? ["bar"] : P.kind === "cizgi" ? ["line"] : ["bar", "line"]);
+
+// Uzun başlığı verilen genişliğe sığacak satırlara böl
+function wrapText(str, maxW, size) {
+  const words = String(str).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    const t = cur ? cur + " " + w : w;
+    if (cur && textW(t, size) > maxW) { lines.push(cur); cur = w; } else cur = t;
+  }
+  if (cur) lines.push(cur);
+  return lines;
 }
 
 function panelSVG(P, L, T, W, H, showLetter, single) {
   const fs = ST.fontSize, capH = fs * 0.7, asc = fs * 0.75, desc = fs * 0.22;
   const tickLen = Math.max(2.5, fs * 0.45), labGap = Math.max(2, fs * 0.35);
   const pid = P.name ? idSafe(P.name) + "_" : "";
+  const kind = P.kind || "iklim";
   const tA = P.t, pA = P.p;
-  if (!axisOk(tA) || !axisOk(pA)) {
+  const two = kind === "iklim";
+  if ((kind !== "sutun" && !axisOk(tA)) || (kind !== "cizgi" && !axisOk(pA))) {
     return `<g id="${pid}Hata">${svgText("Eksen değerleri eksik ya da hatalı", L + 4, T + 14, "start", fs)}</g>`;
   }
-  const leftA = tA.side === "sol" ? tA : pA, rightA = leftA === tA ? pA : tA;
-  const lv = tickVals(leftA), rv = tickVals(rightA);
+  const leftA = two ? (tA.side === "sol" ? tA : pA) : (pA || tA);
+  const rightA = two ? (leftA === tA ? pA : tA) : null;
+  const lv = tickVals(leftA), rv = rightA ? tickVals(rightA) : [];
   const ls = lv.map(fmt), rs = rv.map(fmt);
   const wl = Math.max(0, ...ls.map((s) => textW(s, fs))), wr = Math.max(0, ...rs.map((s) => textW(s, fs)));
   const tOut = ST.tick === "out" || ST.tick === "cross" ? tickLen : 0;
   const tIn = ST.tick === "in" || ST.tick === "cross" ? tickLen : 0;
-  const titleOf = (A) => (A === tA ? ST.tTitle : ST.pTitle).trim();
+  const titleOf = (A) => (!A ? "" : !two ? ST.yTitle : (A === tA ? ST.tTitle : ST.pTitle)).trim();
   const lT = titleOf(leftA), rT = titleOf(rightA);
-  const vT = ST.titleMode === "v", hT = ST.titleMode === "h";
+  const vT = ST.titleMode === "v", hT = ST.titleMode === "h", sT = ST.titleMode === "side";
   const vtW = fs * 1.2 + 2;
+  const sideMax = W * 0.2;
+  const lLines = sT && lT ? wrapText(lT, sideMax, fs) : [], rLines = sT && rT ? wrapText(rT, sideMax, fs) : [];
+  const lSideW = lLines.length ? Math.max(...lLines.map((l) => textW(l, fs))) + fs : 0;
+  const rSideW = rLines.length ? Math.max(...rLines.map((l) => textW(l, fs))) + fs : 0;
 
   let y = T, letterBase = null, legendY = null, titleBase = null;
   if (showLetter && P.name) { letterBase = y + (fs + 3) * 0.75; y += (fs + 3) * 0.75 + desc + 4; }
   const perLegend = ST.legend === "each" || ST.legend === "corners" || (ST.legend === "top" && single);
   if (perLegend) { legendY = y + fs * 0.55; y += fs * 1.1 + 5; }
   if (hT && (lT || rT)) { titleBase = y + asc; y += asc + desc + 3; }
+  if (ST.valLabels && !two) y += fs * 0.6;
   const pT = y + capH / 2 + 0.5;
   let yb = T + H, xTitleBase = null;
   if (ST.xTitle.trim()) { xTitleBase = yb - desc; yb -= desc + asc + 3; }
   const xTickOut = ST.xTicks && ST.tick !== "in" ? tickLen : 0;
   const xLabBase = yb - desc - 0.5;
   const pB = xLabBase - capH - labGap - xTickOut;
-  const pL = L + wl + labGap + tOut + (vT && lT ? vtW : 0);
-  const pR = L + W - wr - labGap - tOut - (vT && rT ? vtW : 0);
+  const pL = L + lSideW + wl + labGap + tOut + (vT && lT ? vtW : 0);
+  const pR = L + W - (rightA ? wr + labGap + tOut : fs * 0.5) - rSideW - (vT && rT ? vtW : 0);
   if (pB - pT < 15 || pR - pL < 20) {
     return `<g id="${pid}Hata">${svgText("Ölçü yazılar için çok küçük", L + 4, T + 14, "start", fs)}</g>`;
   }
@@ -1724,27 +1992,32 @@ function panelSVG(P, L, T, W, H, showLetter, single) {
   const n = Math.max(1, P.rows.length), slot = (pR - pL) / n;
   const cx = (k) => pL + slot * (k + 0.5);
   const ink = "#000000", axW = 0.5;
-  const G = { grid: [], bars: [], axes: [], line: [], text: [], legend: [] };
+  const G = { grid: [], bars: [], axes: [], line: [], text: [], values: [], legend: [] };
 
   if (ST.grid !== "none") {
     for (let i = 1; i < lv.length; i++) {
       if (ST.frame && i === lv.length - 1) continue;
       const gy = yOf(leftA, lv[i]);
-      G.grid.push(svgLine(pL, gy, pR, gy, "#b3b3b3", 0.3, ST.grid === "dash" ? "2 2" : ""));
+      if (ST.grid === "dot") G.grid.push(`<line x1="${n2(pL)}" y1="${n2(gy)}" x2="${n2(pR)}" y2="${n2(gy)}" fill="none" stroke="#8c8c8c" stroke-width="0.6" stroke-linecap="round" stroke-dasharray="0 1.6"/>`);
+      else G.grid.push(svgLine(pL, gy, pR, gy, "#b3b3b3", 0.3, ST.grid === "dash" ? "2 2" : ""));
     }
   }
 
-  const baseVal = pA.lo <= 0 && pA.hi >= 0 ? 0 : pA.lo;
-  const by = yOf(pA, baseVal), bw = slot * clamp(ST.barW, 5, 100) / 100;
-  const barFill = ST.barGrad ? "url(#sutunDegrade)" : ST.barColor;
-  P.rows.forEach((r, k) => {
-    if (r.p === null || r.p === undefined) return;
-    const ty = yOf(pA, r.p), h = by - ty;
-    if (h <= 0.05) return;
-    G.bars.push(`<rect x="${n2(cx(k) - bw / 2)}" y="${n2(ty)}" width="${n2(bw)}" height="${n2(h)}" fill="${barFill}"${ST.barStroke ? ' stroke="#000000" stroke-width="0.3"' : ""}/>`);
-  });
+  if (pA) {
+    const baseVal = pA.lo <= 0 && pA.hi >= 0 ? 0 : pA.lo;
+    const by = yOf(pA, baseVal), bw = slot * clamp(ST.barW, 5, 100) / 100;
+    const barFill = ST.barGrad ? "url(#sutunDegrade)" : ST.barColor;
+    P.rows.forEach((r, k) => {
+      if (r.p === null || r.p === undefined) return;
+      const ty = yOf(pA, r.p), h = by - ty;
+      if (h > 0.05) G.bars.push(`<rect x="${n2(cx(k) - bw / 2)}" y="${n2(ty)}" width="${n2(bw)}" height="${n2(h)}" fill="${barFill}"${ST.barStroke ? ' stroke="#000000" stroke-width="0.3"' : ""}/>`);
+      if (ST.valLabels && !two) G.values.push(svgText(fmt(r.p), cx(k), ty - fs * 0.45, "middle", fs, 0, true));
+    });
+  }
 
-  G.axes.push(svgLine(pL, pB, pL, pT, ink, axW), svgLine(pR, pB, pR, pT, ink, axW), svgLine(pL, pB, pR, pB, ink, axW));
+  G.axes.push(svgLine(pL, pB, pL, pT, ink, axW), svgLine(pL, pB, pR, pB, ink, axW));
+  if (rightA) G.axes.push(svgLine(pR, pB, pR, pT, ink, axW));
+  else if (ST.frame) G.axes.push(svgLine(pR, pB, pR, pT, ink, axW));
   if (ST.frame) G.axes.push(svgLine(pL, pT, pR, pT, ink, axW));
   if (tOut || tIn) {
     lv.forEach((v) => { const ty = yOf(leftA, v); G.axes.push(svgLine(pL - tOut, ty, pL + tIn, ty, ink, axW)); });
@@ -1755,34 +2028,36 @@ function panelSVG(P, L, T, W, H, showLetter, single) {
     P.rows.forEach((_, k) => G.axes.push(svgLine(cx(k), pB + xTickOut, cx(k), pB - inn, ink, axW)));
   }
 
-  // Sıcaklık çizgisi (boş değerlerde kesilir)
-  const runs = [];
-  let run = [];
-  P.rows.forEach((r, k) => {
-    if (r.t === null || r.t === undefined) { if (run.length) runs.push(run); run = []; return; }
-    run.push([cx(k), yOf(tA, r.t)]);
-  });
-  if (run.length) runs.push(run);
-  for (const pts of runs) {
-    if (pts.length > 1) {
-      let d = `M${n2(pts[0][0])},${n2(pts[0][1])}`;
-      for (let i = 1; i < pts.length; i++) {
-        if (ST.smooth && pts.length > 2) {
-          const p0 = pts[Math.max(0, i - 2)], p1 = pts[i - 1], p2 = pts[i], p3 = pts[Math.min(pts.length - 1, i + 1)];
-          const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
-          const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-          d += ` C${n2(c1[0])},${n2(c1[1])} ${n2(c2[0])},${n2(c2[1])} ${n2(p2[0])},${n2(p2[1])}`;
-        } else d += ` L${n2(pts[i][0])},${n2(pts[i][1])}`;
+  if (tA) {
+    const runs = [];
+    let run = [];
+    P.rows.forEach((r, k) => {
+      if (r.t === null || r.t === undefined) { if (run.length) runs.push(run); run = []; return; }
+      run.push([cx(k), yOf(tA, r.t), r.t]);
+    });
+    if (run.length) runs.push(run);
+    for (const pts of runs) {
+      if (pts.length > 1) {
+        let d = `M${n2(pts[0][0])},${n2(pts[0][1])}`;
+        for (let i = 1; i < pts.length; i++) {
+          if (ST.smooth && pts.length > 2) {
+            const p0 = pts[Math.max(0, i - 2)], p1 = pts[i - 1], p2 = pts[i], p3 = pts[Math.min(pts.length - 1, i + 1)];
+            const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+            const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+            d += ` C${n2(c1[0])},${n2(c1[1])} ${n2(c2[0])},${n2(c2[1])} ${n2(p2[0])},${n2(p2[1])}`;
+          } else d += ` L${n2(pts[i][0])},${n2(pts[i][1])}`;
+        }
+        G.line.push(`<path d="${d}" fill="none" stroke="${ST.lineColor}" stroke-width="${n2(ST.lineW)}" stroke-linejoin="round" stroke-linecap="round"/>`);
       }
-      G.line.push(`<path d="${d}" fill="none" stroke="${ST.lineColor}" stroke-width="${n2(ST.lineW)}" stroke-linejoin="round" stroke-linecap="round"/>`);
+      if (ST.dots || pts.length === 1) for (const p of pts) G.line.push(`<circle cx="${n2(p[0])}" cy="${n2(p[1])}" r="${n2(ST.dotD / 2)}" fill="${ST.lineColor}"/>`);
+      if (ST.valLabels && !two) for (const p of pts) G.values.push(svgText(fmt(p[2]), p[0], p[1] - Math.max(ST.dotD, 2) - fs * 0.3, "middle", fs, 0, true));
     }
-    if (ST.dots || pts.length === 1) for (const p of pts) G.line.push(`<circle cx="${n2(p[0])}" cy="${n2(p[1])}" r="${n2(ST.dotD / 2)}" fill="${ST.lineColor}"/>`);
   }
 
   lv.forEach((v, i) => G.text.push(svgText(ls[i], pL - tOut - labGap, yOf(leftA, v) + capH / 2, "end", fs)));
   rv.forEach((v, i) => G.text.push(svgText(rs[i], pR + tOut + labGap, yOf(rightA, v) + capH / 2, "start", fs)));
   P.rows.forEach((r, k) => { if (r.label) G.text.push(svgText(r.label, cx(k), xLabBase, "middle", fs)); });
-  if (xTitleBase !== null) G.text.push(svgText(ST.xTitle.trim(), (pL + pR) / 2, xTitleBase, "middle", fs));
+  if (xTitleBase !== null) G.text.push(svgText(ST.xTitle.trim(), (pL + pR) / 2, xTitleBase, "middle", fs, 0, true));
   if (titleBase !== null) {
     if (lT) G.text.push(svgText(lT, L, titleBase, "start", fs));
     if (rT) G.text.push(svgText(rT, L + W, titleBase, "end", fs));
@@ -1791,22 +2066,31 @@ function panelSVG(P, L, T, W, H, showLetter, single) {
     if (lT) G.text.push(svgText(lT, L + vtW / 2 + capH / 2, (pT + pB) / 2, "middle", fs, -90));
     if (rT) G.text.push(svgText(rT, L + W - vtW / 2 + capH / 2, (pT + pB) / 2, "middle", fs, -90));
   }
+  if (sT) {
+    const lh = fs * 1.2;
+    const put = (lines, xc) => {
+      const y0 = (pT + pB) / 2 - (lines.length - 1) * lh / 2 + capH / 2;
+      lines.forEach((ln, i) => G.text.push(svgText(ln, xc, y0 + i * lh, "middle", fs)));
+    };
+    if (lLines.length) put(lLines, L + (lSideW - fs * 0.5) / 2);
+    if (rLines.length) put(rLines, L + W - (rSideW - fs * 0.5) / 2);
+  }
   if (letterBase !== null) G.text.push(svgText(ST.letterFmt.replace("A", P.name), L, letterBase, "start", fs + 3));
 
   if (legendY !== null) {
-    if (ST.legend === "corners") {
+    if (ST.legend === "corners" && two) {
       const barLeft = pA.side === "sol";
       G.legend.push(legendItem("bar", barLeft ? L : L + W, legendY, barLeft ? "start" : "end").m);
       G.legend.push(legendItem("line", barLeft ? L + W : L, legendY, barLeft ? "end" : "start").m);
     } else {
-      G.legend.push(legendCentered((pL + pR) / 2, legendY));
+      G.legend.push(legendCentered((pL + pR) / 2, legendY, kindsOf(P)));
     }
   }
 
   const grp = (name, arr) => (arr.length ? `<g id="${pid}${name}">${arr.join("")}</g>` : "");
   return `<g id="${pid ? pid + "Grafik" : "Grafik"}">` +
     grp("Kilavuz", G.grid) + grp("Sutunlar", G.bars) + grp("Eksenler", G.axes) +
-    grp("Sicaklik", G.line) + grp("Yazilar", G.text) + grp("Lejant", G.legend) + "</g>";
+    grp(two ? "Sicaklik" : "Cizgi", G.line) + grp("Degerler", G.values) + grp("Yazilar", G.text) + grp("Lejant", G.legend) + "</g>";
 }
 
 function buildChart(panels) {
@@ -1828,21 +2112,38 @@ function buildChart(panels) {
     const off = inRow < cols ? (cols - inRow) * (W + gap) / 2 : 0;
     body.push(panelSVG(P, off + c * (W + gap), legRowH + r * (H + gap), W, H, showLetter, single));
   });
-  if (topLegend) body.push(`<g id="Lejant">${legendCentered(totalW / 2, legRowH / 2)}</g>`);
-  const defs = ST.barGrad
-    ? `<defs><linearGradient id="sutunDegrade" x1="0" y1="0" x2="1" y2="0">` +
+  if (topLegend) {
+    const ks = new Set(panels.flatMap(kindsOf));
+    body.push(`<g id="Lejant">${legendCentered(totalW / 2, legRowH / 2, ["bar", "line"].filter((k) => ks.has(k)))}</g>`);
+  }
+  let defs = "";
+  if (ST.barGrad && ST.barGradDir === "v") {
+    defs = `<defs><linearGradient id="sutunDegrade" x1="0" y1="0" x2="0" y2="1">` +
+      `<stop offset="0" stop-color="${ST.barColor2}"/><stop offset="1" stop-color="${ST.barColor}"/></linearGradient></defs>`;
+  } else if (ST.barGrad) {
+    defs = `<defs><linearGradient id="sutunDegrade" x1="0" y1="0" x2="1" y2="0">` +
       `<stop offset="0" stop-color="${mixHex(ST.barColor, "#000000", 0.25)}"/>` +
       `<stop offset="0.55" stop-color="${mixHex(ST.barColor, "#ffffff", 0.88)}"/>` +
-      `<stop offset="1" stop-color="${ST.barColor}"/></linearGradient></defs>`
-    : "";
+      `<stop offset="1" stop-color="${ST.barColor}"/></linearGradient></defs>`;
+  }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${n2(totalW)}" height="${n2(totalH)}" viewBox="0 0 ${n2(totalW)} ${n2(totalH)}">${defs}${body.join("")}</svg>`;
   return { svg, w: totalW, h: totalH };
 }
 
+// "Görseldeki gibi yap": renkleri, renk geçişini ve değer etiketlerini görselden al
 function applyImageColors() {
   if (!ST.useImgColors) return;
-  if (S.barColor) ST.barColor = rgbToHex(S.barColor);
-  if (S.lineColor) ST.lineColor = rgbToHex(S.lineColor);
+  const k = kindOf(S.sheet);
+  if (S.barColor && k !== "cizgi") ST.barColor = rgbToHex(S.barColor);
+  if (S.lineColor && k !== "sutun") ST.lineColor = rgbToHex(S.lineColor);
+  const bs = S.sheet.barStyle;
+  if (bs && k !== "cizgi") {
+    if (bs.grad === "v") { ST.barGrad = true; ST.barGradDir = "v"; ST.barColor = rgbToHex(bs.bot); ST.barColor2 = rgbToHex(bs.top); }
+    else if (bs.grad === "h") { ST.barGrad = true; ST.barGradDir = "h"; }
+    else ST.barGrad = false;
+  }
+  if (S.sheet.gridStyle) ST.grid = S.sheet.gridStyle;
+  ST.valLabels = k === "sutun" ? !!(S.sheet.valueLabels || (S.claude && S.claude.valueLabels)) : k === "cizgi" ? !!(S.claude && S.claude.valueLabels) : false;
   syncStyleInputs();
 }
 
@@ -1854,6 +2155,7 @@ function syncStyleInputs() {
     else el.value = ST[k];
   }
   $("st_barHex").textContent = ST.barColor.toUpperCase();
+  $("barColor2Wrap").hidden = !(ST.barGrad && ST.barGradDir === "v");
   $("st_lineHex").textContent = ST.lineColor.toUpperCase();
 }
 
@@ -1878,6 +2180,17 @@ function syncAxisInputs() {
     for (const b of document.querySelectorAll(`.seg button[data-side="${k}"]`)) b.setAttribute("aria-pressed", String(b.dataset.role === A.role));
   }
   $("stripName").textContent = S.sheets.length > 1 ? `${S.sheet.name} grafiğinin eksen sayıları` : "Eksen sayıları";
+  const k = kindOf(S.sheet), two = k === "iklim";
+  $("rightRow").hidden = !two;
+  $("leftRoles").hidden = !two;
+  $("leftName").textContent = two ? "Sol eksen" : "Değer ekseni";
+  $("kindNote").textContent = $("kindSel").value === "auto" && S.src && !S.isSample ? `bulunan: ${KIND_NAMES[k]}` : "";
+  $("styleForm").classList.toggle("tek", !two);
+  $("keyL").textContent = two ? "Sol eksen" : "Değer ekseni";
+  $("keyR").hidden = !two;
+  $("keyBar").hidden = k === "cizgi";
+  $("keyDot").hidden = k === "sutun";
+  $("keyDotTxt").textContent = two ? "Okunan sıcaklık" : "Okunan nokta";
 }
 function showNotes() {
   setNote("axisNote", ...(S.axisMsg || ["", false]));
@@ -1885,6 +2198,7 @@ function showNotes() {
 }
 // Bir grafiği baştan oku: eksen çizgilerini bul, sütunları ve çizgiyi ölç
 function runSheet() {
+  if (S.sheet.claudeKind === undefined) S.sheet.claudeKind = null;
   const r = findAxes();
   S.axisMsg = [r.msg, !r.ok || /kontrol et/.test(r.msg)];
   readValues();
@@ -1906,7 +2220,7 @@ function applyAxesToAll() {
   }
 }
 function axisInputsChanged() {
-  const same = ["L", "R"].every((k) => {
+  const same = (kindOf(S.sheet) === "iklim" ? ["L", "R"] : ["L"]).every((k) => {
     const A = S.axes[k];
     const st = parseNum($(k + "_step").value);
     return parseNum($(k + "_lo").value) === A.lo && parseNum($(k + "_hi").value) === A.hi && (st === A.step || st === null);
@@ -2018,7 +2332,7 @@ function render() {
   ctx.save();
   ctx.font = "600 11px Archivo, system-ui, sans-serif";
   ctx.textBaseline = "middle";
-  for (const k of ["L", "R"]) {
+  for (const k of (kindOf(S.sheet) === "iklim" ? ["L", "R"] : ["L"])) {
     const A = S.axes[k];
     const col = k === "L" ? COL_MAG : COL_CYAN;
     const [xa, xb] = axisSpan(k);
@@ -2124,7 +2438,7 @@ function hitTest(mx, my) {
   }
   if (mk) return { kind: mk.kind, i: mk.i };
   let best = null;
-  for (const k of ["L", "R"]) {
+  for (const k of (kindOf(S.sheet) === "iklim" ? ["L", "R"] : ["L"])) {
     const A = S.axes[k];
     const [xa, xb] = axisSpan(k);
     if (mx < xa * s - 4 || mx > xb * s + 4) continue;
@@ -2369,7 +2683,10 @@ function updateNext() {
       tone = "warn"; label = "Bir sorun var";
       btn("Bölge seç", () => setMode("region"));
     } else if (!sheetValued(S.sheet)) {
-      msg = head + `Şimdi ${nm}eksenlerindeki en alttaki ve en üstteki sayıyı görselin altındaki kutulara yaz.`;
+      const k = kindOf(S.sheet);
+      msg = head + (k === "iklim"
+        ? `Şimdi ${nm}iki eksenindeki en alttaki ve en üstteki sayıyı görselin altındaki kutulara yaz, sonra “Grafiği oluştur”a bas.`
+        : `Bu bir ${KIND_NAMES[k].toLocaleLowerCase("tr")}. Şimdi ${nm}değer eksenindeki en alttaki ve en üstteki sayıyı görselin altındaki kutuya yaz, sonra “Grafiği oluştur”a bas.`);
       tone = "act";
       btn("Kutulara git", () => { $("axisStrip").scrollIntoView({ behavior: "smooth", block: "center" }); $("L_lo").focus({ preventScroll: true }); }, true);
     } else if (pending.length) {
@@ -2399,15 +2716,23 @@ async function regionBlob(R) {
   return await new Promise((res) => c.toBlob(res, "image/png"));
 }
 function askPrompt(n) {
-  return `You will see ${n} image${n > 1 ? "s" : ""}. Each image is one climate chart (Turkish geography textbook style): monthly or seasonal precipitation drawn as bars and temperature drawn as a line, with one vertical axis on each side.
-For each image, read the printed tick labels on both vertical axes, the axis titles or units printed above or beside each axis, and the category labels under the horizontal axis.
-Use the unit marks (°C means temperature; mm or kg/m² means precipitation), the legend and the axis titles to decide which axis is which.
+  return `You will see ${n} image${n > 1 ? "s" : ""}. Each image is one chart from a Turkish school textbook.
+For each image decide its kind:
+ "climate" = precipitation bars and a temperature line with two vertical axes (one on each side);
+ "bar" = bars with one vertical value axis;
+ "line" = a line (usually with dots) with one vertical value axis.
+Read the printed numbers on the vertical axis or axes, the axis titles, the category labels under the horizontal axis, and the horizontal axis title.
+If numbers are printed on or above the bars or points, copy them exactly.
 Reply with only this JSON object, with exactly ${n} item${n > 1 ? "s" : ""} in "charts", in the same order as the images:
-{"charts":[{"left":{"quantity":"temperature" or "precipitation","bottom":number,"top":number,"step":number,"title":"text printed above or beside this axis, exactly as printed, or empty"},
- "right":{"quantity":"temperature" or "precipitation","bottom":number,"top":number,"step":number,"title":"..."},
- "labels":[category labels from left to right, exactly as printed, for example "O","Ş","M" or "kış","ilkb."],
- "temperature":[your estimate of the temperature for each label, or null],
- "precipitation":[your estimate of the precipitation for each label, or null]}]}
+{"charts":[{"kind":"climate" or "bar" or "line",
+ "left":{"quantity":"temperature" or "precipitation" or "value","bottom":number,"top":number,"step":number,"title":"axis title exactly as printed, or empty"},
+ "right":{same fields} or null when there is no right axis,
+ "labels":[category labels from left to right, exactly as printed],
+ "x_title":"horizontal axis title, or empty",
+ "values":[bar and line charts: the value for each label, or null],
+ "temperature":[climate charts: temperature for each label, or null],
+ "precipitation":[climate charts: precipitation for each label, or null],
+ "value_labels":true or false}]}
 "bottom" and "top" are the lowest and highest numbers printed on that axis; "step" is the difference between two neighbouring printed numbers. Use a dot as the decimal separator. Write superscripts as plain Unicode (m²).`;
 }
 function maybeAsk(list) {
@@ -2415,23 +2740,36 @@ function maybeAsk(list) {
 }
 const roleName = (r) => (r === "t" ? "sıcaklık" : "yağış");
 function applyClaudeTo(sh, d, takeTitles) {
-  if (!d || typeof d !== "object" || !d.left || !d.right) return false;
+  if (!d || typeof d !== "object" || !d.left) return false;
+  const kind = /clim|iklim/i.test(String(d.kind)) ? "iklim" : /line|çizgi|cizgi/i.test(String(d.kind)) ? "cizgi" : /bar|sütun|sutun|col/i.test(String(d.kind)) ? "sutun" : (d.right ? "iklim" : "sutun");
   const conv = (o) => ({
     role: /temp|sıcak|sicak|°c/i.test(String(o.quantity)) ? "t" : "p",
     lo: Number(o.bottom), hi: Number(o.top), step: Number(o.step),
     title: typeof o.title === "string" ? o.title.trim() : "",
   });
-  const L = conv(d.left), R = conv(d.right);
-  if (![L.lo, L.hi, R.lo, R.hi].every(isFinite) || L.hi === L.lo || R.hi === R.lo) return false;
-  if (L.role === R.role) R.role = L.role === "t" ? "p" : "t";
-  for (const [k, v] of [["L", L], ["R", R]]) {
-    const A = sh.axes[k];
-    A.role = v.role; A.lo = v.lo; A.hi = v.hi;
-    A.step = isFinite(v.step) && v.step > 0 ? v.step : (v.hi - v.lo) / 4;
-    if (takeTitles && v.title) { if (v.role === "t") ST.tTitle = v.title; else ST.pTitle = v.title; }
-  }
+  const L = conv(d.left);
+  if (![L.lo, L.hi].every(isFinite) || L.hi === L.lo) return false;
   const arr = (a) => Array.isArray(a) ? a.map((v) => (v === null || v === "" || !isFinite(Number(v)) ? null : Number(v))) : [];
-  sh.claude = { labels: Array.isArray(d.labels) ? d.labels.map((x) => String(x).trim()) : [], t: arr(d.temperature), p: arr(d.precipitation) };
+  const setAx = (A, v) => { A.lo = v.lo; A.hi = v.hi; A.step = isFinite(v.step) && v.step > 0 ? v.step : (v.hi - v.lo) / 4; };
+  if (kind === "iklim") {
+    if (!d.right) return false;
+    const R = conv(d.right);
+    if (![R.lo, R.hi].every(isFinite) || R.hi === R.lo) return false;
+    if (L.role === R.role) R.role = L.role === "t" ? "p" : "t";
+    for (const [k, v] of [["L", L], ["R", R]]) {
+      sh.axes[k].role = v.role; setAx(sh.axes[k], v);
+      if (takeTitles && v.title) { if (v.role === "t") ST.tTitle = v.title; else ST.pTitle = v.title; }
+    }
+  } else {
+    setAx(sh.axes.L, L);
+    if (takeTitles) ST.yTitle = L.title;
+  }
+  if (takeTitles && typeof d.x_title === "string") ST.xTitle = d.x_title.trim();
+  sh.claudeKind = kind;
+  sh.claude = {
+    labels: Array.isArray(d.labels) ? d.labels.map((x) => String(x).trim()) : [],
+    t: arr(d.temperature), p: arr(d.precipitation), values: arr(d.values), valueLabels: d.value_labels === true,
+  };
   return true;
 }
 async function askClaude(list) {
@@ -2618,7 +2956,17 @@ for (const id of ["L_lo", "L_hi", "L_step", "R_lo", "R_hi", "R_step"]) {
   $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); axisInputsChanged(); } });
 }
 for (const id of ["L_step", "R_step"]) $(id).addEventListener("input", () => { $(id).dataset.touched = "1"; });
-$("applyAxes").addEventListener("click", axisInputsChanged);
+$("applyAxes").addEventListener("click", () => { axisInputsChanged(); if (!sheetValued(S.sheet)) { setNote("outNote", ""); $("L_lo").focus(); } });
+$("kindSel").addEventListener("change", () => {
+  if (!S.src) return;
+  const keep = S.sheet;
+  S.batch = true;
+  for (const sh of S.sheets) withSheet(sh, runSheet);
+  S.batch = false;
+  S.sheet = keep;
+  applyImageColors();
+  refreshUI();
+});
 $("sameAxes").addEventListener("change", () => { if ($("sameAxes").checked && sheetValued(S.sheet)) { S.batch = true; applyAxesToAll(); S.batch = false; refreshUI(); } });
 $("findBtn").addEventListener("click", () => { if (S.src) runSheet(); });
 
@@ -2670,8 +3018,9 @@ $("dlSvg").addEventListener("click", () => {
 });
 $("copyScript").addEventListener("click", () => {
   const t = scriptText();
-  if (!t) { setNote("outNote", "Önce eksen sayılarını yaz.", true); return; }
-  copyText(t, "Script verisi kopyalandı. Illustrator'da iklim-grafigi.jsx'i çalıştırıp “Veri” sekmesine yapıştır.");
+  if (!t) { setNote("outNote", livePanels().length ? "Illustrator scripti yalnız iklim grafiklerini çizer; bu grafik için “Illustrator için kopyala”yı kullan." : "Önce eksen sayılarını yaz.", true); return; }
+  copyText(t, "Script verisi kopyalandı. Illustrator'da iklim-grafigi.jsx'i çalıştırıp “Veri” sekmesine yapıştır." +
+    (livePanels().some((P) => P.kind !== "iklim") ? " (Script yalnız iklim grafiklerini çizer; diğerleri için “Illustrator için kopyala”yı kullan.)" : ""));
 });
 
 /* ---------------- start ---------------- */
