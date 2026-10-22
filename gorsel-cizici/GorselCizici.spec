@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import collect_submodules
 
 hidden = collect_submodules("skimage.morphology") + collect_submodules("skimage.measure") + ["scipy.ndimage"]
 if sys.platform == "darwin":
-    hidden += ["Vision", "Quartz", "Foundation", "objc"]
+    hidden += ["Vision", "Quartz", "Foundation", "AppKit", "objc"]
 
 icon = None
 if sys.platform == "darwin" and os.path.exists("simge.icns"):
@@ -36,8 +36,8 @@ if sys.platform == "darwin":
         info_plist={
             "CFBundleName": "GorselCizici",
             "CFBundleDisplayName": "Görsel Çizici",
-            "CFBundleShortVersionString": "1.0",
+            "CFBundleShortVersionString": "1.1",
             "NSHighResolutionCapable": True,
-            "NSAppleEventsUsageDescription": "Çizimi Illustrator'daki açık belgeye göndermek için.",
+            "NSAppleEventsUsageDescription": "Çizimi Illustrator'daki açık belgeye düzenlenebilir olarak aktarmak için.",
         },
     )

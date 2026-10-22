@@ -35,9 +35,11 @@ def analyze(rgb: np.ndarray, use_text: bool = True, detail: float = 1.0):
                 os.remove(path)
             except OSError:
                 pass
-    # Yazı tanındıysa o pikseller şekle çevrilmez; tanınmayan harfler şekil olarak kalır
-    boxes = [{"box": t["box"]} for t in texts]
-    scene = vectorize(rgb, Options(detail=detail, text_boxes=boxes or None))
+    # Tanınan her kelime görseldeki mürekkeple karşılaştırılır; yalnız tutanlar yazı olur ve
+    # yalnız onların pikselleri şekle çevrilmez. Tutmayanlar görseldeki gibi şekil olarak kalır.
+    texts = metin.validate(texts, rgb) if texts else []
+    tm = metin.text_mask(texts, rgb.shape) if texts else None
+    scene = vectorize(rgb, Options(detail=detail, text_mask=tm))
     return scene, texts
 
 
@@ -47,7 +49,7 @@ def add_texts(scene: Scene, rgb: np.ndarray, texts: list, measure) -> Scene:
     scene.elements = [e for e in scene.elements if e.kind != "text"]
     for p in placed:
         scene.elements.append(Element("text", p["color"], text=p["text"], x=p["x"], y=p["y"], size=p["size"],
-                                      bbox=p["box"]))
+                                      bbox=p["box"], bold=bool(p.get("bold"))))
     return scene
 
 

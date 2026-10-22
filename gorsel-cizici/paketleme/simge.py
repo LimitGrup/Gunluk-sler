@@ -1,33 +1,43 @@
-"""Uygulama simgesi: koyu zemin üzerinde sarı elmas ve beyaz bir sütun-çizgi çizimi.
+"""Uygulama simgesi: deniz yeşili zemin üzerinde beyaz sütunlar ve bir kalem ucu.
 
 python paketleme/simge.py         -> simge.iconset (Mac: iconutil ile simge.icns yapılır)
 python paketleme/simge.py --ico   -> simge.ico (Windows)
 """
+import math
 import os
 import sys
 
 from PIL import Image, ImageDraw
 
+ZEMIN = (15, 118, 110, 255)      # #0F766E
+ACIK = (204, 237, 232, 255)      # açık deniz yeşili
+BEYAZ = (255, 255, 255, 255)
+
 
 def draw(n: int) -> Image.Image:
-    s = n / 1024
-    im = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    k = 4 if n < 256 else 2            # küçük boylarda yumuşak kenar için büyük çiz, küçült
+    N = n * k
+    s = N / 1024
+    im = Image.new("RGBA", (N, N), (0, 0, 0, 0))
     d = ImageDraw.Draw(im)
-    d.rounded_rectangle([int(64 * s), int(64 * s), int(960 * s), int(960 * s)], radius=int(200 * s), fill=(31, 31, 31, 255))
-    # sütunlar
-    bars = [(250, 600), (390, 470), (530, 380), (670, 520)]
-    for x, top in bars:
-        d.rectangle([int(x * s), int(top * s), int((x + 95) * s), int(800 * s)], fill=(255, 176, 0, 255))
-    # eksen
-    d.line([int(200 * s), int(820 * s), int(820 * s), int(820 * s)], fill=(240, 240, 240, 255), width=max(1, int(22 * s)))
-    d.line([int(200 * s), int(230 * s), int(200 * s), int(820 * s)], fill=(240, 240, 240, 255), width=max(1, int(22 * s)))
-    # çizgi
-    pts = [(297, 520), (437, 360), (577, 300), (717, 400)]
-    d.line([(int(x * s), int(y * s)) for x, y in pts], fill=(255, 255, 255, 255), width=max(1, int(26 * s)), joint="curve")
-    for x, y in pts:
-        r = 34 * s
-        d.ellipse([x * s - r, y * s - r, x * s + r, y * s + r], fill=(255, 255, 255, 255))
-    return im
+    d.rounded_rectangle([int(80 * s), int(80 * s), int(944 * s), int(944 * s)], radius=int(190 * s), fill=ZEMIN)
+    # taban çizgisi ve üç sütun
+    d.rounded_rectangle([int(200 * s), int(786 * s), int(824 * s), int(818 * s)], radius=int(16 * s), fill=ACIK)
+    for x, top in ((220, 600), (360, 470), (500, 540)):
+        d.rounded_rectangle([int(x * s), int(top * s), int((x + 100) * s), int(800 * s)], radius=int(22 * s), fill=BEYAZ)
+    # kalem ucu (aşağı-sola bakan)
+    cx, cy, ang = 690, 380, math.radians(45)
+    nib = [(-105, -190), (105, -190), (105, -50), (0, 175), (-105, -50)]
+
+    def rot(x, y):
+        return (cx + x * math.cos(ang) - y * math.sin(ang)) * s, (cy + x * math.sin(ang) + y * math.cos(ang)) * s
+
+    d.polygon([rot(x, y) for x, y in nib], fill=BEYAZ)
+    d.line([rot(0, 170), rot(0, 10)], fill=ZEMIN, width=max(1, int(18 * s)))
+    hx, hy = rot(0, -5)
+    r = 30 * s
+    d.ellipse([hx - r, hy - r, hx + r, hy + r], fill=ZEMIN)
+    return im.resize((n, n), Image.LANCZOS)
 
 
 if __name__ == "__main__":
@@ -35,6 +45,8 @@ if __name__ == "__main__":
     root = os.path.dirname(here)
     if "--ico" in sys.argv:
         draw(256).save(os.path.join(root, "simge.ico"), sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    elif "--png" in sys.argv:
+        draw(512).save(sys.argv[sys.argv.index("--png") + 1])
     else:
         out = os.path.join(root, "simge.iconset")
         os.makedirs(out, exist_ok=True)

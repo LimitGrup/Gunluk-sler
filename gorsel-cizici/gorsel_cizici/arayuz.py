@@ -1,6 +1,7 @@
 """Görsel Çizici masaüstü uygulaması (PySide6).
 
-Görsel seç (ekrandan kırp, aç, yapıştır ya da sürükle) → Çiz → Illustrator'a sürükle ya da gönder.
+Görsel ver (ekrandan kırp, aç, yapıştır ya da pencereye bırak) → çizim kendiliğinden hazırlanır →
+"Illustrator'a aktar" ile açık belgeye düzenlenebilir vektör olarak yapıştırılır.
 İnternet ya da API anahtarı gerekmez.
 """
 from __future__ import annotations
@@ -13,20 +14,31 @@ import time
 
 import numpy as np
 from PySide6.QtCore import QByteArray, QMimeData, QRectF, QSettings, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDrag, QFont, QFontMetricsF, QGuiApplication, QImage, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QGuiApplication, QImage, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QColorDialog, QComboBox, QDoubleSpinBox, QFileDialog, QFontComboBox, QFormLayout,
-    QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
-    QScrollArea, QSizePolicy, QTabWidget, QVBoxLayout, QWidget,
+    QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox,
+    QPlainTextEdit, QPushButton, QScrollArea, QSizePolicy, QStackedWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
 from . import cizim, harita, illustrator, metin
 from .svg import Style, to_svg
 
 APP_NAME = "Görsel Çizici"
-VERSION = "1.0"
-ACCENT = "#FFB000"
+VERSION = "1.1"
+
+# Açık tema: beyaz/açık gri zemin, tek vurgu rengi (deniz yeşili)
+ACCENT = "#0F766E"
+ACCENT_DARK = "#115E59"
+ACCENT_SOFT = "#E0F2EF"
+INK = "#1F2937"
+MUTED = "#6B7280"
+LINE = "#D7DCE2"
+PANEL = "#F4F6F8"
+
+PAGE_IMAGE, PAGE_MAP = 0, 1
+CMD = "Cmd" if sys.platform == "darwin" else "Ctrl"
 
 COLORS = [
     ("Görseldeki renkler", None),
@@ -38,26 +50,99 @@ COLORS = [
 ]
 
 STYLE_SHEET = f"""
-QWidget {{ background: #1f1f1f; color: #e8e8e8; font-size: 13px; }}
-QLabel#title {{ color: {ACCENT}; font-size: 26px; font-weight: 700; }}
-QLabel#sub {{ color: #a8a8a8; }}
-QLabel.hint {{ color: #9a9a9a; font-size: 12px; }}
+QMainWindow, QWidget#root, QWidget#form, QWidget#formviewport {{ background: #FFFFFF; }}
+QWidget {{ color: {INK}; font-size: 13px; }}
+QFrame#sidebar {{ background: {PANEL}; border-right: 1px solid {LINE}; }}
+QLabel#appname {{ font-size: 17px; font-weight: 700; color: {INK}; }}
+QLabel#appdesc {{ color: {MUTED}; font-size: 12px; }}
+QLabel#version {{ color: #9CA3AF; font-size: 11px; }}
+QListWidget#nav {{ background: transparent; border: none; outline: 0; font-size: 14px; }}
+QListWidget#nav::item {{ padding: 10px 12px; border-radius: 8px; margin: 2px 0; color: {INK}; }}
+QListWidget#nav::item:hover {{ background: #E9EDF1; }}
+QListWidget#nav::item:selected {{ background: {ACCENT_SOFT}; color: {ACCENT_DARK}; font-weight: 600; }}
+QLabel#pagetitle {{ font-size: 20px; font-weight: 700; }}
+QLabel#pagedesc {{ color: {MUTED}; }}
+QLabel#caption {{ color: {MUTED}; font-size: 12px; font-weight: 600; }}
+QLabel#section {{ color: {ACCENT_DARK}; font-size: 12px; font-weight: 700; padding-top: 6px; }}
+QLabel#hint {{ color: {MUTED}; font-size: 11px; }}
+QLabel#status {{ color: {MUTED}; font-size: 12px; }}
+QFrame#settings {{ background: {PANEL}; border-left: 1px solid {LINE}; }}
+QLabel#settingstitle {{ font-size: 14px; font-weight: 700; }}
+QFrame#actionbar {{ background: #FFFFFF; border-top: 1px solid {LINE}; }}
 QLineEdit, QComboBox, QFontComboBox, QDoubleSpinBox, QPlainTextEdit {{
-  background: #151515; border: 1px solid #3a3a3a; border-radius: 6px; padding: 5px 8px; }}
-QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus, QPlainTextEdit:focus {{ border-color: {ACCENT}; }}
-QPushButton {{ background: #2d2d2d; border: 1px solid #444; border-radius: 6px; padding: 7px 12px; }}
-QPushButton:hover {{ background: #383838; }}
-QPushButton:disabled {{ color: #777; }}
-QPushButton#primary {{ background: {ACCENT}; color: #1b1b1b; font-size: 16px; font-weight: 700; border: none; padding: 11px; }}
-QPushButton#primary:hover {{ background: #ffc23d; }}
-QPushButton#primary:disabled {{ background: #6d5a2a; color: #2a2a2a; }}
-QTabWidget::pane {{ border: 1px solid #3a3a3a; border-radius: 6px; top: -1px; }}
-QTabBar::tab {{ background: #2a2a2a; padding: 8px 18px; border: 1px solid #3a3a3a; border-bottom: none;
-  border-top-left-radius: 6px; border-top-right-radius: 6px; margin-right: 2px; color: #bbb; }}
-QTabBar::tab:selected {{ background: #1f1f1f; color: {ACCENT}; font-weight: 600; }}
+  background: #FFFFFF; border: 1px solid {LINE}; border-radius: 6px; padding: 4px 7px; }}
+QLineEdit:focus, QComboBox:focus, QFontComboBox:focus, QDoubleSpinBox:focus, QPlainTextEdit:focus {{ border-color: {ACCENT}; }}
+QPushButton, QToolButton {{ background: #FFFFFF; border: 1px solid {LINE}; border-radius: 6px; padding: 6px 12px; }}
+QPushButton:hover, QToolButton:hover {{ border-color: {ACCENT}; color: {ACCENT_DARK}; }}
+QPushButton:disabled, QToolButton:disabled {{ color: #A0A7B0; background: #F7F8F9; }}
+QPushButton#accent {{ background: {ACCENT}; color: #FFFFFF; border: none; font-weight: 600; padding: 8px 18px; }}
+QPushButton#accent:hover {{ background: {ACCENT_DARK}; color: #FFFFFF; }}
+QPushButton#accent:disabled {{ background: #9CC7C2; color: #F4FBFA; }}
+QPushButton#outline {{ border: 1px solid {ACCENT}; color: {ACCENT_DARK}; font-weight: 600; }}
+QPushButton#outline:disabled {{ border-color: {LINE}; color: #A0A7B0; }}
+QToolButton::menu-indicator {{ image: url(@ARROW_DOWN@); width: 9px; height: 9px;
+  subcontrol-position: right center; right: 8px; }}
+QToolButton {{ padding-right: 24px; }}
+QDoubleSpinBox {{ padding-right: 20px; }}
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{ subcontrol-origin: border; width: 18px; border: none;
+  background: transparent; }}
+QDoubleSpinBox::up-button {{ subcontrol-position: top right; }}
+QDoubleSpinBox::down-button {{ subcontrol-position: bottom right; }}
+QDoubleSpinBox::up-arrow {{ image: url(@ARROW_UP@); width: 8px; height: 8px; }}
+QDoubleSpinBox::down-arrow {{ image: url(@ARROW_DOWN@); width: 8px; height: 8px; }}
+QComboBox {{ padding-right: 24px; }}
+QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 22px; border: none; }}
+QComboBox::down-arrow {{ image: url(@ARROW_DOWN@); width: 9px; height: 9px; }}
+QComboBox QAbstractItemView {{ background: #FFFFFF; border: 1px solid {LINE}; selection-background-color: {ACCENT_SOFT};
+  selection-color: {INK}; }}
+QMenu {{ background: #FFFFFF; border: 1px solid {LINE}; padding: 4px; }}
+QMenu::item {{ padding: 6px 16px; border-radius: 4px; }}
+QMenu::item:selected {{ background: {ACCENT_SOFT}; color: {ACCENT_DARK}; }}
 QCheckBox {{ spacing: 7px; }}
-QScrollArea {{ border: none; }}
+QScrollArea {{ border: none; background: transparent; }}
 """
+
+
+def _arrow_images(folder: str) -> tuple[str, str]:
+    """Açılır kutu ve sayı kutusu okları (stil dosyası resim ister)."""
+    paths = []
+    for name, pts in (("ok-asagi.png", [(3, 6), (9, 12), (15, 6)]), ("ok-yukari.png", [(3, 12), (9, 6), (15, 12)])):
+        path = os.path.join(folder, name)
+        img = QImage(18, 18, QImage.Format.Format_ARGB32)
+        img.fill(Qt.GlobalColor.transparent)
+        p = QPainter(img)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setPen(QPen(QColor(MUTED), 2.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+            p.drawLine(x0, y0, x1, y1)
+        p.end()
+        img.save(path)
+        paths.append(path.replace("\\", "/"))
+    return paths[0], paths[1]
+
+
+def style_sheet(folder: str) -> str:
+    down, up = _arrow_images(folder)
+    return STYLE_SHEET.replace("@ARROW_DOWN@", down).replace("@ARROW_UP@", up)
+
+
+def light_palette() -> QPalette:
+    """Mac karanlık modda da açık renkli, okunaklı arayüz."""
+    pal = QPalette()
+    roles = {
+        QPalette.ColorRole.Window: "#FFFFFF", QPalette.ColorRole.WindowText: INK,
+        QPalette.ColorRole.Base: "#FFFFFF", QPalette.ColorRole.AlternateBase: PANEL,
+        QPalette.ColorRole.Text: INK, QPalette.ColorRole.Button: "#FFFFFF",
+        QPalette.ColorRole.ButtonText: INK, QPalette.ColorRole.Highlight: ACCENT,
+        QPalette.ColorRole.HighlightedText: "#FFFFFF", QPalette.ColorRole.ToolTipBase: "#FFFFFF",
+        QPalette.ColorRole.ToolTipText: INK, QPalette.ColorRole.PlaceholderText: "#9CA3AF",
+        QPalette.ColorRole.Link: ACCENT,
+    }
+    for role, col in roles.items():
+        pal.setColor(role, QColor(col))
+    for role in (QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText, QPalette.ColorRole.WindowText):
+        pal.setColor(QPalette.ColorGroup.Disabled, role, QColor("#A0A7B0"))
+    return pal
 
 
 # ---------------------------------------------------------------- görüntü dönüşümleri
@@ -79,12 +164,28 @@ def rgb_to_qpixmap(rgb: np.ndarray) -> QPixmap:
 
 
 # ---------------------------------------------------------------- önizlemeler
+def _paint_empty(p: QPainter, r, text: str):
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(LINE), 1))
+    p.setBrush(QColor("#FAFBFC"))
+    p.drawRoundedRect(QRectF(r), 10, 10)
+    p.setPen(QColor(MUTED))
+    p.drawText(r, Qt.AlignmentFlag.AlignCenter, text)
+
+
+def _paint_frame(p: QPainter, r):
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(LINE), 1))
+    p.setBrush(QColor("#FFFFFF"))
+    p.drawRoundedRect(QRectF(r), 10, 10)
+
+
 class ImageView(QWidget):
     def __init__(self, placeholder: str):
         super().__init__()
         self.pix = None
         self.placeholder = placeholder
-        self.setMinimumHeight(230)
+        self.setMinimumSize(220, 200)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_pixmap(self, pix):
@@ -93,20 +194,17 @@ class ImageView(QWidget):
 
     def paintEvent(self, e):
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         r = self.rect().adjusted(1, 1, -2, -2)
         if self.pix is None:
-            pen = QPen(QColor("#555"), 2, Qt.PenStyle.DashLine)
-            p.setPen(pen)
-            p.drawRoundedRect(r, 8, 8)
-            p.setPen(QColor("#8a8a8a"))
-            p.drawText(r, Qt.AlignmentFlag.AlignCenter, self.placeholder)
+            _paint_empty(p, r, self.placeholder)
             return
-        p.fillRect(r, QColor("#ffffff"))
+        _paint_frame(p, r)
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        inner = r.adjusted(10, 10, -10, -10)
         sz = self.pix.size()
-        sz.scale(r.size(), Qt.AspectRatioMode.KeepAspectRatio)
-        x = r.x() + (r.width() - sz.width()) // 2
-        y = r.y() + (r.height() - sz.height()) // 2
+        sz.scale(inner.size(), Qt.AspectRatioMode.KeepAspectRatio)
+        x = inner.x() + (inner.width() - sz.width()) // 2
+        y = inner.y() + (inner.height() - sz.height()) // 2
         p.drawPixmap(x, y, sz.width(), sz.height(), self.pix)
 
 
@@ -115,7 +213,7 @@ class SvgView(QWidget):
         super().__init__()
         self.renderer = None
         self.placeholder = placeholder
-        self.setMinimumHeight(230)
+        self.setMinimumSize(220, 200)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def set_svg(self, svg: str | None):
@@ -125,55 +223,29 @@ class SvgView(QWidget):
     def paintEvent(self, e):
         p = QPainter(self)
         r = self.rect().adjusted(1, 1, -2, -2)
-        p.fillRect(r, QColor("#ffffff"))
         if not self.renderer or not self.renderer.isValid():
-            p.setPen(QColor("#777"))
-            p.drawText(r, Qt.AlignmentFlag.AlignCenter, self.placeholder)
+            _paint_empty(p, r, self.placeholder)
             return
+        _paint_frame(p, r)
         vb = self.renderer.viewBoxF()
         if vb.width() <= 0 or vb.height() <= 0:
             return
-        k = min(r.width() / vb.width(), r.height() / vb.height())
+        inner = r.adjusted(10, 10, -10, -10)
+        k = min(inner.width() / vb.width(), inner.height() / vb.height())
         w, h = vb.width() * k, vb.height() * k
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.renderer.render(p, QRectF(r.x() + (r.width() - w) / 2, r.y() + (r.height() - h) / 2, w, h))
+        self.renderer.render(p, QRectF(inner.x() + (inner.width() - w) / 2, inner.y() + (inner.height() - h) / 2, w, h))
 
 
-class DragArea(QLabel):
-    """Buradan tutup Illustrator'a sürüklenir: SVG dosyası olarak bırakılır."""
-
-    def __init__(self, owner):
-        super().__init__("⬆  Buradan tutup Illustrator'a sürükleyin")
-        self.owner = owner
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setMinimumHeight(54)
-        self.setStyleSheet("QLabel { border: 2px dashed #555; border-radius: 8px; color: #9a9a9a; font-size: 15px; font-weight: 600; }")
-        self._start = None
-
-    def set_ready(self, ready: bool):
-        col = ACCENT if ready else "#555"
-        txt = "#f0f0f0" if ready else "#9a9a9a"
-        self.setStyleSheet(f"QLabel {{ border: 2px dashed {col}; border-radius: 8px; color: {txt}; font-size: 15px; font-weight: 600; }}")
-        self.setCursor(Qt.CursorShape.OpenHandCursor if ready else Qt.CursorShape.ArrowCursor)
-
-    def mousePressEvent(self, e):
-        self._start = e.position().toPoint()
-
-    def mouseMoveEvent(self, e):
-        if self._start is None or not self.owner.current_svg:
-            return
-        if (e.position().toPoint() - self._start).manhattanLength() < 6:
-            return
-        path = self.owner.write_output_file()
-        mime = QMimeData()
-        mime.setUrls([QUrl.fromLocalFile(path)])
-        mime.setData("image/svg+xml", QByteArray(self.owner.current_svg.encode("utf-8")))
-        drag = QDrag(self)
-        drag.setMimeData(mime)
-        if self.owner.out_pixmap is not None:
-            drag.setPixmap(self.owner.out_pixmap.scaledToWidth(160, Qt.TransformationMode.SmoothTransformation))
-        drag.exec(Qt.DropAction.CopyAction)
-        self._start = None
+def _card(caption: str, view: QWidget) -> QWidget:
+    w = QWidget()
+    v = QVBoxLayout(w)
+    v.setContentsMargins(0, 0, 0, 0)
+    v.setSpacing(6)
+    c = QLabel(caption.upper())
+    c.setObjectName("caption")
+    v.addWidget(c)
+    v.addWidget(view, 1)
+    return w
 
 
 # ---------------------------------------------------------------- arka plan işi
@@ -201,13 +273,12 @@ class Worker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(f"{APP_NAME} {VERSION}")
+        self.setWindowTitle(APP_NAME)
         self.settings = QSettings("LimitGrup", "GorselCizici")
         self.rgb = None
         self.scene = None
         self.texts = []
         self.current_svg = ""
-        self.out_pixmap = None
         self.worker = None
         self.waiting_clip = False
         self._loading = True
@@ -218,136 +289,130 @@ class MainWindow(QMainWindow):
         self._load_settings()
         self._loading = False
         QGuiApplication.clipboard().dataChanged.connect(self._clipboard_changed)
-        self.resize(640, 980)
+        self.resize(1180, 740)
+        self.setMinimumSize(900, 560)
 
     # ------------------------------------------------ arayüz
     def _build(self):
         root = QWidget()
-        lay = QVBoxLayout(root)
-        lay.setContentsMargins(18, 14, 18, 10)
-        lay.setSpacing(10)
-        title = QLabel(f"◆ {APP_NAME}")
-        title.setObjectName("title")
-        sub = QLabel("Görseli seç → Çiz → Illustrator'a sürükle. Ders kitabı grafikleri, şekiller ve haritalar düzenlenebilir vektör olur.")
-        sub.setObjectName("sub")
-        sub.setWordWrap(True)
-        lay.addWidget(title)
-        lay.addWidget(sub)
-
-        # ayarlar
-        g = QGridLayout()
-        g.setHorizontalSpacing(10)
-        g.setVerticalSpacing(8)
-        self.font_box = QFontComboBox()
-        self.font_box.setEditable(True)
-        self.pt_box = QDoubleSpinBox()
-        self.pt_box.setRange(0, 72)
-        self.pt_box.setDecimals(1)
-        self.pt_box.setSingleStep(0.5)
-        self.pt_box.setSpecialValueText("görseldeki gibi")
-        self.color_box = QComboBox()
-        for name, _ in COLORS:
-            self.color_box.addItem(name)
-        self.stroke_box = QDoubleSpinBox()
-        self.stroke_box.setRange(0, 10)
-        self.stroke_box.setDecimals(2)
-        self.stroke_box.setSingleStep(0.25)
-        self.stroke_box.setSpecialValueText("görseldeki gibi")
-        self.width_box = QDoubleSpinBox()
-        self.width_box.setRange(0, 1000)
-        self.width_box.setDecimals(0)
-        self.width_box.setSuffix(" mm")
-        self.width_box.setSpecialValueText("otomatik")
-        g.addWidget(QLabel("Yazı tipi:"), 0, 0)
-        g.addWidget(self.font_box, 0, 1)
-        g.addWidget(QLabel("Punto:"), 0, 2)
-        g.addWidget(self.pt_box, 0, 3)
-        g.addWidget(QLabel("Renk:"), 1, 0)
-        g.addWidget(self.color_box, 1, 1)
-        g.addWidget(QLabel("Kontur (pt):"), 1, 2)
-        g.addWidget(self.stroke_box, 1, 3)
-        g.addWidget(QLabel("Genişlik:"), 2, 2)
-        g.addWidget(self.width_box, 2, 3)
-        hint = QLabel("Punto: yazıların ortalama boyu; çizim buna göre ölçeklenir.")
-        hint.setProperty("class", "hint")
-        hint.setStyleSheet("color:#9a9a9a;font-size:12px;")
-        hint.setWordWrap(True)
-        g.addWidget(hint, 2, 0, 1, 2)
-        g.setColumnStretch(1, 1)
-        g.setColumnStretch(3, 1)
-        lay.addLayout(g)
-        for w in (self.font_box, self.color_box):
-            (w.currentFontChanged if w is self.font_box else w.currentIndexChanged).connect(self._style_changed)
-        for w in (self.pt_box, self.stroke_box, self.width_box):
-            w.valueChanged.connect(self._style_changed)
-
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self._image_tab(), "🖼  Görselden çiz")
-        self.tabs.addTab(self._map_tab(), "🗺  Dilsiz harita")
-        self.tabs.currentChanged.connect(self._tab_changed)
-        lay.addWidget(self.tabs, 1)
-
-        # çıktı
-        self.drag = DragArea(self)
-        lay.addWidget(self.drag)
-        row = QHBoxLayout()
-        self.send_btn = QPushButton("Illustrator'a gönder")
-        self.save_btn = QPushButton("SVG kaydet…")
-        self.copy_btn = QPushButton("Kopyala")
-        for b in (self.send_btn, self.save_btn, self.copy_btn):
-            b.setEnabled(False)
-            row.addWidget(b)
-        self.send_btn.clicked.connect(self.send_to_illustrator)
-        self.save_btn.clicked.connect(self.save_svg)
-        self.copy_btn.clicked.connect(self.copy_svg)
-        lay.addLayout(row)
-        self.status = QLabel("")
-        self.status.setWordWrap(True)
-        self.status.setStyleSheet("color:#b8b8b8;font-size:12px;")
-        lay.addWidget(self.status)
+        root.setObjectName("root")
+        outer = QVBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        body.addWidget(self._sidebar())
+        self.pages = QStackedWidget()
+        self.pages.addWidget(self._image_page())
+        self.pages.addWidget(self._map_page())
+        body.addWidget(self.pages, 1)
+        body.addWidget(self._settings_panel())
+        outer.addLayout(body, 1)
+        outer.addWidget(self._action_bar())
         self.setCentralWidget(root)
-        self.setStyleSheet(STYLE_SHEET)
+        self.setStyleSheet(style_sheet(self.out_dir))
+        self.nav.currentRowChanged.connect(self._page_changed)
 
-    def _image_tab(self):
+    def _sidebar(self) -> QWidget:
+        side = QFrame()
+        side.setObjectName("sidebar")
+        side.setFixedWidth(200)
+        v = QVBoxLayout(side)
+        v.setContentsMargins(16, 18, 12, 14)
+        v.setSpacing(4)
+        name = QLabel(APP_NAME)
+        name.setObjectName("appname")
+        desc = QLabel("Görseldeki çizimi düzenlenebilir vektöre çevirir.")
+        desc.setObjectName("appdesc")
+        desc.setWordWrap(True)
+        v.addWidget(name)
+        v.addWidget(desc)
+        v.addSpacing(14)
+        self.nav = QListWidget()
+        self.nav.setObjectName("nav")
+        for text in ("Görselden çizim", "Dilsiz harita"):
+            QListWidgetItem(text, self.nav)
+        self.nav.setCurrentRow(PAGE_IMAGE)
+        self.nav.setFixedHeight(100)
+        v.addWidget(self.nav)
+        v.addStretch(1)
+        ver = QLabel(f"Sürüm {VERSION} · internetsiz çalışır")
+        ver.setObjectName("version")
+        ver.setWordWrap(True)
+        v.addWidget(ver)
+        return side
+
+    def _page_header(self, title: str, desc: str) -> QWidget:
         w = QWidget()
         v = QVBoxLayout(w)
-        v.setSpacing(8)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(2)
+        t = QLabel(title)
+        t.setObjectName("pagetitle")
+        d = QLabel(desc)
+        d.setObjectName("pagedesc")
+        d.setWordWrap(True)
+        v.addWidget(t)
+        v.addWidget(d)
+        return w
+
+    def _image_page(self) -> QWidget:
+        w = QWidget()
+        v = QVBoxLayout(w)
+        v.setContentsMargins(22, 18, 22, 14)
+        v.setSpacing(12)
+        v.addWidget(self._page_header(
+            "Görselden çizim",
+            "Grafik, şekil ya da harita görselini verin; aynısı vektör olarak yeniden çizilir."))
         row = QHBoxLayout()
-        b1 = QPushButton("✂  Ekrandan kırp")
-        b2 = QPushButton("📂  Görsel aç…")
-        b3 = QPushButton("📋  Yapıştır")
+        row.setSpacing(8)
+        b1 = QPushButton("Ekrandan kırp")
+        b2 = QPushButton("Dosyadan aç…")
+        b3 = QPushButton("Panodan yapıştır")
+        b1.setToolTip("Ekranda bir bölge seçin; seçtiğiniz kısım çizilir.")
         b1.clicked.connect(self.capture_screen)
         b2.clicked.connect(self.open_image)
         b3.clicked.connect(self.paste_image)
         for b in (b1, b2, b3):
             row.addWidget(b)
+        row.addStretch(1)
+        self.draw_btn = QPushButton("Çiz")
+        self.draw_btn.setObjectName("outline")
+        self.draw_btn.setEnabled(False)
+        self.draw_btn.clicked.connect(self.draw)
+        row.addWidget(self.draw_btn)
         v.addLayout(row)
-        self.ocr_chk = QCheckBox("Yazıları düzenlenebilir yazı yap (bilgisayarın kendi yazı tanıması)")
+        self.ocr_chk = QCheckBox("Yazıları düzenlenebilir yazıya çevir (Mac'in yazı tanıması)")
         self.ocr_chk.setChecked(True)
         if not metin.available():
             self.ocr_chk.setChecked(False)
             self.ocr_chk.setEnabled(False)
-            self.ocr_chk.setText("Yazılar harf şekli olarak çizilir (yazı tanıma bu bilgisayarda yok)")
+            self.ocr_chk.setText("Yazılar harf şekli olarak çizilir (bu bilgisayarda yazı tanıma yok)")
         v.addWidget(self.ocr_chk)
         pv = QHBoxLayout()
-        self.in_view = ImageView("Görsel bekleniyor…\n\nEkrandan kırp, aç, yapıştır\nya da buraya sürükle")
-        self.out_view = SvgView("Çizim önizlemesi\n(Çiz'e basınca burada görünür)")
-        pv.addWidget(self.in_view, 1)
-        pv.addWidget(self.out_view, 1)
+        pv.setSpacing(14)
+        self.in_view = ImageView("Henüz görsel yok\n\nEkrandan kırpın, dosyadan açın,\nyapıştırın ya da dosyayı bu pencereye bırakın")
+        self.out_view = SvgView("Vektör çizim burada görünecek")
+        pv.addWidget(_card("Kaynak görsel", self.in_view), 1)
+        pv.addWidget(_card("Vektör çizim", self.out_view), 1)
         v.addLayout(pv, 1)
-        self.draw_btn = QPushButton("✏️  Çiz")
-        self.draw_btn.setObjectName("primary")
-        self.draw_btn.setEnabled(False)
-        self.draw_btn.clicked.connect(self.draw)
-        v.addWidget(self.draw_btn)
         return w
 
-    def _map_tab(self):
+    def _map_page(self) -> QWidget:
         w = QWidget()
-        outer = QVBoxLayout(w)
+        v = QVBoxLayout(w)
+        v.setContentsMargins(22, 18, 22, 14)
+        v.setSpacing(12)
+        v.addWidget(self._page_header(
+            "Dilsiz harita",
+            "Dünya ya da Türkiye haritasını yazısız, temiz vektör olarak oluşturur (Natural Earth verisi)."))
+        row = QHBoxLayout()
+        row.setSpacing(16)
         form = QFormLayout()
         form.setHorizontalSpacing(10)
         form.setVerticalSpacing(7)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         self.map_kind = QComboBox()
         self.map_kind.addItems(["Dünya", "Türkiye"])
         self.map_proj = QComboBox()
@@ -377,40 +442,152 @@ class MainWindow(QMainWindow):
         self.map_sea.clicked.connect(lambda: self._pick_color(self.map_sea, allow_none=True))
         self.map_points = QPlainTextEdit()
         self.map_points.setPlaceholderText("Her satıra bir nokta:  ad; boylam; enlem\nK; -14; 46\nL; 32; 35")
-        self.map_points.setFixedHeight(76)
-        form.addRow("Harita:", self.map_kind)
-        form.addRow("İzdüşüm:", self.map_proj)
-        form.addRow("Orta boylam:", self.map_center)
-        form.addRow("Kıyı ayrıntısı:", self.map_detail)
+        self.map_points.setFixedHeight(80)
+        form.addRow("Harita", self.map_kind)
+        form.addRow("İzdüşüm", self.map_proj)
+        form.addRow("Orta boylam", self.map_center)
+        form.addRow("Kıyı ayrıntısı", self.map_detail)
         form.addRow("", self.map_borders)
         form.addRow("", self.map_neigh)
-        form.addRow("Meridyenler:", self.map_lon)
-        form.addRow("Paraleller:", self.map_lat)
+        form.addRow("Meridyenler", self.map_lon)
+        form.addRow("Paraleller", self.map_lat)
         form.addRow("", self.map_eq)
         form.addRow("", self.map_labels)
-        cl = QHBoxLayout()
-        cl.addWidget(QLabel("Kara"))
-        cl.addWidget(self.map_land)
-        cl.addWidget(QLabel("Deniz"))
-        cl.addWidget(self.map_sea)
-        form.addRow("Renkler:", cl)
-        form.addRow("Noktalar:", self.map_points)
+        self.map_land.setToolTip("Kara rengini seçin")
+        self.map_sea.setToolTip("Deniz rengini seçin (iptal: renksiz)")
+        form.addRow("Kara rengi", self.map_land)
+        form.addRow("Deniz rengi", self.map_sea)
+        form.addRow("Noktalar", self.map_points)
+        left = QWidget()
+        lv = QVBoxLayout(left)
+        lv.setContentsMargins(0, 0, 0, 0)
         sc = QWidget()
+        sc.setObjectName("form")
+        form.setContentsMargins(0, 0, 8, 0)
         sc.setLayout(form)
         area = QScrollArea()
         area.setWidgetResizable(True)
+        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        area.viewport().setObjectName("formviewport")
         area.setWidget(sc)
-        area.setMaximumHeight(330)
-        outer.addWidget(area)
-        self.map_view = SvgView("Harita önizlemesi")
-        outer.addWidget(self.map_view, 1)
-        b = QPushButton("🗺  Haritayı oluştur")
-        b.setObjectName("primary")
+        lv.addWidget(area, 1)
+        b = QPushButton("Haritayı oluştur")
+        b.setObjectName("outline")
         b.clicked.connect(self.make_map)
-        outer.addWidget(b)
+        lv.addWidget(b)
+        left.setFixedWidth(360)
+        row.addWidget(left)
+        self.map_view = SvgView("Harita burada görünecek")
+        row.addWidget(_card("Harita önizlemesi", self.map_view), 1)
+        v.addLayout(row, 1)
+        for cb in (self.map_kind, self.map_proj, self.map_detail):
+            cb.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            cb.setMinimumContentsLength(12)
+        self._show_color(self.map_land)
+        self._show_color(self.map_sea)
         self.map_kind.currentIndexChanged.connect(self._map_kind_changed)
         self._map_kind_changed()
         return w
+
+    def _settings_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setObjectName("settings")
+        panel.setFixedWidth(250)
+        v = QVBoxLayout(panel)
+        v.setContentsMargins(16, 18, 16, 14)
+        v.setSpacing(6)
+        t = QLabel("Çıktı ayarları")
+        t.setObjectName("settingstitle")
+        v.addWidget(t)
+        info = QLabel("Değişiklikler çizime hemen uygulanır.")
+        info.setObjectName("hint")
+        info.setWordWrap(True)
+        v.addWidget(info)
+
+        def section(text):
+            lab = QLabel(text.upper())
+            lab.setObjectName("section")
+            v.addWidget(lab)
+
+        def field(text, widget):
+            lab = QLabel(text)
+            v.addWidget(lab)
+            v.addWidget(widget)
+
+        self.font_box = QFontComboBox()
+        self.font_box.setEditable(True)
+        self.pt_box = QDoubleSpinBox()
+        self.pt_box.setRange(0, 72)
+        self.pt_box.setDecimals(1)
+        self.pt_box.setSingleStep(0.5)
+        self.pt_box.setSuffix(" pt")
+        self.pt_box.setSpecialValueText("görseldeki gibi")
+        self.stroke_box = QDoubleSpinBox()
+        self.stroke_box.setRange(0, 10)
+        self.stroke_box.setDecimals(2)
+        self.stroke_box.setSingleStep(0.25)
+        self.stroke_box.setSuffix(" pt")
+        self.stroke_box.setSpecialValueText("görseldeki gibi")
+        self.color_box = QComboBox()
+        for name, _ in COLORS:
+            self.color_box.addItem(name)
+        self.width_box = QDoubleSpinBox()
+        self.width_box.setRange(0, 1000)
+        self.width_box.setDecimals(0)
+        self.width_box.setSuffix(" mm")
+        self.width_box.setSpecialValueText("otomatik")
+
+        section("Yazı")
+        field("Yazı tipi", self.font_box)
+        field("Punto", self.pt_box)
+        hint = QLabel("Yazıların ortalama boyu; çizim buna göre ölçeklenir.")
+        hint.setObjectName("hint")
+        hint.setWordWrap(True)
+        v.addWidget(hint)
+        section("Çizgi")
+        field("Kalınlık", self.stroke_box)
+        field("Renk", self.color_box)
+        section("Boyut")
+        field("Genişlik", self.width_box)
+        v.addStretch(1)
+
+        self.font_box.currentFontChanged.connect(self._style_changed)
+        self.color_box.currentIndexChanged.connect(self._style_changed)
+        for wdg in (self.pt_box, self.stroke_box, self.width_box):
+            wdg.valueChanged.connect(self._style_changed)
+        return panel
+
+    def _action_bar(self) -> QWidget:
+        bar = QFrame()
+        bar.setObjectName("actionbar")
+        h = QHBoxLayout(bar)
+        h.setContentsMargins(18, 10, 18, 10)
+        h.setSpacing(8)
+        self.status = QLabel("Başlamak için bir görsel verin.")
+        self.status.setObjectName("status")
+        self.status.setWordWrap(True)
+        h.addWidget(self.status, 1)
+        self.save_btn = QToolButton()
+        self.save_btn.setText("Kaydet")
+        self.save_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        menu = QMenu(self.save_btn)
+        menu.addAction("PDF olarak kaydet…", self.save_pdf)
+        menu.addAction("SVG olarak kaydet…", self.save_svg)
+        self.save_btn.setMenu(menu)
+        self.copy_btn = QPushButton("Kopyala (vektör)")
+        self.copy_btn.setToolTip(f"Illustrator'da {CMD}+V ile yapıştırın; düzenlenebilir çizim olarak gelir.")
+        self.send_btn = QPushButton("Illustrator'a aktar")
+        self.send_btn.setObjectName("accent")
+        self.send_btn.setToolTip("Açık Illustrator belgesine düzenlenebilir çizim olarak yapıştırır.")
+        for b in (self.save_btn, self.copy_btn, self.send_btn):
+            b.setEnabled(False)
+            h.addWidget(b)
+        self.send_btn.clicked.connect(self.send_to_illustrator)
+        self.copy_btn.clicked.connect(self.copy_vector)
+        return bar
+
+    def _page(self) -> int:
+        return self.pages.currentIndex()
 
     # ------------------------------------------------ ayarlar
     def _load_settings(self):
@@ -445,7 +622,7 @@ class MainWindow(QMainWindow):
         self.out_view.set_svg(None)
         self._set_output("")
         self.draw_btn.setEnabled(True)
-        self.tabs.setCurrentIndex(0)
+        self.nav.setCurrentRow(PAGE_IMAGE)
         self.set_status(f"{source}: {rgb.shape[1]}×{rgb.shape[0]} piksel. Çiziliyor…")
         QTimer.singleShot(50, self.draw)
 
@@ -489,7 +666,7 @@ class MainWindow(QMainWindow):
             try:
                 subprocess.Popen(["explorer", "ms-screenclip:"])
             except Exception:  # noqa: BLE001
-                self.set_status("Ekran kırpma açılamadı. Win+Shift+S ile kırpıp Yapıştır'a basın.")
+                self.set_status("Ekran kırpma açılamadı. Win+Shift+S ile kırpıp Panodan yapıştır'a basın.")
         else:
             self.set_status("Bu sistemde ekrandan kırpma yok; görseli açın ya da yapıştırın.")
 
@@ -543,19 +720,19 @@ class MainWindow(QMainWindow):
 
     def _draw_failed(self, msg):
         self.draw_btn.setEnabled(True)
-        self.draw_btn.setText("✏️  Çiz")
+        self.draw_btn.setText("Çiz")
         self.set_status(f"Çizilemedi: {msg}")
 
     def _draw_done(self, scene, texts, secs):
         self.draw_btn.setEnabled(True)
-        self.draw_btn.setText("✏️  Yeniden çiz")
+        self.draw_btn.setText("Yeniden çiz")
         self.scene = scene
         self.texts = texts
         self._rebuild_image_svg()
         n_txt = sum(1 for e in scene.elements if e.kind == "text")
         extra = f" · {n_txt} yazı düzenlenebilir" if n_txt else ""
         self.set_status(f"Çizildi ({secs:.1f} sn): {scene.notes[-1] if scene.notes else ''}{extra}. "
-                        "Önizlemeyi kontrol edip Illustrator'a sürükleyin.")
+                        "Kontrol edip “Illustrator'a aktar”a basın.")
 
     def measure(self, text: str):
         f = QFont(self.font_family())
@@ -587,7 +764,7 @@ class MainWindow(QMainWindow):
         if self._loading:
             return
         self._save_settings()
-        if self.tabs.currentIndex() == 0:
+        if self._page() == PAGE_IMAGE:
             self._rebuild_image_svg()
         elif self.current_svg:
             self.make_map()
@@ -610,6 +787,18 @@ class MainWindow(QMainWindow):
             btn.setText(c.name().upper())
         elif allow_none:
             btn.setText("yok")
+        self._show_color(btn)
+
+    @staticmethod
+    def _show_color(btn):
+        """Renk düğmesi seçilen rengi gösterir."""
+        t = btn.text()
+        if t.startswith("#"):
+            c = QColor(t)
+            fg = "#111827" if c.lightness() > 140 else "#FFFFFF"
+            btn.setStyleSheet(f"QPushButton {{ background: {t}; color: {fg}; border: 1px solid {LINE}; }}")
+        else:
+            btn.setStyleSheet("")
 
     @staticmethod
     def _parse_grid(text: str):
@@ -679,10 +868,13 @@ class MainWindow(QMainWindow):
             return
         self.map_view.set_svg(svg)
         self._set_output(svg)
-        self.set_status("Harita hazır. Illustrator'a sürükleyin ya da gönderin.")
+        self.set_status("Harita hazır. “Illustrator'a aktar”a basın ya da kopyalayın.")
 
-    def _tab_changed(self, i):
-        if i == 0:
+    def _page_changed(self, i):
+        if i < 0:
+            return
+        self.pages.setCurrentIndex(i)
+        if i == PAGE_IMAGE:
             if self.scene is not None:
                 self._rebuild_image_svg()
             else:
@@ -695,25 +887,14 @@ class MainWindow(QMainWindow):
     def _set_output(self, svg: str):
         self.current_svg = svg or ""
         ready = bool(self.current_svg)
-        self.drag.set_ready(ready)
         for b in (self.send_btn, self.save_btn, self.copy_btn):
             b.setEnabled(ready)
-        self.out_pixmap = None
-        if ready:
-            r = QSvgRenderer(QByteArray(self.current_svg.encode("utf-8")))
-            vb = r.viewBoxF()
-            if vb.width() > 0:
-                k = 320 / vb.width()
-                pm = QPixmap(int(vb.width() * k), max(1, int(vb.height() * k)))
-                pm.fill(QColor("#ffffff"))
-                p = QPainter(pm)
-                r.render(p)
-                p.end()
-                self.out_pixmap = pm
+
+    def _out_name(self) -> str:
+        return "harita" if self._page() == PAGE_MAP else "cizim"
 
     def write_output_file(self) -> str:
-        name = "harita" if self.tabs.currentIndex() == 1 else "cizim"
-        path = os.path.join(self.out_dir, f"{name}-{time.strftime('%H%M%S')}.svg")
+        path = os.path.join(self.out_dir, f"{self._out_name()}-{time.strftime('%H%M%S')}.svg")
         with open(path, "w", encoding="utf-8") as f:
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n' + self.current_svg)
         return path
@@ -722,35 +903,69 @@ class MainWindow(QMainWindow):
         if not self.current_svg:
             return
         path = self.write_output_file()
-        self.set_status("Illustrator'a gönderiliyor…")
+        self.set_status("Illustrator'a aktarılıyor…")
         QApplication.processEvents()
         ok, msg = illustrator.send(path)
-        self.set_status("Illustrator'daki açık belgeye eklendi." if ok else f"Gönderilemedi: {msg} SVG'yi kaydedip açabilir ya da sürükleyebilirsiniz.")
+        if ok:
+            self.set_status("Illustrator'a aktarıldı: açık belgeye düzenlenebilir çizim olarak yapıştırıldı "
+                            "(belge açık değilse yeni belge olarak açıldı).")
+        else:
+            self.set_status(f"Aktarılamadı: {msg} “Kopyala (vektör)”a basıp Illustrator'da {CMD}+V ile yapıştırabilirsiniz.")
+
+    def _ask_save_path(self, title: str, ext: str) -> str | None:
+        start = os.path.join(self.settings.value("save_dir", os.path.expanduser("~")), f"{self._out_name()}.{ext}")
+        path, _ = QFileDialog.getSaveFileName(self, title, start, f"{ext.upper()} (*.{ext})")
+        if not path:
+            return None
+        if not path.lower().endswith("." + ext):
+            path += "." + ext
+        self.settings.setValue("save_dir", os.path.dirname(path))
+        return path
 
     def save_svg(self):
         if not self.current_svg:
             return
-        name = "harita.svg" if self.tabs.currentIndex() == 1 else "cizim.svg"
-        path, _ = QFileDialog.getSaveFileName(self, "SVG kaydet", os.path.join(self.settings.value("save_dir", os.path.expanduser("~")), name), "SVG (*.svg)")
+        path = self._ask_save_path("SVG olarak kaydet", "svg")
         if not path:
             return
-        if not path.lower().endswith(".svg"):
-            path += ".svg"
         with open(path, "w", encoding="utf-8") as f:
             f.write('<?xml version="1.0" encoding="UTF-8"?>\n' + self.current_svg)
-        self.settings.setValue("save_dir", os.path.dirname(path))
         self.set_status(f"Kaydedildi: {path}")
 
-    def copy_svg(self):
+    def save_pdf(self):
         if not self.current_svg:
             return
-        path = self.write_output_file()
-        md = QMimeData()
-        md.setText(self.current_svg)
-        md.setData("image/svg+xml", QByteArray(self.current_svg.encode("utf-8")))
-        md.setUrls([QUrl.fromLocalFile(path)])
-        QGuiApplication.clipboard().setMimeData(md)
-        self.set_status("Kopyalandı. Illustrator'da Düzen › Yapıştır (Cmd+V) ile yapıştırın.")
+        path = self._ask_save_path("PDF olarak kaydet", "pdf")
+        if not path:
+            return
+        try:
+            data = illustrator.svg_to_pdf(self.current_svg)
+            with open(path, "wb") as f:
+                f.write(data)
+        except Exception as e:  # noqa: BLE001
+            self.set_status(f"PDF kaydedilemedi: {e}")
+            return
+        self.set_status(f"Kaydedildi: {path} (Illustrator'da açınca düzenlenebilir)")
+
+    def copy_vector(self):
+        if not self.current_svg:
+            return
+        if not illustrator.copy_vector(self.current_svg):
+            # Mac panosu kullanılamadı: Qt ile kopyala (SVG + dosya; Windows'ta PDF de)
+            path = self.write_output_file()
+            md = QMimeData()
+            md.setData("image/svg+xml", QByteArray(self.current_svg.encode("utf-8")))
+            md.setUrls([QUrl.fromLocalFile(path)])
+            if sys.platform.startswith("win"):
+                try:
+                    pdf = illustrator.svg_to_pdf(self.current_svg)
+                    md.setData('application/x-qt-windows-mime;value="Portable Document Format"', QByteArray(pdf))
+                except Exception:  # noqa: BLE001
+                    md.setText(self.current_svg)
+            else:
+                md.setText(self.current_svg)
+            QGuiApplication.clipboard().setMimeData(md)
+        self.set_status(f"Kopyalandı. Illustrator'da {CMD}+V ile yapıştırın — düzenlenebilir çizim olarak gelir.")
 
     def set_status(self, msg: str):
         self.status.setText(msg)
@@ -759,6 +974,8 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
+    app.setStyle("Fusion")          # her sistemde aynı, açık renkli görünüm
+    app.setPalette(light_palette())
     win = MainWindow()
     win.show()
     if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):

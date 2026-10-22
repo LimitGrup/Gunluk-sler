@@ -24,7 +24,7 @@ from scipy import ndimage
 from skimage.measure import find_contours
 from skimage.morphology import skeletonize
 
-from . import egri
+from . import egri, sadakat
 
 
 # ---------------------------------------------------------------- veri yapıları
@@ -631,7 +631,7 @@ def _fill_element(conts, color, tol, shapes=True, layer=""):
             return Element("fill", color, prim=prim, area=float(area), bbox=tuple(map(float, bbox)), layer=layer)
     d = []
     for _, pts in conts:
-        rs = egri.resample(pts, 0.4, True)
+        rs = egri.resample(pts, 0.5, True)
         if len(rs) >= 4:
             d.append(_seg_path(rs, True, tol, 1.0, k=3))
     if not d:
@@ -689,7 +689,7 @@ def _grad_fit(lab_px, rgb_px, xs, ys):
             np.add.at(rgbm, bins, rgb_px)
             rgbm /= cnt[:, None]
             best = (ex, kind, lo, hi, (np.arange(nb) + 0.5) / nb, rgbm)
-    if best is None or best[0] < 0.8:
+    if best is None or best[0] < 0.85:
         return None
     ex, kind, lo, hi, pos, rgbm = best
     stops = _simplify_stops(pos, rgbm)
@@ -703,47 +703,133 @@ def _grad_fit(lab_px, rgb_px, xs, ys):
 
 
 def find_gradients(lab: np.ndarray, rgb: np.ndarray):
-    """Renk geçişli (degrade) bölgeler: içi pürüzsüz ama rengi belirgin biçimde değişen alanlar."""
+    """Renk geçişli (degrade) bölgeler.
+
+    Komşu pikseller renkleri yakınsa (adım küçükse) aynı bölgeye bağlanır; böylece dik bir
+    geçiş de tek bölge olur, ama koyu bir kenar çizgisi ya da iki düz renk arasındaki keskin
+    kenar bölgeleri ayırır. Zeminle aynı renkteki düz pikseller bağlanmaz. Sonra her bölgenin
+    rengi yatay, dikey ya da merkezden dışa düzgün değişiyor mu diye bakılır.
+    """
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+
     h, w = lab.shape[:2]
-    gx = cv2.Sobel(lab, cv2.CV_32F, 1, 0, ksize=3) / 8.0
-    gy = cv2.Sobel(lab, cv2.CV_32F, 0, 1, ksize=3) / 8.0
-    mag = np.sqrt((gx * gx + gy * gy).sum(axis=2))
-    smooth = (mag < 14.0).astype(np.uint8)
-    n, cc, st, _ = cv2.connectedComponentsWithStats(smooth, connectivity=4)
-    out = []
-    for i in range(1, n):
-        x, y, ww, hh, area = st[i]
-        if area < 40 or area > 0.4 * h * w or min(ww, hh) < 3:
+    if h < 4 or w < 4:
+        return []
+    q = np.round(lab.reshape(-1, 3) / 3).astype(np.int32)
+    keys, cnt = np.unique(q, axis=0, return_counts=True)
+    bgc = keys[cnt.argmax()] * 3.0
+    near_bg = (np.linalg.norm(lab - bgc, axis=2) < 3.0).astype(np.uint8)
+    # yalnız asıl zemin (kenara değen ya da büyük zemin parçaları) ayrılır; bir şeklin içinde
+    # kalan zemin renkli pikseller (ör. sütunun parlak orta şeridi) şekle dahildir
+    nb, bl, bst, _ = cv2.connectedComponentsWithStats(near_bg, connectivity=4)
+    main = np.zeros(nb, bool)
+    for j in range(1, nb):
+        x, y, ww, hh, area = bst[j]
+        if x == 0 or y == 0 or x + ww >= w or y + hh >= h or area > 0.05 * h * w:
+            main[j] = True
+    node = ~main[bl]
+    T = 24.0
+    dh = np.linalg.norm(lab[:, 1:] - lab[:, :-1], axis=2)
+    dv = np.linalg.norm(lab[1:] - lab[:-1], axis=2)
+    eh = (dh < T) & node[:, 1:] & node[:, :-1]
+    ev = (dv < T) & node[1:] & node[:-1]
+    idx = np.arange(h * w, dtype=np.int64).reshape(h, w)
+    r = np.concatenate([idx[:, :-1][eh], idx[:-1][ev]])
+    c = np.concatenate([idx[:, 1:][eh], idx[1:][ev]])
+    G = coo_matrix((np.ones(len(r), np.int8), (r, c)), shape=(h * w, h * w))
+    ncomp, lab_cc = connected_components(G, directed=False)
+    lab_cc = lab_cc.reshape(h, w)
+    lab_cc[~node] = -1
+    sizes = np.bincount(lab_cc[node].ravel(), minlength=ncomp)
+    flat_lab = lab_cc.ravel()
+    sel = np.flatnonzero(flat_lab >= 0)
+    sel = sel[sizes[flat_lab[sel]] >= 12]
+    order_px = sel[np.argsort(flat_lab[sel], kind="stable")]
+    labs_sorted = flat_lab[order_px]
+    bounds = np.flatnonzero(np.diff(labs_sorted)) + 1
+    comps = []
+    for chunk in np.split(order_px, bounds) if len(order_px) else []:
+        if len(chunk) > 0.4 * h * w:
             continue
-        sub = cc[y:y + hh, x:x + ww] == i
-        labv = lab[y:y + hh, x:x + ww][sub]
+        ys, xs = chunk // w, chunk % w
+        comps.append((ys, xs, xs.min(), ys.min(), xs.max(), ys.max()))
+    # Parlak orta şeridi zemine değen sütun iki yarıya bölünür: yan yana, aynı boydaki
+    # parçaları aradaki zemin renkli piksellerle birlikte tek bölge olarak da dene.
+    near = ~node
+    groups = []
+    used = set()
+    order = sorted(range(len(comps)), key=lambda j: comps[j][2])
+    for ii, a_ in enumerate(order):
+        if a_ in used:
+            continue
+        ys, xs, x0, y0, x1, y1 = comps[a_]
+        grp = [a_]
+        for b_ in order[ii + 1:]:
+            if b_ in used:
+                continue
+            _, _, u0, v0, u1, v1 = comps[b_]
+            gx0, gy0, gx1, gy1 = comps[grp[-1]][2:]
+            gap = u0 - gx1
+            if gap > 5:
+                break
+            ov = min(gy1, v1) - max(gy0, v0)
+            if gap >= 0 and ov >= 0.8 * min(gy1 - gy0, v1 - v0) and abs((v1 - v0) - (gy1 - gy0)) <= 2:
+                grp.append(b_)
+        if len(grp) >= 2:
+            groups.append(grp)
+
+    def test(ys, xs):
+        y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+        if len(ys) < 40 or min(y1 - y0, x1 - x0) < 4:
+            return None
+        m = np.zeros((h, w), bool)
+        m[ys, xs] = True
+        sub = m[y0:y1, x0:x1].astype(np.uint8)
+        # çizgi değil, alan olmalı (kenarı yumuşatılmış çizgiler de renk değiştirir)
+        if cv2.distanceTransform(np.pad(sub, 1), cv2.DIST_L2, 3).max() < 2.5:
+            return None
+        labv = lab[ys, xs]
         med = np.median(labv, axis=0)
         if (np.linalg.norm(labv - med, axis=1) < 5).mean() > 0.55:
-            continue      # çoğu düz renk
-        # iki düz rengin yan yana gelmesi degrade değildir
-        q = np.round(labv / 4).astype(np.int32)
-        _, qc = np.unique(q, axis=0, return_counts=True)
-        if np.sort(qc)[-2:].sum() > 0.7 * len(labv):
-            continue
+            return None      # çoğu düz renk
+        qq = np.round(labv / 4).astype(np.int32)
+        _, qc = np.unique(qq, axis=0, return_counts=True)
+        if np.sort(qc)[-2:].sum() > 0.7 * len(labv) or np.sort(qc)[-4:].sum() > 0.75 * len(labv):
+            return None      # birkaç düz rengin yan yana gelmesi (ör. bitişik sütunlar)
         spread = float(np.linalg.norm(np.percentile(labv, 95, axis=0) - np.percentile(labv, 5, axis=0)))
         if spread < 15:
-            continue
-        m = np.zeros((h, w), bool)
-        m[y:y + hh, x:x + ww] = sub
-        # Geçişin dik (hızlı değişen) kenar kısımlarını da kat: renkleri geçişin renklerine yakınsa
-        cols = rgb[m].astype(np.float32)
-        lo_c, hi_c = np.percentile(cols, 2, axis=0) - 25, np.percentile(cols, 98, axis=0) + 25
-        allow = (mag >= 14.0) & np.all((rgb >= lo_c) & (rgb <= hi_c), axis=2)
-        for _ in range(6):
-            grow = (cv2.dilate(m.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0) & allow & ~m
-            if not grow.any():
-                break
-            m |= grow
-        ys, xs = np.nonzero(m)
-        g = _grad_fit(lab[m], rgb[m].astype(float), xs, ys)
+            return None
+        g = _grad_fit(labv, rgb[ys, xs].astype(float), xs, ys)
         if g is None:
+            return None
+        return m, g
+
+    out = []
+    done = set()
+    for grp in groups:
+        m = np.zeros((h, w), bool)
+        for j in grp:
+            m[comps[j][0], comps[j][1]] = True
+        # her satırda parçaların arasındaki zemin renkli pikselleri de kat
+        y0 = min(comps[j][3] for j in grp)
+        y1 = max(comps[j][5] for j in grp)
+        for yy in range(y0, y1 + 1):
+            row = np.flatnonzero(m[yy])
+            if len(row) >= 2:
+                seg = slice(row[0], row[-1] + 1)
+                m[yy, seg] |= near[yy, seg]
+        ys, xs = np.nonzero(m)
+        r = test(ys, xs)
+        if r is not None:
+            out.append(r)
+            done.update(grp)
+    for j, (ys, xs, *_rest) in enumerate(comps):
+        if j in done:
             continue
-        out.append((m, g))
+        r = test(ys, xs)
+        if r is not None:
+            out.append(r)
     return out
 
 
@@ -753,6 +839,7 @@ class Options:
     detail: float = 1.0          # 1 = normal; büyüdükçe daha çok ayrıntı
     thin_px: float = 2.6         # bu kalınlığa kadar çizgi say (özgün piksel)
     text_boxes: list | None = None   # [{"box": (x0,y0,x1,y1)}] özgün pikselde: bu pikseller şekle çevrilmez
+    text_mask: np.ndarray | None = None  # özgün boyutta yazı pikselleri (doğrulanmış yazılar): şekle çevrilmez
     glyphs: bool = True          # harfleri dolgulu şekil olarak çiz
     gradients: bool = True       # renk geçişli bölgeleri degrade dolgu yap
 
@@ -837,6 +924,12 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
                     touches = x == 0 or y == 0 or x + ww >= bhh or y + hh >= bw
                     if inside[i] >= 0.6 * area and not (touches and inside[i] < area):
                         text_mask[b0:b1, a0:a1] |= cc_i == i
+    if opts.text_mask is not None and opts.text_mask.any():
+        tmk = opts.text_mask
+        if tmk.shape[:2] != (h, w):
+            tmk = cv2.resize(tmk.astype(np.float32), (w, h), interpolation=cv2.INTER_AREA) > 0.25
+        # harflerin kenar yumuşatma pikselleri de gitsin
+        text_mask |= cv2.dilate(tmk.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
     dark = [k for k in range(K) if k != bg and pal[k][0] < 55]
     glyph = _glyph_mask2(present, labels, dark, h, w) & ~text_mask if opts.glyphs else np.zeros((h, w), bool)
     if text_mask.any() and glyph.any():
@@ -953,7 +1046,10 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
                 comp = cc[b0:b1, a0:a1] == i
                 reach = cv2.dilate(comp.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
                 c = np.where(reach, cov[k, b0:b1, a0:a1], 0.0)
-                conts = _contours_of(_up(c, f), f, a0, b0, 0.15)
+                # 1 pikselden ince, kenarı yumuşatılmış harfler 0,5 eşiğinde kopar: onlarda eşik düşük
+                sk = int(skeletonize(comp).sum())
+                lev = 0.5 if float(c.sum()) / max(sk, 1) >= 1.4 else 0.4
+                conts = _contours_of(np.clip(_up(c, f) * (0.5 / lev), 0, 1), f, a0, b0, 0.15)
                 el = _fill_element(conts, colors[k], tol * 0.7, shapes=False, layer="harf")
                 if el:
                     elements.append(el)
@@ -981,7 +1077,9 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
 
         def under(x, y, _fl=fill_lab):
             return colors[int(_fl[int(np.clip(round(y), 0, h - 1)), int(np.clip(round(x), 0, w - 1))])]
-        elements.extend(_stroke_elements(items, colors[k], tol, under))
+        sel = _stroke_elements(items, colors[k], tol, under)
+        # görselle karşılaştır: tutmayan çizgiyi at, eksik kalan yeri görseldeki biçimiyle çiz
+        elements.extend(_verify_strokes(sel, cov[k], cc, stats, f, colors[k], tol, w, h))
 
     # --- çizim sırası: büyük dolgular altta; çizgiler; küçük dolgular (nokta, simge) ve harfler üstte
     diag = math.hypot(w, h)
@@ -1145,13 +1243,180 @@ def _stroke_elements(items, color, tol, under=None):
             fit = egri.circle_fit(pts)
             if fit and fit[3] < 0.25:
                 prim = {"type": "circle", "cx": fit[0], "cy": fit[1], "r": fit[2]}
-        d = "" if prim else _seg_path(pts, closed, max(tol, 0.35), 1.0, k=4)
+        d = ""
+        if not prim:
+            d = _polyline_d(pts, closed)
+            if not d:
+                # yumuşak eğri: titremeyi alıp az parçalı Bézier/yay yaz
+                sg = 2.5 if L < 40 else 4.0
+                sm = (egri.smooth_closed(pts, sg) if closed else egri.smooth_open(pts, sg)) if len(pts) > 8 else pts
+                d = _seg_path(sm, closed, max(tol, 0.4), 1.0, k=4)
         x0, y0 = p.min(axis=0)
         x1, y1 = p.max(axis=0)
         col, wd2 = tone(wd, a, p[len(p) // 2])
         out.append(Element("stroke", col, d=d, prim=prim, width=wd2, cap="round",
                            bbox=(float(x0), float(y0), float(x1), float(y1))))
     return out
+
+
+def _verify_strokes(els, covk, cc, stats, f, color, tol, W, H):
+    """Çizgileri görselle karşılaştır.
+
+    - Bir çizgi görselde o renk olmayan yere taşıyorsa (isabet < %75) atılır.
+    - Bir parçanın görseldeki pikselleri çizgilerle karşılanmıyorsa: küçük parçalar (harf,
+      simge) bütünüyle dış hattından çizilir; büyük parçalarda yalnız eksik kalan yer eklenir.
+    """
+    if not els:
+        return els
+    ker3 = np.ones((3, 3), np.uint8)
+    rend = {}
+    good = []
+    for idx, e in enumerate(els):
+        bb = sadakat.bbox_of(e, pad=1.5)
+        if bb is None:
+            continue
+        a0, b0 = max(0, int(math.floor(bb[0]))), max(0, int(math.floor(bb[1])))
+        a1, b1 = min(W, int(math.ceil(bb[2])) + 1), min(H, int(math.ceil(bb[3])) + 1)
+        if a1 <= a0 or b1 <= b0:
+            continue
+        R = sadakat.rasterize(e, f, a0, b0, ((b1 - b0) * f, (a1 - a0) * f))
+        if not R.any():
+            continue
+        S = _up(covk[b0:b1, a0:a1], f)
+        Sd = cv2.dilate((S >= 0.22).astype(np.uint8), ker3) > 0
+        prec = float(Sd[R > 0].mean())
+        rend[idx] = (R, a0, b0)
+        if prec >= 0.75:
+            good.append(idx)
+    good_set = set(good)
+    drop = set(range(len(els))) - good_set
+    extra = []
+    n = len(stats)
+    disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * f + 1, 2 * f + 1))
+    for i in range(1, n):
+        x, y, ww, hh, area = stats[i]
+        p = 2
+        ca0, cb0, ca1, cb1 = max(0, x - p), max(0, y - p), min(W, x + ww + p), min(H, y + hh + p)
+        compm = cc[cb0:cb1, ca0:ca1] == i
+        S = _up(np.where(compm, covk[cb0:cb1, ca0:ca1], 0.0), f)
+        src = S >= 0.5
+        if not src.any():
+            continue
+        shp = S.shape
+        Rg = np.zeros(shp, np.uint8)
+        members = []
+        for idx, (R, a0, b0) in rend.items():
+            ox, oy = (a0 - ca0) * f, (b0 - cb0) * f
+            y0, x0 = max(0, oy), max(0, ox)
+            y1, x1 = min(shp[0], oy + R.shape[0]), min(shp[1], ox + R.shape[1])
+            if y1 <= y0 or x1 <= x0:
+                continue
+            piece = R[y0 - oy:y1 - oy, x0 - ox:x1 - ox]
+            if not piece.any():
+                continue
+            inside = cv2.resize(compm.astype(np.uint8), (shp[1], shp[0]), interpolation=cv2.INTER_NEAREST)[y0:y1, x0:x1]
+            frac = float((piece & inside).sum()) / max(1.0, float(R.sum()))
+            members.append((idx, frac))
+            if idx in good_set:
+                Rg[y0:y1, x0:x1] |= piece
+        miss = src & ~(cv2.dilate(Rg, disk) > 0)
+        miss_area = miss.sum() / (f * f)
+        src_area = src.sum() / (f * f)
+        if miss_area <= max(1.0, 0.08 * src_area):
+            continue
+        small = max(ww, hh) <= 40 and area <= 400
+        if small:
+            region = S
+            for idx, frac in members:
+                if frac >= 0.5:
+                    drop.add(idx)
+        else:
+            reg = cv2.dilate(miss.astype(np.uint8), disk) > 0
+            region = np.where(reg, S, 0.0)
+        conts = _contours_of(np.clip(region / 0.8, 0, 1), f, ca0, cb0, 0.3)
+        el = _fill_element(conts, color, tol * 0.7, shapes=False, layer="ust")
+        if el:
+            extra.append(el)
+    return [e for i, e in enumerate(els) if i not in drop] + extra
+
+
+def _polyline_d(pts: np.ndarray, closed: bool) -> str:
+    """Çizgi keskin köşeli birkaç düz parçadan oluşuyorsa (sütun kenarı, eksen) köşeli yol yaz.
+
+    Her parça kendi noktalarına en küçük karelerle oturtulur, yatay/dikeye yakınsa tam
+    yatay/dikey yapılır ve köşeler komşu doğruların kesişiminden bulunur. Köşeleri keskin
+    değilse (yuvarlak eğri) boş döner.
+    """
+    n = len(pts)
+    if n < 6:
+        return ""
+    P = np.vstack([pts, pts[:1]]) if closed else pts
+    v = egri.rdp(P, 0.6)
+    if len(v) < 3:
+        return ""
+    # RDP köşelerinin özgün indeksleri
+    idx = [int(np.argmin(np.hypot(*(P - q).T))) for q in v]
+    for i in range(1, len(idx)):
+        if idx[i] <= idx[i - 1]:
+            return ""
+    # köşedeki 1-2 piksellik pahı (iki köşe arasındaki minik parça) at
+    while len(idx) > 3:
+        lens = [float(np.hypot(*(P[b] - P[a]))) for a, b in zip(idx[:-1], idx[1:])]
+        j = int(np.argmin(lens[1:-1])) + 1 if len(lens) > 2 else -1
+        if j < 1 or lens[j] >= 2.2:
+            break
+        mid = (idx[j] + idx[j + 1]) // 2
+        idx = idx[:j] + [mid] + idx[j + 2:]
+    cs = egri.corners(P, False, 4, 32.0)
+    inner = idx[1:-1]
+    if not inner:
+        return ""
+    sharp = sum(any(abs(c - i) <= 4 for c in cs) for i in inner)
+    if sharp < 0.75 * len(inner):
+        return ""
+    lines = []
+    for a, b in zip(idx[:-1], idx[1:]):
+        seg = P[a:b + 1]
+        if len(seg) >= 3:
+            # köşe yuvarlaklığı doğruyu eğmesin: uçlardan birer parça at
+            cut = max(0, min(4, (len(seg) - 3) // 3))
+            core = seg[cut:len(seg) - cut] if cut else seg
+            c, dvec, _ = egri.line_fit(core)
+        else:
+            c, dvec = (seg[0] + seg[-1]) / 2, seg[-1] - seg[0]
+            nn = float(np.hypot(*dvec)) or 1.0
+            dvec = dvec / nn
+        ang = math.degrees(math.atan2(abs(dvec[1]), abs(dvec[0])))
+        if ang < 2.5:
+            dvec = np.array([1.0, 0.0])
+            c = np.array([c[0], float(np.mean(seg[:, 1]))])
+        elif ang > 87.5:
+            dvec = np.array([0.0, 1.0])
+            c = np.array([float(np.mean(seg[:, 0])), c[1]])
+        lines.append((c, dvec))
+
+    def meet(l1, l2, fallback):
+        (c1, d1), (c2, d2) = l1, l2
+        den = d1[0] * d2[1] - d1[1] * d2[0]
+        if abs(den) < 1e-6:
+            return fallback
+        t = ((c2[0] - c1[0]) * d2[1] - (c2[1] - c1[1]) * d2[0]) / den
+        q = c1 + d1 * t
+        return q if np.hypot(*(q - fallback)) < 4.0 else fallback
+
+    def proj(l, q):
+        c, dvec = l
+        return c + dvec * float((q - c) @ dvec)
+
+    if closed:
+        m = len(lines)
+        verts = [meet(lines[i - 1], lines[i], P[idx[i]]) for i in range(m)]
+    else:
+        verts = [proj(lines[0], P[idx[0]])]
+        verts += [meet(lines[i - 1], lines[i], P[idx[i]]) for i in range(1, len(lines))]
+        verts.append(proj(lines[-1], P[idx[-1]]))
+    d = f"M{_f(verts[0][0])} {_f(verts[0][1])}" + "".join(f"L{_f(q[0])} {_f(q[1])}" for q in verts[1:])
+    return d + ("Z" if closed else "")
 
 
 def _rescale(elements, s):

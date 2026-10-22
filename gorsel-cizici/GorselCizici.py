@@ -64,8 +64,12 @@ def _ocr_test() -> int:
     os.remove(path)
     for w in words:
         print(" ", w["text"], "(okunan: " + w.get("raw", "") + ")", [round(v) for v in w["box"]], round(w["conf"], 2), "satır", w.get("line"))
-    print("OCR", "TAMAM" if words else "HATA", len(words), "kelime")
-    return 0 if words else 1
+    import numpy as np
+    acc = metin.validate(words, np.array(im))
+    print("doğrulanan:", [(a["text"], round(a["score"], 2)) for a in acc])
+    ok = len(words) >= 5 and len(acc) >= 5
+    print("OCR", "TAMAM" if ok else "HATA", len(words), "kelime,", len(acc), "doğrulandı")
+    return 0 if ok else 1
 
 
 def _convert(src: str, dst: str) -> int:

@@ -1,7 +1,7 @@
 # Görsel Çizici
 
 Ders kitabındaki basit çizimlerin görselini verirsiniz; uygulama aynısını
-**düzenlenebilir vektör** olarak yeniden çizer ve Illustrator'a gönderir.
+**düzenlenebilir vektör** olarak yeniden çizer ve Illustrator'a aktarır.
 İnternet ya da API anahtarı gerekmez, her şey bilgisayarınızda çalışır.
 
 - **Grafikler**: sütun, çizgi, iklim grafikleri; renk geçişli (degrade) sütunlar
@@ -37,31 +37,40 @@ Katmanlar ayrıdır: Dolgular, Çizgiler, Üstteki şekiller, Yazılar.
    ```
 3. **Ekrandan kırp** ilk kullanımda ekran kaydı izni ister:
    Sistem Ayarları › Gizlilik ve Güvenlik › **Ekran ve Sistem Ses Kaydı** › GorselCizici'yi açın.
-4. **Illustrator'a gönder** ilk kullanımda "Adobe Illustrator'ı denetlemek istiyor" diye sorar: **İzin Ver**.
+4. **Illustrator'a aktar** ilk kullanımda "Adobe Illustrator'ı denetlemek istiyor" diye sorar: **İzin Ver**.
 
 ## Kullanım
 
-1. Görseli verin: **Ekrandan kırp** (soruyu ekranda seçersiniz), **Görsel aç**,
-   **Yapıştır** ya da görseli pencereye sürükleyin. Çizim kendiliğinden başlar.
-2. Sağdaki önizlemeyi görselle karşılaştırın.
-3. Çizimi Illustrator'a alın:
-   - **Buradan tutup Illustrator'a sürükleyin** alanından belgeye sürükleyin, ya da
-   - **Illustrator'a gönder**: açık belgenin ortasına düzenlenebilir grup olarak ekler, ya da
-   - **SVG kaydet** / **Kopyala**.
+Pencerenin solunda iki bölüm vardır: **Görselden çizim** ve **Dilsiz harita**.
+Sağdaki **Çıktı ayarları** ikisinde de geçerlidir.
 
-Üstteki ayarlar çıktıya uygulanır, görseli yeniden çizmeye gerek yoktur:
+1. **Görselden çizim**'de görseli verin: **Ekrandan kırp** (soruyu ekranda seçersiniz),
+   **Dosyadan aç**, **Panodan yapıştır** ya da görsel dosyasını pencereye bırakın.
+   Çizim kendiliğinden başlar.
+2. **Kaynak görsel** ile **Vektör çizim** önizlemelerini yan yana karşılaştırın.
+3. Çizimi Illustrator'a alın (alttaki çubuk):
+   - **Illustrator'a aktar**: açık belgeye düzenlenebilir çizim olarak yapıştırır;
+     açık belge yoksa çizimi yeni belge olarak açar.
+   - **Kopyala (vektör)**: sonra Illustrator'da **Cmd+V** — düzenlenebilir çizim olarak gelir.
+   - **Kaydet**: PDF ya da SVG. İkisi de Illustrator'da **Dosya › Aç** ile düzenlenebilir açılır.
+
+   Not: Dosyayı Illustrator'a sürüklemeyin ya da "Yerleştir" ile koymayın; Illustrator onu
+   bağlı resim olarak koyar ve düzenlenemez.
+
+**Çıktı ayarları** çizime hemen uygulanır, görseli yeniden çizmeye gerek yoktur:
 
 | Ayar | Ne yapar |
 |---|---|
 | Yazı tipi | Tanınan yazıların yazı tipi (ör. Helvetica Neue) |
 | Punto | Yazıların ortalama boyu; çizim buna göre ölçeklenir |
+| Kalınlık | Bütün çizgilerin kalınlığı (görseldeki gibi: değiştirmez) |
 | Renk | Çizgi ve yazıları tek renge çevirir (Görseldeki renkler: değiştirmez) |
-| Kontur (pt) | Bütün çizgilerin kalınlığı (görseldeki gibi: değiştirmez) |
 | Genişlik | Çizimin mm cinsinden genişliği (otomatik: puntoya göre) |
 
 ## Dilsiz harita
 
-**Dilsiz harita** sekmesinde dünya ya da Türkiye haritası oluşturulur (Natural Earth verisi):
+Soldan **Dilsiz harita**'yı seçin; dünya ya da Türkiye haritası oluşturulur (Natural Earth verisi).
+Ayarları değiştirip **Haritayı oluştur**'a basın, sonra **Illustrator'a aktar**:
 
 - **İzdüşüm**: Miller (ders kitaplarındaki gibi), eşdikdörtgen, Mercator, Robinson
 - **Orta boylam**: haritanın ortasındaki boylam

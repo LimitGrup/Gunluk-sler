@@ -157,5 +157,40 @@ def duzelt(word: str) -> str:
     return head + _fix_core(core) + tail
 
 
+_GEVSEK = None
+_LOOSE = str.maketrans({"l": "i", "1": "i", "|": "i", "j": "i", "!": "i"})
+
+
+def _loose(s: str) -> str:
+    return _fold(s).translate(_LOOSE)
+
+
+def duzelt_gevsek(word: str) -> str:
+    """Yazı tanımanın ı/i/l/1 karıştırmasına dayanıklı düzeltme: "Sicakllk" -> "Sıcaklık".
+
+    Yalnız kelimenin tamamı sözlükteki tek bir kelimeye denk gelirse değiştirir.
+    """
+    global _GEVSEK, _SOZLUK
+    if _SOZLUK is None:
+        _SOZLUK = _load()
+    if _GEVSEK is None:
+        g = {}
+        for v in set(_SOZLUK.values()):
+            g.setdefault(_loose(v), set()).add(v)
+        _GEVSEK = {k: next(iter(v)) for k, v in g.items() if len(v) == 1}
+    if not word:
+        return word
+    i, j = 0, len(word)
+    while i < j and not word[i].isalnum():
+        i += 1
+    while j > i and not word[j - 1].isalnum():
+        j -= 1
+    core = word[i:j]
+    hit = _GEVSEK.get(_loose(core)) if len(core) >= 3 else None
+    if hit is None:
+        return duzelt(word)
+    return word[:i] + _case_like(core, hit) + word[j:]
+
+
 def duzelt_satir(text: str) -> str:
     return " ".join(duzelt(w) for w in text.split(" "))

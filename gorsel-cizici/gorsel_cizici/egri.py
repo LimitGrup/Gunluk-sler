@@ -251,7 +251,7 @@ def fit_bezier(pts: np.ndarray, err: float, t1=None, t2=None, depth=0) -> list[n
     if e <= err:
         return [ctrl]
     if e < err * 4:
-        for _ in range(12):
+        for _ in range(4):
             u = _reparam(ctrl, pts, u)
             ctrl = _generate(pts, u, t1, t2)
             e, split = _max_err(ctrl, pts, u)
@@ -281,7 +281,7 @@ def classify_segment(pts: np.ndarray, tol: float):
     if dev <= tol * 1.1:
         return ("L", p1)
     # Çember yayı: yeterince uzun ve çember iyi oturuyorsa
-    fit = circle_fit(pts) if chord > max(4 * tol, 3.0) else None
+    fit = circle_fit(pts) if (chord > max(4 * tol, 4.0) and len(pts) >= 8) else None
     if fit is not None:
         cx, cy, r, rms = fit
         if rms <= tol * 0.55 and r < chord * 40:
