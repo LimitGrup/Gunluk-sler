@@ -1,0 +1,131 @@
+"""Sahneyi Illustrator'ın düzenlenebilir açtığı SVG'ye yazar.
+
+SVG'nin kullanıcı birimi özgün görselin pikselidir; width/height pt cinsinden gerçek ölçüyü
+verir (viewBox ile ölçeklenir). Kullanıcı yazı puntosu ya da çizgi kalınlığını pt olarak
+verdiyse ölçeğe bölünerek yazılır.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from xml.sax.saxutils import escape
+
+from .vektor import Scene
+
+
+@dataclass
+class Style:
+    width_mm: float | None = None      # None: görselin pikseli 0,75 pt (96 dpi)
+    font: str = "Helvetica Neue"
+    font_pt: float | None = None       # None: görseldeki boyut
+    stroke_pt: float | None = None     # None: görseldeki kalınlık
+    color: str | None = None           # None: görseldeki renkler; "#RRGGBB": çizgi ve yazılar bu renkte
+    keep_background: bool = False
+
+
+def _hex(c) -> str:
+    return "#{:02X}{:02X}{:02X}".format(*[max(0, min(255, int(v))) for v in c])
+
+
+def _f(v: float) -> str:
+    s = f"{v:.2f}".rstrip("0").rstrip(".")
+    return s if s not in ("-0", "") else "0"
+
+
+def scale_of(scene: Scene, st: Style) -> float:
+    """1 piksel kaç pt."""
+    if st.width_mm:
+        return st.width_mm * 72 / 25.4 / max(scene.width, 1)
+    return 0.75
+
+
+def to_svg(scene: Scene, st: Style | None = None) -> str:
+    st = st or Style()
+    s = scale_of(scene, st)
+    Wpt, Hpt = scene.width * s, scene.height * s
+    fills, strokes, texts = [], [], []
+    defs = []
+    for e in scene.elements:
+        if e.kind == "text":
+            size = (st.font_pt / s) if st.font_pt else e.size
+            col = st.color or _hex(e.color)
+            weight = ' font-weight="bold"' if e.bold else ""
+            anchor = f' text-anchor="{e.anchor}"' if e.anchor in ("middle", "end") else ""
+            texts.append(f'<text x="{_f(e.x)}" y="{_f(e.y)}" font-family="{escape(st.font)}" font-size="{_f(size)}" fill="{col}"{weight}{anchor}>{escape(e.text)}</text>')
+            continue
+        if e.kind == "fill":
+            col = _hex(e.color)
+            if st.color and e.layer == "harf":
+                col = st.color
+            if e.grad:
+                gid = f"degrade{len(defs) + 1}"
+                g = e.grad
+                stops = "".join(f'<stop offset="{_f(o)}" stop-color="{_hex(c)}"/>' for o, c in g["stops"])
+                if g["type"] == "radial":
+                    defs.append(f'<radialGradient id="{gid}" gradientUnits="userSpaceOnUse" cx="{_f(g["cx"])}" cy="{_f(g["cy"])}" r="{_f(max(g["r"], 0.5))}">{stops}</radialGradient>')
+                else:
+                    defs.append(f'<linearGradient id="{gid}" gradientUnits="userSpaceOnUse" x1="{_f(g["x1"])}" y1="{_f(g["y1"])}" x2="{_f(g["x2"])}" y2="{_f(g["y2"])}">{stops}</linearGradient>')
+                col = f"url(#{gid})"
+            p = e.prim
+            if p and p["type"] == "rect":
+                fills.append(f'<rect x="{_f(p["x"])}" y="{_f(p["y"])}" width="{_f(p["w"])}" height="{_f(p["h"])}" fill="{col}"/>')
+            elif p and p["type"] == "circle":
+                fills.append(f'<circle cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" r="{_f(p["r"])}" fill="{col}"/>')
+            elif p and p["type"] == "ellipse":
+                rot = f' transform="rotate({_f(p["rot"])} {_f(p["cx"])} {_f(p["cy"])})"' if abs(p.get("rot", 0)) > 0.5 else ""
+                fills.append(f'<ellipse cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" rx="{_f(p["rx"])}" ry="{_f(p["ry"])}" fill="{col}"{rot}/>')
+            elif p and p["type"] == "polygon":
+                pts = " ".join(f"{_f(x)},{_f(y)}" for x, y in p["pts"])
+                fills.append(f'<polygon points="{pts}" fill="{col}"/>')
+            elif e.d:
+                fills.append(f'<path d="{e.d}" fill="{col}" fill-rule="evenodd"/>')
+            continue
+        # çizgi
+        col = st.color or _hex(e.color)
+        wd = (st.stroke_pt / s) if st.stroke_pt else e.width
+        attrs = f'fill="none" stroke="{col}" stroke-width="{_f(wd)}"'
+        if e.dash:
+            scale_d = (wd / e.width) if (st.stroke_pt and e.width > 0) else 1.0
+            attrs += ' stroke-dasharray="' + " ".join(_f(v * (scale_d if i % 2 == 0 and v > 0.05 else 1)) for i, v in enumerate(e.dash)) + '"'
+        if e.cap in ("round", "square"):
+            attrs += f' stroke-linecap="{e.cap}"'
+        attrs += ' stroke-linejoin="round"'
+        p = e.prim
+        if p and p["type"] == "line":
+            strokes.append(f'<line x1="{_f(p["x1"])}" y1="{_f(p["y1"])}" x2="{_f(p["x2"])}" y2="{_f(p["y2"])}" {attrs}/>')
+        elif p and p["type"] == "circle":
+            strokes.append(f'<circle cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" r="{_f(p["r"])}" {attrs}/>')
+        elif e.d:
+            strokes.append(f'<path d="{e.d}" {attrs}/>')
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{_f(Wpt)}pt" height="{_f(Hpt)}pt" viewBox="0 0 {scene.width} {scene.height}">']
+    if defs:
+        parts.append("<defs>" + "".join(defs) + "</defs>")
+    if st.keep_background:
+        parts.append(f'<rect id="Zemin" width="{scene.width}" height="{scene.height}" fill="{_hex(scene.background)}"/>')
+    # Dolgular ve çizgiler, alttan üste çizim sırasıyla (küçük noktalar çizgilerin üstünde kalır)
+    if fills:
+        parts.append('<g id="Dolgular">' + "".join(_ordered(scene, "fill", fills)) + "</g>")
+    if strokes:
+        parts.append('<g id="Cizgiler">' + "".join(strokes) + "</g>")
+    tops = _ordered(scene, "fill-top", fills)
+    if tops:
+        parts.append('<g id="Ustteki_sekiller">' + "".join(tops) + "</g>")
+    if texts:
+        parts.append('<g id="Yazilar">' + "".join(texts) + "</g>")
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def _ordered(scene: Scene, which: str, fills: list) -> list:
+    """Dolguları alttakiler ve çizgilerin üstündekiler (küçük noktalar, harfler) diye ayır."""
+    out = []
+    i = 0
+    for e in scene.elements:
+        if e.kind != "fill":
+            continue
+        top = getattr(e, "_top", None)
+        if top is None:
+            top = e.layer == "harf" or e.layer == "ust"
+        if (which == "fill" and not top) or (which == "fill-top" and top):
+            out.append(fills[i])
+        i += 1
+    return out

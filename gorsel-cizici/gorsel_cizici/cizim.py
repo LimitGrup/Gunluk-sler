@@ -1,0 +1,56 @@
+"""Görselden çizim akışı (arayüzden bağımsız): yazı tanıma + vektörleştirme + yazı yerleştirme."""
+from __future__ import annotations
+
+import os
+import tempfile
+
+import numpy as np
+from PIL import Image
+
+from . import metin
+from .vektor import Element, Options, Scene, vectorize
+
+
+def load_rgb(path: str) -> np.ndarray:
+    im = Image.open(path)
+    if im.mode in ("RGBA", "LA", "P"):
+        im = im.convert("RGBA")
+        bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+        bg.alpha_composite(im)
+        im = bg
+    return np.array(im.convert("RGB"))
+
+
+def analyze(rgb: np.ndarray, use_text: bool = True, detail: float = 1.0):
+    """Ağır iş (arka planda çalıştırılabilir). Dönüş: (sahne, tanınan yazılar)."""
+    texts = []
+    if use_text and metin.available():
+        fd, path = tempfile.mkstemp(suffix=".png")
+        os.close(fd)
+        try:
+            Image.fromarray(rgb).save(path)
+            texts = metin.recognize(path, rgb.shape[1], rgb.shape[0])
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    # Yazı tanındıysa o pikseller şekle çevrilmez; tanınmayan harfler şekil olarak kalır
+    boxes = [{"box": t["box"]} for t in texts]
+    scene = vectorize(rgb, Options(detail=detail, text_boxes=boxes or None))
+    return scene, texts
+
+
+def add_texts(scene: Scene, rgb: np.ndarray, texts: list, measure) -> Scene:
+    """Tanınan yazıları seçilen yazı tipinin ölçüleriyle yerlerine koy."""
+    placed = metin.place(texts, rgb, measure)
+    scene.elements = [e for e in scene.elements if e.kind != "text"]
+    for p in placed:
+        scene.elements.append(Element("text", p["color"], text=p["text"], x=p["x"], y=p["y"], size=p["size"],
+                                      bbox=p["box"]))
+    return scene
+
+
+def median_text_px(scene: Scene) -> float | None:
+    sizes = [e.size for e in scene.elements if e.kind == "text" and e.size > 0]
+    return float(np.median(sizes)) if sizes else None

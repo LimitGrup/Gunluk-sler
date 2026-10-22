@@ -1,0 +1,67 @@
+name: Görsel Çizici uygulaması
+
+on:
+  push:
+    paths:
+      - "gorsel-cizici/**"
+      - ".github/workflows/gorsel-cizici.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: mac-apple-silicon
+          - os: macos-15-intel
+            name: mac-intel
+          - os: windows-latest
+            name: windows
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: gorsel-cizici
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Gereken paketler
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Çizim motorunu dene
+        run: python GorselCizici.py --test
+      - name: Simge (Mac)
+        if: runner.os == 'macOS'
+        run: |
+          python paketleme/simge.py
+          iconutil -c icns simge.iconset -o simge.icns
+      - name: Simge (Windows)
+        if: runner.os == 'Windows'
+        run: python paketleme/simge.py --ico
+      - name: Uygulamayı paketle
+        run: pyinstaller --noconfirm GorselCizici.spec
+      - name: Paketlenmiş uygulamayı dene (Mac)
+        if: runner.os == 'macOS'
+        run: QT_QPA_PLATFORM=offscreen dist/GorselCizici.app/Contents/MacOS/GorselCizici --test
+      - name: Paketlenmiş uygulamayı dene (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath "dist/GorselCizici/GorselCizici.exe" -ArgumentList "--test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "test başarısız: $($p.ExitCode)" }
+      - name: Zip (Mac)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc --keepParent dist/GorselCizici.app GorselCizici-${{ matrix.name }}.zip
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/GorselCizici -DestinationPath GorselCizici-${{ matrix.name }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GorselCizici-${{ matrix.name }}
+          path: gorsel-cizici/GorselCizici-${{ matrix.name }}.zip
+          retention-days: 90
