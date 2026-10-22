@@ -4,7 +4,7 @@ Mac'te işletim sisteminin kendi yazı tanıması (Apple Vision) kullanılır: i
 anahtar istemez. Bulunamazsa (Windows, eski macOS) yazılar harf şekli olarak çizilir.
 
 Akış:
-  1. recognize(): yazı satırlarını ve kutularını bulur.
+  1. recognize(): yazı satırlarını ve kutularını bulur; Türkçe harfleri düzeltir (turkce.py).
   2. place(): her yazının görseldeki gerçek mürekkep sınırlarını ölçer; seçilen yazı tipinde
      aynı genişlik ve yükseklikte olacak puntoyu ve taban çizgisini hesaplar.
 """
@@ -14,6 +14,8 @@ import math
 import sys
 
 import numpy as np
+
+from . import turkce
 
 
 def available() -> bool:
@@ -85,7 +87,8 @@ def recognize(png_path: str, width: int, height: int) -> list[dict]:
                     if len(words) > 1:
                         continue
                     box = _to_px(obs.boundingBox(), width, height)
-                out.append({"text": word, "box": box, "conf": float(cand.confidence()), "line": line_no})
+                out.append({"text": turkce.duzelt(word), "raw": word, "box": box,
+                            "conf": float(cand.confidence()), "line": line_no})
         return out
     except Exception:
         return []

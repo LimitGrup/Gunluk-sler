@@ -63,7 +63,7 @@ def _ocr_test() -> int:
     words = metin.recognize(path, im.width, im.height)
     os.remove(path)
     for w in words:
-        print(" ", w["text"], [round(v) for v in w["box"]], round(w["conf"], 2), "satır", w.get("line"))
+        print(" ", w["text"], "(okunan: " + w.get("raw", "") + ")", [round(v) for v in w["box"]], round(w["conf"], 2), "satır", w.get("line"))
     print("OCR", "TAMAM" if words else "HATA", len(words), "kelime")
     return 0 if words else 1
 
@@ -80,7 +80,17 @@ def _convert(src: str, dst: str) -> int:
     return 0
 
 
+def _utf8_output() -> None:
+    """Windows konsolu Türkçe harfleri yazamayınca çökmesin."""
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
+    _utf8_output()
     if "--test" in sys.argv:
         sys.exit(_selftest())
     if "--ocr-test" in sys.argv:

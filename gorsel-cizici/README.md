@@ -75,8 +75,10 @@ Katmanlar ayrıdır: Dolgular, Çizgiler, Üstteki şekiller, Yazılar.
 - En iyi sonuç için yalnız çizimi kırpın (soru metnini dahil etmeyin).
 - Görsel ne kadar netse çizim o kadar temiz olur; çok küçük ya da bulanık görsellerde
   ince ayrıntılar kaybolabilir.
-- Yazı tanıma Mac'te macOS'un kendi özelliğidir; Türkçe karakterleri tanımadığı
-  durumlarda yazıyı Illustrator'da düzeltmeniz gerekebilir.
+- Yazı tanıma Mac'te macOS'un kendi özelliğidir ve ı, ş, ğ gibi harfleri düşürür
+  ("Batı" yerine "Bati"). Uygulama ders kitaplarında sık geçen kelimeleri (yönler, aylar,
+  iklim ve harita terimleri, 81 il, ülke adları) kendisi düzeltir; listede olmayan bir
+  kelimeyi Illustrator'da düzeltmeniz gerekebilir.
 
 ## Kaynaktan çalıştırma
 
