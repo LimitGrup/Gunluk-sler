@@ -22,6 +22,7 @@ BEKLENEN = {
     "tire": ["SONUÇ: temiz"],
     "kesir": ["kesir_B: 0 sorun (beklenen 0)", "yakalandı mı: True"],
     "düzen": ["SONUÇ: temiz"],
+    "kds": ["temiz: 0 sorun", "SONUÇ: tamam"],
 }
 
 
@@ -39,6 +40,8 @@ def main(app, kok):
         "tire": [str(T / "tire_sina.py"), app, str(kok / "tire")],
         "kesir": [str(T / "kesir_sina.py"), app, str(kok / "kesir")],
         "düzen": [str(T / "duzen_sina.py"), app, str(kok / "duzen")],
+        "kds": [str(T / "kds_sina.py"), app, str(ornek / "ortaokul_A_baski.pdf"),
+                str(kok / "kds")],
     }
     ortam = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     calisan = {ad: subprocess.Popen([py] + arg, stdout=subprocess.PIPE,

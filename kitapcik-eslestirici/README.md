@@ -1,11 +1,46 @@
-# Kitapçık Eşleştirici (v2.40)
+# Kitapçık Eşleştirici (v2.41)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
 | Düğme | Ne yapar | Çıktı |
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
-| **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? | `kitapcik_kontrol_raporu.pdf` (tek PDF: özet + sorunlu soruların A/B görüntüleri) |
+| **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? KDS seçilince B'siz tek kitapçığı kendi içinde denetler. | `kitapcik_kontrol_raporu.pdf` (tek PDF: özet + sorunlu soruların A/B görüntüleri) |
+
+## KDS: B kitapçığı olmayan denemenin kontrolü; rapor ilk sayfası taşmaz (v2.41)
+
+- **KDS (tek kitapçık):** Sınav türünde yeni seçenek **"KDS (tek kitapçık)"**. Lise ve ortaokul
+  için aynıdır.
+  - Seçilince yalnız kitapçık PDF'i istenir ("Kitapçık PDF"). B kutusu "KDS'de yok" olur,
+    düğmenin adı **KDS KONTROL** olur.
+  - Dosyayı pencereye sürüklemek de yeter.
+  - KONTROL kitapçığı kendi içinde denetler:
+    - soru numaraları (mükerrer, atlanmış, sırasız, yanlış numara);
+    - bantta yazan soru sayısı ile basılı soru sayısı;
+    - açık kalmış cevap ve soru kodu (renkli, siyaha çevrilmiş, eğri);
+    - şık takımı;
+    - metne bağlı grup başlığı numaraları;
+    - iki kez basılmış soru.
+  - Yapı bantlardan okunur ("Bu testte sırasıyla, Matematik (1-15), Fizik (16-21) … toplam
+    30 soru vardır"). Bant birkaç satıra bölünmüş olsa da dersler doğru çıkar; raporda soru
+    dersiyle gösterilir ("Fizik · 18").
+  - Numara hatası iki testi birleştirmiş görünüyorsa (Sosyal 1 yerine "21.") yapı yine
+    bantlardan kurulur. Bilerek bozulmuş 7. sınıf B tek başına verildiğinde, A–B kontrolündeki
+    6 HATA'nın aynısı çıktı.
+  - Karşılaştırılacak ikinci kitapçık olmadığı için metin, şekil ve cevap farkı aranmaz; rapor
+    bunu ilk sayfasında yazar.
+  - Rapor `<deneme adı>_kontrol_raporu.pdf` olarak yazılır. Aynı klasördeki sayısal ve sözel
+    raporları birbirinin üzerine yazılmaz.
+  - EŞLEŞTİR, KDS'de çalışmaz; bilgi verir.
+  - A–B KONTROL ve diğer sınav türleri değişmedi.
+- **Rapor ilk sayfası taşmaz:** Listede her sorunun açıklaması tek satıra sıkıştırılıp "…" ile
+  kesiliyor, sağ kenara dayanıyordu. Artık kenar boşlukları içinde alt satırlara bölünür ve tam
+  okunur. Özet ve dosya adı satırları da bölünür. Kartlardaki açıklama kutusu da uzun metni
+  kesmez, gerektiği kadar uzar.
+- `testler/kds_sina.py`: Kitapçığın kopyalarını bilerek bozar, KDS kipinde denetler. Sekiz
+  senaryo var: mükerrer, ileri numara, yer değiştirmiş, numara silinmiş, soru silinmiş, bant
+  yanlış, açık cevap, açık kod. 4 lise KDS denemesinde ve 2 ortaokul kitapçığında hepsi doğru
+  bulundu. 24 temiz gerçek kitapçıkta KDS kipi 0 HATA verdi.
 
 ## Windows sürümü (v2.40)
 
@@ -531,6 +566,7 @@ python3 testler/tire_sina.py     "Kitapcik Eslestirici.app/Contents/Resources/ki
 python3 testler/numara_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A_baski.pdf B_baski.pdf OTOMATİK /tmp/numara  # B'de numaraları 11 biçimde bozar: her biri doğru yerde HATA olmalı
 python3 testler/baski_kopya_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/kopya  # gerçek cevaplı çiftten baskı kopyası: siyah/eğri cevap, 21 stil, siyah kod yakalanmalı
 python3 testler/sus_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/sus  # sütun sonu / sabit sayfa süsü: yanlış şekil uyarısı çıkmamalı
+python3 testler/kds_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" kitapcik.pdf /tmp/kds  # KDS (tek kitapçık): 8 bozma senaryosu bulunmalı
 ```
 
 Üretilen örnekler: iki sütunlu ve tek sütunlu (2x2 şıklı) sayfalar, metne bağlı gruplar, şekilli
