@@ -25,6 +25,7 @@
   --warn: #9A4500;
   --warn-bg: #FCEBD7;
   --est-bg: #E3F0F8;
+  --ok: #1F7A3E;
   --focus: #0A6A9F;
   --font-ui: "Archivo", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
@@ -34,13 +35,13 @@
   :root:not([data-theme="light"]) {
     --bg: #0F1316; --surface: #171C20; --sunken: #1F262B; --ink: #E5EAEE; --muted: #9DA8B2;
     --rule: #2C353C; --accent: #4DB4E8; --accent-ink: #062030; --accent-soft: #14293A;
-    --warn: #FFB46B; --warn-bg: #3A2812; --est-bg: #14293A; --focus: #4DB4E8; color-scheme: dark;
+    --warn: #FFB46B; --warn-bg: #3A2812; --est-bg: #14293A; --ok: #5BD08A; --focus: #4DB4E8; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0F1316; --surface: #171C20; --sunken: #1F262B; --ink: #E5EAEE; --muted: #9DA8B2;
   --rule: #2C353C; --accent: #4DB4E8; --accent-ink: #062030; --accent-soft: #14293A;
-  --warn: #FFB46B; --warn-bg: #3A2812; --est-bg: #14293A; --focus: #4DB4E8; color-scheme: dark;
+  --warn: #FFB46B; --warn-bg: #3A2812; --est-bg: #14293A; --ok: #5BD08A; --focus: #4DB4E8; color-scheme: dark;
 }
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -166,8 +167,8 @@ input[type=color] { width: 40px; height: 30px; padding: 2px; border: 1px solid v
 .export { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* Steps */
-.steps { display: grid; gap: 16px; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; }
-@media (max-width: 1280px) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.steps { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+@media (max-width: 1180px) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .steps { grid-template-columns: minmax(0, 1fr); } }
 .ask { display: grid; gap: 6px; padding: 10px; border-radius: 6px; background: var(--accent-soft); }
 .axis-card { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--rule); border-radius: 6px; }
@@ -223,6 +224,59 @@ tr.sel td { background: var(--accent-soft); }
 .colorline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .colorline .hex { font-family: var(--font-num); font-size: 12px; color: var(--muted); }
 
+
+/* Next-step banner */
+.next {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 14px; align-items: center;
+  padding: 12px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--rule);
+  border-left: 5px solid var(--accent);
+}
+.next p { font-size: 15px; font-weight: 500; }
+.next-tag { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); white-space: nowrap; }
+.next-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.next.act { background: var(--accent-soft); }
+.next.warn { border-left-color: var(--warn); }
+.next.warn .next-tag { color: var(--warn); }
+.next.ok { border-left-color: var(--ok); }
+.next.ok .next-tag { color: var(--ok); }
+@media (max-width: 700px) { .next { grid-template-columns: minmax(0, 1fr); } .next-acts { justify-content: flex-start; } }
+.btn.big { min-height: 40px; padding: 8px 18px; font-size: 15px; }
+
+/* Charts found in the image */
+.sheetbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.sheetbar:has(.tabs:empty) { display: none; }
+.tabs { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs li { display: inline-flex; }
+.tab {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 3px 6px 3px 10px;
+  border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); cursor: pointer; font-size: 13px;
+}
+.tab b { font-size: 14px; }
+.tab .st { font-size: 12px; color: var(--muted); }
+.tab .st.ok { color: var(--ok); }
+.tab .st.wait { color: var(--warn); }
+.tab[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.tab .x { border: 0; background: transparent; color: var(--muted); width: 20px; height: 20px; border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1; }
+.tab .x:hover { background: var(--rule); color: var(--ink); }
+
+/* Axis numbers under the image */
+.axis-strip { display: grid; gap: 8px; padding: 12px; border-radius: 6px; border: 1px solid var(--rule); background: var(--surface); }
+.axis-strip.need { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.strip-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.axis-row { display: grid; grid-template-columns: 7.5em auto repeat(3, minmax(0, 1fr)); gap: 8px; align-items: end; }
+.axis-row label { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+.axis-row input { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.axis-strip.need .axis-row input:placeholder-shown { border-color: var(--accent); }
+.ax-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; align-self: center; }
+.ax-name .bar-sw { display: inline-block; }
+.axis-row .seg { align-self: center; }
+.strip-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+@media (max-width: 560px) {
+  .axis-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .axis-row .ax-name { grid-column: 1 / 2; }
+  .axis-row .seg { grid-column: 2 / 4; justify-self: start; }
+}
+
 /* Guide */
 .guide { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px; display: grid; gap: 12px; }
 .guide h2 { font-size: 17px; }
@@ -240,10 +294,16 @@ tr.sel td { background: var(--accent-soft); }
       <p class="lede">Sıcaklık–yağış grafiğinin görselini ver; uygulama değerleri okusun ve grafiği yeniden çizsin. Sonucu Illustrator'a yapıştırınca sütunlar, çizgi ve yazılar ayrı ayrı düzenlenebilir vektör olur.</p>
     </div>
     <div class="top-actions">
-      <label class="btn primary" for="fileIn"><input type="file" id="fileIn" accept="image/*">Görsel aç</label>
+      <label class="btn primary big" for="fileIn"><input type="file" id="fileIn" accept="image/*">Görsel aç</label>
       <span class="hint">ya da sürükle-bırak · <kbd>Ctrl</kbd>+<kbd>V</kbd> ile yapıştır</span>
     </div>
   </header>
+
+  <div class="next" id="next" role="status" aria-live="polite">
+    <span class="next-tag" id="nextTag">Sıradaki adım</span>
+    <p id="nextMsg"></p>
+    <div class="next-acts" id="nextActs"></div>
+  </div>
 
   <div class="duo">
     <section class="card" aria-labelledby="hOrig">
@@ -251,9 +311,20 @@ tr.sel td { background: var(--accent-soft); }
         <h2 id="hOrig">Görsel</h2>
         <span class="badge" id="sampleBadge" hidden>Örnek görsel</span>
       </div>
+      <div class="sheetbar" id="sheetbar">
+        <ul class="tabs" id="sheets" aria-label="Görseldeki grafikler"></ul>
+        <button type="button" class="btn small ghost" id="addSheet" title="Görselde bulunamayan bir grafiği elle ekle">+ Grafik ekle</button>
+      </div>
+      <div class="canvas-shell" id="shell">
+        <div class="canvas-wrap" id="wrap">
+          <canvas id="cv" aria-label="Grafik görseli; eksen çizgileri ve okunan noktalar sürüklenebilir"></canvas>
+        </div>
+        <canvas id="loupe" hidden></canvas>
+        <div class="drop" id="drop" hidden>Görseli bırak</div>
+      </div>
       <div class="stage-bar">
         <div class="group">
-          <button type="button" class="btn small" id="regionBtn">Bölge seç</button>
+          <button type="button" class="btn small" id="regionBtn" title="Seçili grafiğin sınırlarını yeniden çiz">Bölge seç</button>
           <button type="button" class="btn small ghost" id="allBtn">Tüm görsel</button>
         </div>
         <div class="group">
@@ -268,22 +339,46 @@ tr.sel td { background: var(--accent-soft); }
         </div>
         <label class="chk"><input type="checkbox" id="maskChk"> Renk maskesi</label>
       </div>
-      <div class="canvas-shell" id="shell">
-        <div class="canvas-wrap" id="wrap">
-          <canvas id="cv" aria-label="Grafik görseli; eksen çizgileri ve okunan noktalar sürüklenebilir"></canvas>
+      <p class="status" id="status"></p>
+
+      <div class="axis-strip" id="axisStrip">
+        <div class="strip-head">
+          <b id="stripName">Eksen sayıları</b>
+          <span class="note">Eksende yazan en alttaki ve en üstteki sayı</span>
         </div>
-        <canvas id="loupe" hidden></canvas>
-        <div class="drop" id="drop" hidden>Görseli bırak</div>
-      </div>
-      <div class="ask" id="askBox" hidden>
-        <div class="row">
-          <button type="button" class="btn primary" id="askBtn">Claude'a okut</button>
-          <label class="chk"><input type="checkbox" id="autoAsk" checked> Yeni görselde ve bölgede kendiliğinden okut</label>
+        <div class="axis-row" data-side="L">
+          <span class="ax-name"><i class="bar-sw mag"></i>Sol eksen</span>
+          <div class="seg" role="group" aria-label="Sol eksen neyi gösteriyor">
+            <button type="button" data-side="L" data-role="t">Sıcaklık</button>
+            <button type="button" data-side="L" data-role="p">Yağış</button>
+          </div>
+          <label>en alt<input id="L_lo" inputmode="decimal" autocomplete="off" placeholder="ör. 0"></label>
+          <label>en üst<input id="L_hi" inputmode="decimal" autocomplete="off" placeholder="ör. 40"></label>
+          <label>aralık<input id="L_step" inputmode="decimal" autocomplete="off" placeholder="oto"></label>
         </div>
-        <p class="note">Eksendeki sayıları, başlıkları ve ay etiketlerini Claude okur; değerleri sayfa piksel piksel ölçer.</p>
-        <p class="note" id="askNote"></p>
+        <div class="axis-row" data-side="R">
+          <span class="ax-name"><i class="bar-sw cyan"></i>Sağ eksen</span>
+          <div class="seg" role="group" aria-label="Sağ eksen neyi gösteriyor">
+            <button type="button" data-side="R" data-role="t">Sıcaklık</button>
+            <button type="button" data-side="R" data-role="p">Yağış</button>
+          </div>
+          <label>en alt<input id="R_lo" inputmode="decimal" autocomplete="off" placeholder="ör. 0"></label>
+          <label>en üst<input id="R_hi" inputmode="decimal" autocomplete="off" placeholder="ör. 400"></label>
+          <label>aralık<input id="R_step" inputmode="decimal" autocomplete="off" placeholder="oto"></label>
+        </div>
+        <div class="strip-foot">
+          <label class="chk" id="sameAxesWrap" hidden><input type="checkbox" id="sameAxes"> Bu sayılar bütün grafiklerde aynı</label>
+          <button type="button" class="btn small primary" id="applyAxes">Oku</button>
+        </div>
+        <div class="ask" id="askBox" hidden>
+          <div class="row">
+            <button type="button" class="btn small" id="askBtn">Sayıları Claude'a okut</button>
+            <label class="chk"><input type="checkbox" id="autoAsk" checked> Yeni görselde kendiliğinden okut</label>
+          </div>
+          <p class="note" id="askNote"></p>
+        </div>
       </div>
-      <p class="status" id="status" role="status"></p>
+
       <div class="key" aria-hidden="true">
         <span><i class="k-line k-mag"></i>Sol eksen</span>
         <span><i class="k-line k-cyan"></i>Sağ eksen</span>
@@ -298,17 +393,11 @@ tr.sel td { background: var(--accent-soft); }
         <span class="tag" id="sizeTag"></span>
       </div>
       <div class="paper" id="preview"></div>
-      <div class="sheets">
-        <ul class="chips" id="chips" aria-label="Grafikler"></ul>
-        <div class="save">
-          <label for="panelName">Harf</label>
-          <input id="panelName" value="A" maxlength="4" autocomplete="off">
-          <button type="button" class="btn small" id="addBtn">Kaydet, sıradakine geç</button>
-        </div>
-      </div>
+      <p class="note warn" id="pendingNote"></p>
       <div class="export">
         <button type="button" class="btn primary" id="copySvg">Illustrator için kopyala</button>
         <button type="button" class="btn" id="dlSvg" hidden>SVG indir</button>
+        <button type="button" class="btn ghost" id="copyScript" title="iklim-grafigi.jsx scriptinin Veri sekmesine yapıştırmak için">Script için veri kopyala</button>
       </div>
       <p class="note" id="outNote"></p>
       <p class="note">Illustrator'da bir belge açıp <kbd>Ctrl</kbd>+<kbd>V</kbd> ile yapıştır ya da indirdiğin SVG'yi <b>Dosya › Aç</b> ile aç. Grafik gerçek ölçüsünde gelir.</p>
@@ -316,80 +405,8 @@ tr.sel td { background: var(--accent-soft); }
   </div>
 
   <div class="steps">
-    <section class="card" aria-labelledby="h1s">
-      <h2 id="h1s"><span class="num">1</span>Eksenler</h2>
-      <div class="axis-card" data-side="L">
-        <div class="axis-head">
-          <span class="bar-sw mag"></span><b>Sol eksen</b>
-          <div class="seg" role="group" aria-label="Sol eksen neyi gösteriyor">
-            <button type="button" data-side="L" data-role="t">Sıcaklık</button>
-            <button type="button" data-side="L" data-role="p">Yağış</button>
-          </div>
-        </div>
-        <div class="trio">
-          <label>En alttaki sayı<input id="L_lo" inputmode="decimal" autocomplete="off"></label>
-          <label>En üstteki sayı<input id="L_hi" inputmode="decimal" autocomplete="off"></label>
-          <label>Aralık<input id="L_step" inputmode="decimal" autocomplete="off"></label>
-        </div>
-      </div>
-      <div class="axis-card" data-side="R">
-        <div class="axis-head">
-          <span class="bar-sw cyan"></span><b>Sağ eksen</b>
-          <div class="seg" role="group" aria-label="Sağ eksen neyi gösteriyor">
-            <button type="button" data-side="R" data-role="t">Sıcaklık</button>
-            <button type="button" data-side="R" data-role="p">Yağış</button>
-          </div>
-        </div>
-        <div class="trio">
-          <label>En alttaki sayı<input id="R_lo" inputmode="decimal" autocomplete="off"></label>
-          <label>En üstteki sayı<input id="R_hi" inputmode="decimal" autocomplete="off"></label>
-          <label>Aralık<input id="R_step" inputmode="decimal" autocomplete="off"></label>
-        </div>
-      </div>
-      <div class="row"><button type="button" class="btn" id="findBtn">Eksenleri görselde yeniden bul</button></div>
-      <p class="note" id="axisNote"></p>
-      <p class="note">Renkli yatay çizgiler, eksendeki en alt ve en üst sayının hizasında olmalı. Gerekirse sürükle; seçili çizgiyi <kbd>↑</kbd> <kbd>↓</kbd> ile kaydır.</p>
-    </section>
-
-    <section class="card" aria-labelledby="h2s">
-      <h2 id="h2s"><span class="num">2</span>Okuma</h2>
-      <div class="field">
-        <label for="catSel">Yatay eksen</label>
-        <select id="catSel">
-          <option value="auto">Otomatik (sütun sayısından)</option>
-          <option value="12">12 ay: O Ş M N M H T A E E K A</option>
-          <option value="4">4 mevsim: kış ilkb. yaz sonb.</option>
-          <option value="custom">Özel etiketler</option>
-        </select>
-      </div>
-      <div class="field" id="customRow" hidden>
-        <label for="customLabels">Etiketler (virgülle ayır)</label>
-        <input id="customLabels" autocomplete="off" placeholder="Oca, Şub, Mar, …">
-      </div>
-      <div class="color-row">
-        <span class="sw" id="barSw"></span>
-        <div class="name"><b>Sütun rengi</b><span id="barTxt">otomatik</span></div>
-        <div class="acts">
-          <button type="button" class="btn small" id="pickBar">Görselden seç</button>
-          <button type="button" class="btn small ghost" id="autoBar" title="Rengi yeniden otomatik bul">Oto</button>
-        </div>
-        <label class="range">Tolerans<input type="range" id="barTol" min="6" max="60" step="1"><output id="barTolOut"></output></label>
-      </div>
-      <div class="color-row">
-        <span class="sw" id="lineSw"></span>
-        <div class="name"><b>Çizgi rengi</b><span id="lineTxt">otomatik</span></div>
-        <div class="acts">
-          <button type="button" class="btn small" id="pickLine">Görselden seç</button>
-          <button type="button" class="btn small ghost" id="autoLine" title="Rengi yeniden otomatik bul">Oto</button>
-        </div>
-        <label class="range">Tolerans<input type="range" id="lineTol" min="6" max="60" step="1"><output id="lineTolOut"></output></label>
-      </div>
-      <button type="button" class="btn primary wide" id="readBtn">Değerleri yeniden oku</button>
-      <p class="note" id="readNote"></p>
-    </section>
-
     <section class="card" aria-labelledby="h3s">
-      <h2 id="h3s"><span class="num">3</span>Değerler</h2>
+      <h2 id="h3s">Okunan değerler</h2>
       <div class="rounding">
         <label>Sıcaklık yuvarlama
           <select id="tRound"><option value="0.1">0,1</option><option value="0.5">0,5</option><option value="1">1</option></select>
@@ -408,12 +425,12 @@ tr.sel td { background: var(--accent-soft); }
         <span><i class="i-est"></i>tahmini, kontrol et</span>
         <span><i class="i-warn"></i>Claude'un okumasıyla uyuşmuyor</span>
       </div>
-      <p class="note">Hücreye yazınca işaret ve yeni grafik de değişir; işareti sürükleyince değer de değişir.</p>
+      <p class="note">Hücreye yazınca işaret ve yeni grafik de değişir; görseldeki işareti sürükleyince değer de değişir.</p>
       <div class="row"><button type="button" class="btn small" id="copyTsv">Tabloyu kopyala (Excel)</button></div>
     </section>
 
     <section class="card" aria-labelledby="h4s">
-      <h2 id="h4s"><span class="num">4</span>Görünüm</h2>
+      <h2 id="h4s">Görünüm</h2>
       <div class="form">
         <fieldset>
           <legend>Ölçü</legend>
@@ -491,34 +508,76 @@ tr.sel td { background: var(--accent-soft); }
         </fieldset>
       </div>
     </section>
+
+    <section class="card" aria-labelledby="h2s">
+      <h2 id="h2s">Okuma ayarları</h2>
+      <p class="note">Değerler yanlış çıkarsa buraya bak.</p>
+      <div class="field">
+        <label for="catSel">Yatay eksen</label>
+        <select id="catSel">
+          <option value="auto">Otomatik (sütun sayısından)</option>
+          <option value="12">12 ay: O Ş M N M H T A E E K A</option>
+          <option value="4">4 mevsim: kış ilkb. yaz sonb.</option>
+          <option value="custom">Özel etiketler</option>
+        </select>
+      </div>
+      <div class="field" id="customRow" hidden>
+        <label for="customLabels">Etiketler (virgülle ayır)</label>
+        <input id="customLabels" autocomplete="off" placeholder="Oca, Şub, Mar, …">
+      </div>
+      <div class="color-row">
+        <span class="sw" id="barSw"></span>
+        <div class="name"><b>Sütun rengi</b><span id="barTxt">otomatik</span></div>
+        <div class="acts">
+          <button type="button" class="btn small" id="pickBar">Görselden seç</button>
+          <button type="button" class="btn small ghost" id="autoBar" title="Rengi yeniden otomatik bul">Oto</button>
+        </div>
+        <label class="range">Tolerans<input type="range" id="barTol" min="6" max="60" step="1"><output id="barTolOut"></output></label>
+      </div>
+      <div class="color-row">
+        <span class="sw" id="lineSw"></span>
+        <div class="name"><b>Çizgi rengi</b><span id="lineTxt">otomatik</span></div>
+        <div class="acts">
+          <button type="button" class="btn small" id="pickLine">Görselden seç</button>
+          <button type="button" class="btn small ghost" id="autoLine" title="Rengi yeniden otomatik bul">Oto</button>
+        </div>
+        <label class="range">Tolerans<input type="range" id="lineTol" min="6" max="60" step="1"><output id="lineTolOut"></output></label>
+      </div>
+      <div class="row">
+        <button type="button" class="btn small" id="readBtn">Değerleri yeniden oku</button>
+        <button type="button" class="btn small ghost" id="findBtn">Eksen çizgilerini yeniden bul</button>
+      </div>
+      <p class="note" id="axisNote"></p>
+      <p class="note" id="readNote"></p>
+      <p class="note">Renkli yatay çizgiler eksendeki en alt ve en üst sayının hizasında olmalı. Gerekirse sürükle; seçili çizgiyi <kbd>↑</kbd> <kbd>↓</kbd> ile kaydır.</p>
+    </section>
   </div>
 
   <section class="guide" aria-labelledby="hg">
     <h2 id="hg">Nasıl kullanılır</h2>
     <div class="guide-cols">
       <div>
-        <h3>Tek grafik</h3>
+        <h3>Üç adım</h3>
         <ol>
-          <li>Görseli aç, sürükle ya da <kbd>Ctrl</kbd>+<kbd>V</kbd> ile yapıştır.</li>
-          <li><b>Claude'a okut</b>'a bas ya da iki eksenin en alt ve en üst sayısını kendin yaz. Değerler hemen okunur.</li>
-          <li>Görseldeki işaretlerle yeni grafiği karşılaştır; yanlış olan değeri tabloda düzelt ya da işareti sürükle.</li>
-          <li><b>Illustrator için kopyala</b>'ya bas, Illustrator'da <kbd>Ctrl</kbd>+<kbd>V</kbd> yap.</li>
+          <li><b>Görsel aç</b> ya da görseli <kbd>Ctrl</kbd>+<kbd>V</kbd> ile yapıştır. Görseldeki grafikler kendiliğinden bulunur, sütunlar ve sıcaklık çizgisi işaretlenir.</li>
+          <li>Görselin altındaki kutulara her eksenin en alttaki ve en üstteki sayısını yaz (claude.ai'de Claude bunu kendisi okur). Değerler hemen çıkar.</li>
+          <li>Sağdaki yeni grafiği görselle karşılaştır, <b>Illustrator için kopyala</b>'ya bas ve Illustrator'da <kbd>Ctrl</kbd>+<kbd>V</kbd> yap.</li>
         </ol>
       </div>
       <div>
-        <h3>A, B, C… gibi birden çok grafik</h3>
-        <ol>
-          <li><b>Bölge seç</b> ile ilk grafiği çerçevele; okunur.</li>
-          <li>Kontrol et, <b>Kaydet, sıradakine geç</b>'e bas.</li>
-          <li>Sıradaki grafiği çerçevele. Hepsi bitince tek seferde kopyala; grafikler harfleriyle yan yana dizilir.</li>
-        </ol>
+        <h3>Birden çok grafik (A, B, C…)</h3>
+        <ul>
+          <li>Görseldeki her grafik ayrı bir sekme olur. Sekmeye tıklayıp o grafiğin sayılarını yaz.</li>
+          <li>Sayılar hepsinde aynıysa <b>Bu sayılar bütün grafiklerde aynı</b>'yı işaretle; bir kez yazman yeter.</li>
+          <li>Bulunamayan bir grafik varsa <b>+ Grafik ekle</b> ile görselde çerçevele.</li>
+        </ul>
       </div>
       <div>
         <h3>İpuçları</h3>
         <ul>
-          <li>Sütun ile çizgi aynı renkteyse de okunur; çizgi sütunun içinden geçiyorsa noktayı elle düzelt.</li>
-          <li><b>Renk maskesi</b>, hangi piksellerin sütun (pembe) ve çizgi (camgöbeği) sayıldığını gösterir. Eksik ya da fazla görünüyorsa toleransı değiştir.</li>
-          <li>Renkler ekranda RGB'dir; CMYK belgeye yapıştırınca Illustrator dönüştürür. Baskı rengini Illustrator'da örnek renkten seçebilirsin.</li>
+          <li>Bir değer yanlışsa tablodan düzelt ya da görseldeki işareti sürükle.</li>
+          <li><b>Renk maskesi</b>, hangi piksellerin sütun (pembe) ve çizgi (camgöbeği) sayıldığını gösterir.</li>
+          <li>Renkler ekranda RGB'dir; CMYK belgeye yapıştırınca Illustrator dönüştürür.</li>
         </ul>
       </div>
     </div>
@@ -539,19 +598,25 @@ const COL_MAG = "#D1006F", COL_CYAN = "#008BC4";
 
 const S = {
   src: null, W: 0, H: 0, px: null,
-  region: null,
-  axes: {
-    L: { role: "t", lo: 0, hi: 40, step: 10, yLo: null, yHi: null },
-    R: { role: "p", lo: 0, hi: 400, step: 100, yLo: null, yHi: null },
-  },
-  axX: { L: null, R: null },
-  barColor: null, lineColor: null, barAuto: true, lineAuto: true,
-  barTol: 22, lineTol: 22, barHalf: 4,
-  rows: [], panels: [], claude: null,
-  mode: "idle", drag: null, sel: null,
+  sheets: [], sheet: null,
+  barTol: 22, lineTol: 22,
+  mode: "idle", drag: null, sel: null, regionTarget: "active",
   scale: 1, zoom: "fit", showMask: false, maskCanvas: null,
-  isSample: false,
+  isSample: false, asking: false,
 };
+// Her grafiğin (A, B, C…) kendi bölgesi, eksenleri ve okunan değerleri vardır.
+// S.region, S.axes, S.rows… her zaman etkin grafiği gösterir.
+const SHEET_KEYS = ["region", "axes", "axX", "xAxisY", "barColor", "lineColor", "barAuto", "lineAuto", "barHalf", "rows", "claude", "axisMsg", "readMsg", "lastBars", "rawRuns"];
+function newAxis(role) { return { role, lo: null, hi: null, step: null, yLo: null, yHi: null, nTicks: null }; }
+function newSheet(name, region) {
+  return {
+    name, region, axes: { L: newAxis("t"), R: newAxis("p") }, axX: { L: null, R: null }, xAxisY: null,
+    barColor: null, lineColor: null, barAuto: true, lineAuto: true, barHalf: 4,
+    rows: [], claude: null, axisMsg: ["", false], readMsg: ["", false], lastBars: [], rawRuns: [],
+  };
+}
+for (const k of SHEET_KEYS) Object.defineProperty(S, k, { get() { return S.sheet[k]; }, set(v) { S.sheet[k] = v; }, enumerable: true });
+S.sheet = newSheet("A", null);
 
 /* ---------------- helpers ---------------- */
 const median = (a) => { if (!a.length) return NaN; const b = [...a].sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
@@ -639,7 +704,9 @@ function avgColor(x, y, rad) {
 /* ---------------- axes ---------------- */
 const axisByRole = (role) => (S.axes.L.role === role ? S.axes.L : S.axes.R);
 const sideOf = (A) => (A === S.axes.L ? "sol" : "sag");
-const axisReady = (A) => A.yLo !== null && A.yHi !== null && Math.abs(A.yLo - A.yHi) > 2 && isFinite(A.lo) && isFinite(A.hi) && A.hi !== A.lo;
+const axisReady = (A) => A.yLo !== null && A.yHi !== null && Math.abs(A.yLo - A.yHi) > 2;
+const axisValued = (A) => A.lo !== null && A.hi !== null && isFinite(A.lo) && isFinite(A.hi) && A.hi !== A.lo;
+const sheetValued = (sh) => axisValued(sh.axes.L) && axisValued(sh.axes.R);
 const valAt = (A, y) => A.lo + (A.yLo - y) / (A.yLo - A.yHi) * (A.hi - A.lo);
 const yAtVal = (A, v) => A.yLo - (v - A.lo) / (A.hi - A.lo) * (A.yLo - A.yHi);
 
@@ -667,7 +734,7 @@ function isAxisInk(x, y) {
 // Düzenli aralıklı çentik dizisini bul (aradaki eksik çentiklere izin verir)
 function tickGrid(ys, minD) {
   minD = minD || 5;
-  if (ys.length < 2) return null;
+  if (ys.length < 2 || ys.length > 40) return null;
   let best = null;
   const cands = new Set();
   for (let i = 0; i < ys.length; i++) for (let j = i + 1; j < ys.length; j++) {
@@ -728,7 +795,7 @@ function findAxes() {
     }
     return list;
   };
-  const expOf = (A) => (A.step > 0 && A.hi > A.lo) ? Math.round((A.hi - A.lo) / A.step) + 1 : null;
+  const expOf = (A) => (axisValued(A) && A.step > 0 && A.hi > A.lo) ? Math.round((A.hi - A.lo) / A.step) + 1 : null;
   const gridScore = (grid, E) => {
     if (!grid) return -Infinity;
     const miss = grid.slots - grid.on.length;
@@ -827,7 +894,7 @@ function findAxes() {
       continue;
     }
     const g = ax.grid;
-    const exp = (A.step > 0 && A.hi > A.lo) ? Math.round((A.hi - A.lo) / A.step) + 1 : null;
+    const exp = expOf(A);
     let top = g.top, bot = g.bot, n = g.slots;
     if (exp && exp > n) {
       // Eksik çentikleri eksen çizgisinin uçlarına göre tamamla
@@ -847,12 +914,180 @@ function findAxes() {
       msgs.push(`${name} eksen: ${n} çentik`);
     }
     A.yHi = top; A.yLo = bot;
-    if (!exp && A.hi > A.lo && n > 1) {
-      A.step = (A.hi - A.lo) / (n - 1);
-      $(k + "_step").value = fmt(A.step);
-    }
+    A.nTicks = exp || n;
+    if (!exp && axisValued(A) && A.hi > A.lo && n > 1) A.step = (A.hi - A.lo) / (n - 1);
   }
   return { ok, msg: msgs.join(" · ") + "." };
+}
+
+/* ---------------- grafikleri bul ---------------- */
+// Görseldeki her grafiği, sayı etiketleri olan dikey eksen çiftlerinden bulur.
+function detectPanels(debug) {
+  const W = S.W, H = S.H;
+  const minLen = Math.max(20, Math.round(Math.min(W, H) * 0.06));
+  // 1) Her sütundaki uzun dikey koyu çizgiler
+  const lines = [];
+  let prevOpen = [];
+  for (let x = 1; x < W - 1; x++) {
+    const segs = [];
+    let c0 = -1, last = -1, gap = 0;
+    for (let y = 0; y <= H; y++) {
+      const ink = y < H && isAxisInk(x, y);
+      if (ink) { if (c0 < 0) c0 = y; last = y; gap = 0; }
+      else if (c0 >= 0 && y < H && gap < 2) gap++;
+      else { if (c0 >= 0 && last - c0 + 1 >= minLen) segs.push([c0, last]); c0 = -1; gap = 0; }
+    }
+    const open = [];
+    for (const [y0, y1] of segs) {
+      let L = null;
+      for (const l of prevOpen) {
+        const ov = Math.min(l.y1, y1) - Math.max(l.y0, y0);
+        if (ov > 0.7 * Math.min(l.y1 - l.y0, y1 - y0)) { L = l; break; }
+      }
+      if (L) { L.x1 = x; L.y0 = Math.min(L.y0, y0); L.y1 = Math.max(L.y1, y1); }
+      else { L = { x0: x, x1: x, y0, y1 }; lines.push(L); }
+      open.push(L);
+    }
+    prevOpen = open;
+  }
+  // 2) Çentikli ve yanında sayı etiketi olan çizgiler eksendir
+  // Yazı pikseli: koyu; ClearType yazılardaki renkli kenarları da sayar, doygun çizgi ve sütunları saymaz
+  const isText = (x, y) => {
+    const q = (y * W + x) * 4, p = S.px;
+    const r = p[q], g = p[q + 1], b = p[q + 2];
+    const lum = 0.3 * r + 0.59 * g + 0.11 * b, c = Math.max(r, g, b) - Math.min(r, g, b);
+    return lum < 150 && (c < 130 || lum < 80);
+  };
+  // Çentiğin dış tarafında sayı etiketi var mı? Yazı, çentik satırının üstünde ve altında da
+  // birkaç farklı sütunda iz bırakır; kılavuz çizgisi ya da dikey kenar bırakmaz.
+  const labelInk = (xFrom, dir, y, d) => {
+    let x = xFrom, n = 0;
+    while (n < 16 && x > 0 && x < W - 1 && isAxisInk(x, y)) { x += dir; n++; }
+    const ry = Math.max(4, Math.round(d * 0.22)), skip = Math.max(1, Math.round(d * 0.04));
+    const span = Math.max(40, Math.round(d * 1.3)), gapMax = Math.max(8, Math.round(d * 0.35));
+    const up = new Set(), dn = new Set();
+    let started = false;
+    for (let k = 1; k <= span; k++) {
+      const xx = x + dir * k;
+      if (xx < 0 || xx >= W) break;
+      let any = false, full = true;
+      for (let yy = y - ry; yy <= y + ry; yy++) {
+        const ink = yy >= 0 && yy < H && isText(xx, yy);
+        if (!ink) full = false;
+        if (!ink || Math.abs(yy - y) <= skip) continue;
+        any = true;
+        (yy < y ? up : dn).add(xx);
+      }
+      if (full) break;                       // başka bir dikey çizgiye gelindi
+      if (any) started = true;
+      else if (!started && k > gapMax) break; // yazı çentiğe yakın başlamalı
+    }
+    return up.size >= 2 && dn.size >= 2 && new Set([...up, ...dn]).size >= 3;
+  };
+  const axes = [];
+  for (const l of lines) {
+    if (l.x1 - l.x0 > 3) continue;
+    const ys = [];
+    let inT = false, ts = 0;
+    for (let y = Math.max(0, l.y0 - 6); y <= Math.min(H - 1, l.y1 + 6) + 1; y++) {
+      const t = y <= Math.min(H - 1, l.y1 + 6) && (
+        (l.x0 - 2 >= 0 && isAxisInk(l.x0 - 1, y) && isAxisInk(l.x0 - 2, y)) ||
+        (l.x1 + 2 < W && isAxisInk(l.x1 + 1, y) && isAxisInk(l.x1 + 2, y)));
+      if (t && !inT) { inT = true; ts = y; }
+      if (!t && inT) { inT = false; if (y - ts <= 3) ys.push((ts + y) / 2); }
+    }
+    const g = tickGrid(ys);
+    if (!g || g.on.length < 3 || g.slots - g.on.length > 2) continue;
+    let left = 0, right = 0;
+    for (const ty of g.on) {
+      const yy = Math.round(ty - 0.5);
+      if (labelInk(l.x0 - 1, -1, yy, g.d)) left++;
+      if (labelInk(l.x1 + 1, 1, yy, g.d)) right++;
+    }
+    const need = Math.max(2, Math.ceil(g.on.length * 0.6));
+    const side = left >= need && left >= right ? "L" : right >= need ? "R" : null;
+    if (side) axes.push({ ...l, g, side });
+  }
+  // 3) Soldaki ekseni, aynı tabanda sağdaki en yakın eksenle eşle
+  axes.sort((a, b) => a.x0 - b.x0);
+  const used = new Set();
+  const boxes = [];
+  for (const A of axes) {
+    if (A.side !== "L" || used.has(A)) continue;
+    const hA = A.y1 - A.y0;
+    let best = null;
+    for (const B of axes) {
+      if (B.side !== "R" || used.has(B) || B.x0 <= A.x1 + 0.4 * hA) continue;
+      const hB = B.y1 - B.y0;
+      if (Math.abs(A.y1 - B.y1) > Math.max(5, 0.08 * Math.max(hA, hB))) continue;
+      if (Math.abs(hA - hB) > 0.35 * Math.max(hA, hB)) continue;
+      const ov = Math.min(A.y1, B.y1) - Math.max(A.y0, B.y0);
+      if (ov < 0.6 * Math.min(hA, hB)) continue;
+      // Arada aynı tabanda başka bir sol eksen varsa bu B, başka grafiğin ekseni
+      const between = axes.some((C) => C !== A && C.side === "L" && C.x0 > A.x1 && C.x0 < B.x0 &&
+        Math.abs(C.y1 - A.y1) <= Math.max(5, 0.08 * hA) && Math.abs((C.y1 - C.y0) - hA) <= 0.35 * hA);
+      if (between) continue;
+      if (!best || B.x0 < best.x0) best = B;
+    }
+    used.add(A);
+    if (best) used.add(best);
+    boxes.push({ A, B: best, top: Math.min(A.y0, best ? best.y0 : A.y0), bot: Math.max(A.y1, best ? best.y1 : A.y1) });
+  }
+  for (const B of axes) {
+    if (B.side === "R" && !used.has(B)) boxes.push({ A: null, B, top: B.y0, bot: B.y1 });
+  }
+  // Eşi olmayan ve başka bir grafiğin içinde kalan eksenleri at; çok kısa olanları at
+  const longest = Math.max(...boxes.map((b) => b.bot - b.top));
+  const paired = boxes.filter((b) => b.A && b.B);
+  for (let i = boxes.length - 1; i >= 0; i--) {
+    const b = boxes[i];
+    if (b.bot - b.top < longest * 0.35) { boxes.splice(i, 1); continue; }
+    if (b.A && b.B) continue;
+    const x = (b.A || b.B).x0;
+    const inside = paired.some((p) => x > p.A.x0 - 0.3 * (p.B.x0 - p.A.x0) && x < p.B.x1 + 0.3 * (p.B.x0 - p.A.x0) &&
+      Math.min(p.bot, b.bot) - Math.max(p.top, b.top) > 0);
+    if (inside) boxes.splice(i, 1);
+  }
+  if (debug) return { axes: axes.map((a) => [a.side, a.x0, a.x1, a.y0, a.y1, a.g.on.length]), boxes: boxes.map((b) => [b.A && b.A.x0, b.B && b.B.x0, b.top, b.bot]) };
+  if (!boxes.length) return [];
+  // 4) Bölgeler: eksenlerin çevresine yazılar için pay bırak, komşu grafiklerin eksenlerini dışarıda tut
+  const regs = boxes.map((b) => {
+    const h = b.bot - b.top;
+    const ax = b.A ? b.A.x0 : null, bx = b.B ? b.B.x1 : null;
+    const w = ax !== null && bx !== null ? bx - ax : h * 1.6;
+    const padX = Math.max(30, w * 0.22);
+    let x0 = ax !== null ? ax - padX : bx - w - padX;
+    let x1 = bx !== null ? bx + padX : ax + w + padX;
+    let y0 = b.top - Math.max(22, h * 0.35), y1 = b.bot + Math.max(20, h * 0.28);
+    return { b, x0, x1, y0, y1 };
+  });
+  for (const r of regs) {
+    for (const o of regs) {
+      if (o === r) continue;
+      const vOv = Math.min(r.b.bot, o.b.bot) - Math.max(r.b.top, o.b.top) > 0;
+      const oL = o.b.A ? o.b.A.x0 : o.b.B.x0, oR = o.b.B ? o.b.B.x1 : o.b.A.x1;
+      const rL = r.b.A ? r.b.A.x0 : r.b.B.x0, rR = r.b.B ? r.b.B.x1 : r.b.A.x1;
+      if (vOv) {
+        if (oR < rL) r.x0 = Math.max(r.x0, oR + 3);
+        if (oL > rR) r.x1 = Math.min(r.x1, oL - 3);
+      } else if (Math.min(rR, oR) - Math.max(rL, oL) > 0) {
+        if (o.b.bot < r.b.top) r.y0 = Math.max(r.y0, o.b.bot + 3);
+        if (o.b.top > r.b.bot) r.y1 = Math.min(r.y1, o.b.top - 3);
+      }
+    }
+  }
+  const out = regs.map((r) => ({
+    x0: clamp(Math.floor(r.x0), 0, W), x1: clamp(Math.ceil(r.x1), 0, W),
+    y0: clamp(Math.floor(r.y0), 0, H), y1: clamp(Math.ceil(r.y1), 0, H), top: r.b.top, h: r.b.bot - r.b.top,
+  })).filter((r) => r.x1 - r.x0 >= 40 && r.y1 - r.y0 >= 40);
+  // Okuma sırası: satır satır, soldan sağa
+  out.sort((a, b) => a.top - b.top);
+  const rows = [];
+  for (const r of out) {
+    const row = rows.find((q) => Math.abs(q[0].top - r.top) < 0.5 * Math.max(q[0].h, r.h));
+    if (row) row.push(r); else rows.push([r]);
+  }
+  return rows.flatMap((q) => q.sort((a, b) => a.x0 - b.x0)).map(({ x0, y0, x1, y1 }) => ({ x0, y0, x1, y1 }));
 }
 
 /* ---------------- reading ---------------- */
@@ -1133,11 +1368,16 @@ function requestedCount() {
 
 function readValues() {
   if (!S.src) return;
-  const tA = axisByRole("t"), pA = axisByRole("p");
-  if (!axisReady(tA) || !axisReady(pA)) {
-    setNote("readNote", "Önce iki eksenin en alt ve en üst sayılarını gir, çizgileri hizala.", true);
+  const tA0 = axisByRole("t"), pA0 = axisByRole("p");
+  if (!axisReady(tA0) || !axisReady(pA0)) {
+    S.rows = [];
+    S.readMsg = ["Eksen çizgileri bulunamadı. “Bölge seç” ile grafiği çerçevele ya da renkli çizgileri eksendeki en alt ve en üst sayıya sürükle.", true];
+    afterRead();
     return;
   }
+  // Sayılar henüz girilmediyse konumları geçici bir ölçekle ölç; değerler sayılar gelince hesaplanır
+  const tA = axisValued(tA0) ? tA0 : { ...tA0, lo: 0, hi: 1 };
+  const pA = axisValued(pA0) ? pA0 : { ...pA0, lo: 0, hi: 1 };
   const R = S.region;
   const [xa, xb] = plotXRange();
   const zeroVal = (pA.lo <= 0 && pA.hi >= 0) ? 0 : Math.min(pA.lo, pA.hi);
@@ -1161,13 +1401,14 @@ function readValues() {
   const notes = [];
   if (!built) {
     S.rows = [];
-    setNote("readNote", "Sütun ya da çizgi bulunamadı. Renkleri görselden seç ya da toleransı artır.", true);
+    S.readMsg = ["Sütun ya da çizgi bulunamadı. 2. adımda renkleri görselden seç ya da toleransı artır.", true];
     afterRead();
     return;
   }
   const labels = labelsFor(built.N);
   S.barHalf = bars.length ? median(bars.map((b) => b.w)) / 2 : Math.max(3, built.pitch * 0.3);
   const cl = (S.claude && S.claude.labels && S.claude.labels.length === built.N) ? S.claude : null;
+  const valued = axisValued(tA0) && axisValued(pA0);
   const pRange = Math.abs(pA.hi - pA.lo), tRange = Math.abs(tA.hi - tA.lo);
   let missLine = 0, approxLine = 0, fromClaude = 0;
 
@@ -1176,7 +1417,7 @@ function readValues() {
     if (c.bar) row.barY = c.bar.top;
     else if (bars.length) {
       const cv = cl ? cl.p[k] : null;
-      if (cv !== null && cv !== undefined && isFinite(cv) && cv > pRange * 0.02) { row.barY = yAtVal(pA, cv); row.barSrc = "claude"; fromClaude++; }
+      if (valued && cv !== null && cv !== undefined && isFinite(cv) && cv > pRange * 0.02) { row.barY = yAtVal(pA, cv); row.barSrc = "claude"; fromClaude++; }
       else { row.barY = yZero; row.barSrc = "zero"; }
     }
     if (lm) {
@@ -1185,10 +1426,10 @@ function readValues() {
     }
     if (row.lineY === null) {
       const cv = cl ? cl.t[k] : null;
-      if (cv !== null && cv !== undefined && isFinite(cv)) { row.lineY = yAtVal(tA, cv); row.lineSrc = "claude"; fromClaude++; }
+      if (valued && cv !== null && cv !== undefined && isFinite(cv)) { row.lineY = yAtVal(tA, cv); row.lineSrc = "claude"; fromClaude++; }
       else missLine++;
     }
-    if (cl) {
+    if (cl && valued) {
       const ct = cl.t[k], cp = cl.p[k];
       if (row.lineY !== null && row.lineSrc !== "claude" && isFinite(ct) && ct !== null && Math.abs(valAt(tA, row.lineY) - ct) > tRange * 0.12) row.warnT = ct;
       if (row.barY !== null && row.barSrc === "px" && isFinite(cp) && cp !== null && Math.abs(valAt(pA, row.barY) - cp) > pRange * 0.12) row.warnP = cp;
@@ -1203,28 +1444,28 @@ function readValues() {
   if (missLine) notes.push(`${missLine} sıcaklık noktası bulunamadı`);
   if (approxLine) notes.push(`${approxLine} nokta yakın sütundan tahmin edildi`);
   if (fromClaude) notes.push(`${fromClaude} değer Claude'un okumasından`);
-  setNote("readNote", notes.join(" · ") + ".", missLine > 0 || built.extra > 0);
+  S.readMsg = [notes.join(" · ") + ".", missLine > 0 || built.extra > 0];
   afterRead();
 }
 
 function afterRead() {
   S.maskCanvas = null;
-  updateSwatches();
-  applyImageColors();
-  renderTable();
-  render();
+  if (S.batch) return;
+  refreshUI();
 }
 
 /* ---------------- values / table ---------------- */
-function rowT(r) {
-  if (r.lineY === null) return null;
-  return roundTo(valAt(axisByRole("t"), r.lineY), Number($("tRound").value));
+function valT(A, r) {
+  if (r.lineY === null || !axisValued(A)) return null;
+  return roundTo(valAt(A, r.lineY), Number($("tRound").value));
 }
-function rowP(r) {
-  if (r.barY === null) return null;
-  const v = roundTo(valAt(axisByRole("p"), r.barY), Number($("pRound").value));
+function valP(A, r) {
+  if (r.barY === null || !axisValued(A)) return null;
+  const v = roundTo(valAt(A, r.barY), Number($("pRound").value));
   return v < 0 ? 0 : v;
 }
+const rowT = (r) => valT(axisByRole("t"), r);
+const rowP = (r) => valP(axisByRole("p"), r);
 
 function renderTable() {
   const tb = $("tbody");
@@ -1233,7 +1474,7 @@ function renderTable() {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
     td.colSpan = 4; td.className = "empty";
-    td.textContent = S.src ? "Henüz değer yok. “Değerleri oku”ya bas." : "Bir görsel aç.";
+    td.textContent = S.src ? "Bu grafikte sütun ya da çizgi bulunamadı." : "Bir görsel aç.";
     tr.append(td); tb.append(tr);
     updateOutput();
     return;
@@ -1248,7 +1489,10 @@ function renderTable() {
       const inp = document.createElement("input");
       inp.value = val; inp.setAttribute("aria-label", label + " " + (i + 1));
       inp.autocomplete = "off";
-      if (cls.includes("v")) inp.inputMode = "decimal";
+      if (cls.includes("v")) {
+        inp.inputMode = "decimal";
+        if (!sheetValued(S.sheet)) { inp.disabled = true; inp.placeholder = "?"; }
+      }
       inp.addEventListener("change", () => onChange(inp.value));
       inp.addEventListener("focus", () => { S.sel = { kind: "row", i }; markSel(); render(); });
       td.append(inp);
@@ -1310,71 +1554,84 @@ try {
 } catch (e) { /* tarayıcı depolaması kapalı olabilir */ }
 function saveStyle() { try { localStorage.setItem("iklim-cizici-gorunum", JSON.stringify(ST)); } catch (e) { /* yok say */ } }
 
-S.curIdx = -1;
 let lastSVG = "";
 const mctx = document.createElement("canvas").getContext("2d");
 const fontStack = () => `"${ST.font}", "Helvetica Neue", Helvetica, Arial, sans-serif`;
 const textW = (str, size) => { mctx.font = `${size}px ${fontStack()}`; return mctx.measureText(String(str)).width; };
 const xmlEsc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const n2 = (v) => String(Math.round(v * 100) / 100);
-const idSafe = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i").replace(/[^A-Za-z0-9]/g, "") || "x";
+const idSafe = (s) => String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i").replace(/[^A-Za-z0-9]/g, "") || "x";
 
-function currentPanel(name) {
-  const tA = axisByRole("t"), pA = axisByRole("p");
+function panelOf(sh) {
+  const tA = sh.axes.L.role === "t" ? sh.axes.L : sh.axes.R;
+  const pA = tA === sh.axes.L ? sh.axes.R : sh.axes.L;
+  const side = (A) => (A === sh.axes.L ? "sol" : "sag");
   return {
-    name,
-    t: { side: sideOf(tA), lo: tA.lo, hi: tA.hi, step: tA.step },
-    p: { side: sideOf(pA), lo: pA.lo, hi: pA.hi, step: pA.step },
-    rows: S.rows.map((r) => ({ label: r.label, t: rowT(r), p: rowP(r) })),
+    name: sh.name,
+    t: { side: side(tA), lo: tA.lo, hi: tA.hi, step: tA.step },
+    p: { side: side(pA), lo: pA.lo, hi: pA.hi, step: pA.step },
+    rows: sh.rows.map((r) => ({ label: r.label, t: valT(tA, r), p: valP(pA, r) })),
   };
 }
-function livePanels() {
-  const list = S.panels.slice();
-  if (S.rows.length) {
-    if (S.curIdx >= 0 && S.panels[S.curIdx]) {
-      S.panels[S.curIdx] = currentPanel(S.panels[S.curIdx].name);
-      list[S.curIdx] = S.panels[S.curIdx];
-    } else {
-      list.push(currentPanel($("panelName").value.trim()));
-    }
-  }
-  return list;
-}
-function updateOutput() { renderChips(); renderPreview(); }
+const currentPanel = () => panelOf(S.sheet);
+const readySheets = () => S.sheets.filter((sh) => sh.rows.length && sheetValued(sh));
+function livePanels() { return readySheets().map(panelOf); }
 
-function renderChips() {
-  const ul = $("chips");
-  ul.textContent = "";
-  S.panels.forEach((P, i) => {
-    const li = document.createElement("li");
-    const b = document.createElement("b"); b.textContent = P.name || "—";
-    const sp = document.createElement("span"); sp.textContent = i === S.curIdx ? "açık" : "kayıtlı";
-    const x = document.createElement("button");
-    x.type = "button"; x.textContent = "×"; x.setAttribute("aria-label", `${P.name || "Grafik"} grafiğini kaldır`);
-    x.addEventListener("click", () => {
-      S.panels.splice(i, 1);
-      if (S.curIdx === i) S.curIdx = -1; else if (S.curIdx > i) S.curIdx--;
-      updateOutput();
+// Illustrator scriptinin (iklim-grafigi.jsx) “Veri” sekmesine yapıştırılacak metin
+function scriptText() {
+  const list = livePanels();
+  const many = list.length > 1;
+  const ax = (k, A) => `@${k};${A.side};${fmt(A.lo)};${fmt(A.hi)};${fmt(A.step)}`;
+  return list.map((P) => [many ? `[${P.name}]` : null, ax("sicaklik", P.t), ax("yagis", P.p)]
+    .concat(P.rows.map((r) => `${r.label};${fmt(r.t)};${fmt(r.p)}`)).filter((l) => l !== null).join("\n")).join("\n");
+}
+
+function updateOutput() { renderSheets(); renderPreview(); updateNext(); }
+
+// Sekmeleri yerinde güncelle: tıklama sırasında DOM'u yeniden kurmak tıklamayı kaybettirir
+function renderSheets() {
+  const ul = $("sheets");
+  $("sameAxesWrap").hidden = S.sheets.length < 2;
+  const list = S.sheets.length < 2 ? [] : S.sheets;
+  const key = list.map((sh) => sh.name).join("|");
+  if (ul.dataset.key !== key) {
+    ul.dataset.key = key;
+    ul.textContent = "";
+    list.forEach((sh) => {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "tab"; b.dataset.name = sh.name;
+      const nm = document.createElement("b"); nm.textContent = sh.name;
+      const st = document.createElement("span"); st.className = "st";
+      const x = document.createElement("span");
+      x.className = "x"; x.textContent = "×"; x.title = `${sh.name} grafiğini çıkar`;
+      x.setAttribute("role", "button"); x.setAttribute("aria-label", `${sh.name} grafiğini çıkar`);
+      x.addEventListener("click", (e) => { e.stopPropagation(); const k = S.sheets.findIndex((q) => q.name === sh.name); if (k >= 0) removeSheet(k); });
+      b.addEventListener("click", () => { const k = S.sheets.findIndex((q) => q.name === sh.name); if (k >= 0) activate(k); });
+      b.append(nm, st, x);
+      li.append(b);
+      ul.append(li);
     });
-    li.append(b, sp, x);
-    ul.append(li);
-  });
-  if (S.rows.length && S.curIdx < 0) {
-    const li = document.createElement("li");
-    li.className = "draft";
-    const b = document.createElement("b"); b.textContent = $("panelName").value.trim() || "—";
-    const sp = document.createElement("span"); sp.textContent = S.panels.length ? "yeni" : "okunan grafik";
-    li.append(b, sp);
-    ul.append(li);
+  }
+  for (const b of ul.querySelectorAll(".tab")) {
+    const sh = S.sheets.find((q) => q.name === b.dataset.name);
+    if (!sh) continue;
+    b.setAttribute("aria-current", String(sh === S.sheet));
+    const st = b.querySelector(".st");
+    if (!sh.rows.length) { st.className = "st wait"; st.textContent = "bulunamadı"; }
+    else if (!sheetValued(sh)) { st.className = "st wait"; st.textContent = "sayı bekliyor"; }
+    else { st.className = "st ok"; st.textContent = "hazır"; }
   }
 }
 
 function renderPreview() {
   const box = $("preview");
   const panels = livePanels();
+  const waiting = S.sheets.filter((sh) => sh.rows.length && !sheetValued(sh)).map((sh) => sh.name);
+  $("pendingNote").textContent = panels.length && waiting.length ? `${waiting.join(", ")} grafiğinin eksen sayıları girilmedi; yeni grafikte henüz yok.` : "";
   if (!panels.length) {
     lastSVG = "";
-    box.innerHTML = '<p class="empty-msg">Değerler okununca yeni grafik burada çizilir.</p>';
+    box.innerHTML = `<p class="empty-msg">${S.src && S.rows.length ? "Eksen sayılarını yazınca yeni grafik burada çizilir." : "Değerler okununca yeni grafik burada çizilir."}</p>`;
     $("sizeTag").textContent = "";
     return;
   }
@@ -1600,7 +1857,7 @@ function syncStyleInputs() {
   $("st_lineHex").textContent = ST.lineColor.toUpperCase();
 }
 
-/* ---------------- swatches / inputs ---------------- */
+/* ---------------- swatches / axis inputs ---------------- */
 function updateSwatches() {
   const set = (sw, txt, col, auto) => {
     $(sw).style.background = col ? `rgb(${col.map(Math.round).join(",")})` : "";
@@ -1610,23 +1867,63 @@ function updateSwatches() {
   set("lineSw", "lineTxt", S.lineColor, S.lineAuto);
 }
 function syncAxisInputs() {
+  const need = !sheetValued(S.sheet) && !!S.src && !S.isSample;
+  $("axisStrip").classList.toggle("need", need);
   for (const k of ["L", "R"]) {
     const A = S.axes[k];
     $(k + "_lo").value = fmt(A.lo);
     $(k + "_hi").value = fmt(A.hi);
     $(k + "_step").value = fmt(A.step);
+    $(k + "_step").dataset.touched = "0";
     for (const b of document.querySelectorAll(`.seg button[data-side="${k}"]`)) b.setAttribute("aria-pressed", String(b.dataset.role === A.role));
+  }
+  $("stripName").textContent = S.sheets.length > 1 ? `${S.sheet.name} grafiğinin eksen sayıları` : "Eksen sayıları";
+}
+function showNotes() {
+  setNote("axisNote", ...(S.axisMsg || ["", false]));
+  setNote("readNote", ...(S.readMsg || ["", false]));
+}
+// Bir grafiği baştan oku: eksen çizgilerini bul, sütunları ve çizgiyi ölç
+function runSheet() {
+  const r = findAxes();
+  S.axisMsg = [r.msg, !r.ok || /kontrol et/.test(r.msg)];
+  readValues();
+}
+function withSheet(sh, fn) {
+  const keep = S.sheet;
+  S.sheet = sh;
+  try { fn(); } finally { S.sheet = keep; }
+}
+function applyAxesToAll() {
+  if (!$("sameAxes").checked || S.sheets.length < 2) return;
+  for (const sh of S.sheets) {
+    if (sh === S.sheet) continue;
+    for (const k of ["L", "R"]) {
+      const A = S.axes[k], B = sh.axes[k];
+      B.role = A.role; B.lo = A.lo; B.hi = A.hi; B.step = A.step;
+    }
+    withSheet(sh, runSheet);
   }
 }
 function axisInputsChanged() {
+  const same = ["L", "R"].every((k) => {
+    const A = S.axes[k];
+    const st = parseNum($(k + "_step").value);
+    return parseNum($(k + "_lo").value) === A.lo && parseNum($(k + "_hi").value) === A.hi && (st === A.step || st === null);
+  });
+  if (same) return;
   for (const k of ["L", "R"]) {
     const A = S.axes[k];
-    const lo = parseNum($(k + "_lo").value), hi = parseNum($(k + "_hi").value), st = parseNum($(k + "_step").value);
-    if (lo !== null) A.lo = lo;
-    if (hi !== null) A.hi = hi;
-    if (st !== null && st > 0) A.step = st;
+    A.lo = parseNum($(k + "_lo").value);
+    A.hi = parseNum($(k + "_hi").value);
+    const st = parseNum($(k + "_step").value);
+    if (st !== null && st > 0 && $(k + "_step").dataset.touched === "1") A.step = st;
+    else if (axisValued(A) && A.nTicks > 1) A.step = (A.hi - A.lo) / (A.nTicks - 1);
+    else if (axisValued(A)) A.step = st > 0 ? st : (A.hi - A.lo) / 4;
+    else A.step = st;
   }
-  renderTable(); render();
+  applyAxesToAll();
+  runSheet();
 }
 
 /* ---------------- canvas ---------------- */
@@ -1680,14 +1977,39 @@ function render() {
     ctx.drawImage(S.maskCanvas, 0, 0, S.W * s, S.H * s);
   }
   const R = S.region;
-  // bölge dışını karart
+  // bölge dışını karart, diğer grafiklerin sınırlarını göster
   if (R && (R.x0 > 0 || R.y0 > 0 || R.x1 < S.W || R.y1 < S.H)) {
     ctx.save();
-    ctx.fillStyle = "rgba(20,30,40,0.38)";
+    ctx.fillStyle = "rgba(20,30,40,0.30)";
     ctx.beginPath();
     ctx.rect(0, 0, S.W * s, S.H * s);
     ctx.rect(R.x0 * s, R.y0 * s, (R.x1 - R.x0) * s, (R.y1 - R.y0) * s);
     ctx.fill("evenodd");
+    ctx.restore();
+  }
+  if (S.sheets.length > 1) {
+    ctx.save();
+    ctx.font = "700 12px Archivo, system-ui, sans-serif";
+    ctx.textBaseline = "top";
+    for (const sh of S.sheets) {
+      const r = sh.region;
+      if (!r) continue;
+      const act = sh === S.sheet;
+      ctx.setLineDash(act ? [] : [5, 4]);
+      ctx.strokeStyle = act ? "#0A6A9F" : "rgba(10,106,159,0.75)";
+      ctx.lineWidth = act ? 2 : 1.2;
+      ctx.strokeRect(r.x0 * s + 1, r.y0 * s + 1, (r.x1 - r.x0) * s - 2, (r.y1 - r.y0) * s - 2);
+      const tw = ctx.measureText(sh.name).width + 10;
+      ctx.setLineDash([]);
+      ctx.fillStyle = act ? "#0A6A9F" : "rgba(255,255,255,0.92)";
+      roundRect(ctx, r.x0 * s + 3, r.y0 * s + 3, tw, 17, 4); ctx.fill();
+      if (!act) { ctx.strokeStyle = "rgba(10,106,159,0.75)"; ctx.lineWidth = 1; ctx.stroke(); }
+      ctx.fillStyle = act ? "#FFFFFF" : "#0A6A9F";
+      ctx.fillText(sh.name, r.x0 * s + 8, r.y0 * s + 5);
+    }
+    ctx.restore();
+  } else if (R && (R.x0 > 0 || R.y0 > 0 || R.x1 < S.W || R.y1 < S.H)) {
+    ctx.save();
     ctx.setLineDash([5, 4]); ctx.strokeStyle = "#0A6A9F"; ctx.lineWidth = 1.5;
     ctx.strokeRect(R.x0 * s + 0.5, R.y0 * s + 0.5, (R.x1 - R.x0) * s - 1, (R.y1 - R.y0) * s - 1);
     ctx.restore();
@@ -1834,6 +2156,8 @@ cv.addEventListener("pointerdown", (e) => {
     }
     setMode("idle");
     readValues();
+    applyImageColors();
+    renderPreview();
     return;
   }
   if (S.mode === "region") {
@@ -1847,8 +2171,11 @@ cv.addEventListener("pointerdown", (e) => {
     S.drag = h; S.sel = h.kind === "axis" ? h : { kind: h.kind, i: h.i };
     cv.setPointerCapture(e.pointerId);
     markSel(); render(); drawLoupe(p.mx, p.my);
-  } else if (S.sel) {
-    S.sel = null; markSel(); render();
+  } else {
+    // Başka bir grafiğin alanına tıklandıysa o grafiğe geç
+    const k = S.sheets.findIndex((sh) => sh !== S.sheet && sh.region && p.ix >= sh.region.x0 && p.ix <= sh.region.x1 && p.iy >= sh.region.y0 && p.iy <= sh.region.y1);
+    if (k >= 0) { activate(k); return; }
+    if (S.sel) { S.sel = null; markSel(); render(); }
   }
 });
 cv.addEventListener("pointermove", (e) => {
@@ -1875,12 +2202,23 @@ const endDrag = () => {
     const y0 = clamp(Math.floor(Math.min(d.y0, d.y1)), 0, S.H), y1 = clamp(Math.ceil(Math.max(d.y0, d.y1)), 0, S.H);
     setMode("idle");
     if (x1 - x0 < 40 || y1 - y0 < 40) { setStatus("Bölge çok küçük; daha büyük bir dikdörtgen çiz.", true); render(); return; }
-    const prev = S.region;
-    S.region = { x0, y0, x1, y1 };
-    newSelection();
-    placeDefaultLines(prev);
-    autoRun();
-    maybeAsk();
+    const reg = { x0, y0, x1, y1 };
+    if (S.regionTarget === "new") {
+      const prevSheet = S.sheet;
+      const sh = newSheet(nextLetter(), reg);
+      if ($("sameAxes").checked) for (const k of ["L", "R"]) Object.assign(sh.axes[k], { role: prevSheet.axes[k].role, lo: prevSheet.axes[k].lo, hi: prevSheet.axes[k].hi, step: prevSheet.axes[k].step });
+      else for (const k of ["L", "R"]) sh.axes[k].role = prevSheet.axes[k].role;
+      S.sheets.push(sh);
+      S.sheet = sh;
+      placeDefaultLines(null);
+    } else {
+      const prev = S.region;
+      S.region = reg;
+      S.claude = null;
+      placeDefaultLines(prev);
+    }
+    runSheet();
+    if (!sheetValued(S.sheet)) maybeAsk([S.sheet]);
     return;
   }
   if (d.kind === "axis") renderTable();
@@ -1908,13 +2246,17 @@ document.addEventListener("keydown", (e) => {
   render();
 });
 
-function setMode(m) {
+function setMode(m, target) {
   S.mode = m;
-  $("regionBtn").classList.toggle("on", m === "region");
+  if (m === "region") S.regionTarget = target || "active";
+  $("regionBtn").classList.toggle("on", m === "region" && S.regionTarget !== "new");
+  $("addSheet").classList.toggle("on", m === "region" && S.regionTarget === "new");
   $("pickBar").classList.toggle("on", m === "pickBar");
   $("pickLine").classList.toggle("on", m === "pickLine");
   const msg = {
-    region: "Okunacak grafiği dikdörtgen içine almak için görselin üzerinde sürükle. Vazgeçmek için Esc.",
+    region: S.regionTarget === "new"
+      ? "Eklenecek grafiği dikdörtgen içine almak için görselin üzerinde sürükle. Vazgeçmek için Esc."
+      : `${S.sheets.length > 1 ? S.sheet.name + " grafiğini" : "Okunacak grafiği"} dikdörtgen içine almak için görselin üzerinde sürükle. Vazgeçmek için Esc.`,
     pickBar: "Bir sütunun içine tıkla.",
     pickLine: "Sıcaklık çizgisinin ya da noktasının üzerine tıkla.",
   }[m];
@@ -1937,40 +2279,117 @@ async function loadBlob(blob) {
   }
 }
 
-function setImage(img, isSample) {
+const letterAt = (i) => (i < 26 ? String.fromCharCode(65 + i) : "G" + (i + 1));
+function nextLetter() {
+  const used = new Set(S.sheets.map((sh) => sh.name));
+  for (let i = 0; i < 60; i++) if (!used.has(letterAt(i))) return letterAt(i);
+  return "X";
+}
+
+function setImage(img, isSample, preset) {
   const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
   const g = c.getContext("2d", { willReadFrequently: true });
   g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);
   g.drawImage(img, 0, 0);
+  if (askCtl) askCtl.abort();
   S.src = c; S.W = w; S.H = h;
   S.px = g.getImageData(0, 0, w, h).data;
-  S.region = { x0: 0, y0: 0, x1: w, y1: h };
-  if (askCtl) askCtl.abort();
-  S.rows = []; S.claude = null; S.sel = null; S.maskCanvas = null; S.curIdx = -1;
-  S.axX = { L: null, R: null };
-  S.barAuto = true; S.lineAuto = true;
+  S.sel = null; S.maskCanvas = null;
   S.isSample = isSample;
   $("sampleBadge").hidden = !isSample;
   setNote("askNote", "");
-  placeDefaultLines(null);
+  const full = { x0: 0, y0: 0, x1: w, y1: h };
+  const regs = isSample ? [] : detectPanels();
+  S.sheets = (regs.length ? regs : [full]).map((r, i) => newSheet(letterAt(i), r));
+  if (preset) for (const sh of S.sheets) for (const k of ["L", "R"]) Object.assign(sh.axes[k], preset[k]);
+  S.sheet = S.sheets[0];
   layoutCanvas();
-  autoRun();
-  if (!isSample) maybeAsk();
+  S.batch = true;
+  for (const sh of S.sheets) withSheet(sh, () => { placeDefaultLines(null); runSheet(); });
+  S.batch = false;
+  applyImageColors();
+  refreshUI();
+  setMode("idle");
+  if (!isSample) maybeAsk(S.sheets);
 }
 
 function autoRun() {
-  const r = findAxes();
-  setNote("axisNote", r.msg, !r.ok || /kontrol et/.test(r.msg));
-  readValues();
+  runSheet();
   setMode("idle");
 }
 
+function activate(i) {
+  if (!S.sheets[i]) return;
+  S.sheet = S.sheets[i];
+  S.sel = null; S.maskCanvas = null;
+  refreshUI();
+}
+function removeSheet(i) {
+  if (S.sheets.length < 2) return;
+  const wasActive = S.sheets[i] === S.sheet;
+  S.sheets.splice(i, 1);
+  if (wasActive) S.sheet = S.sheets[Math.min(i, S.sheets.length - 1)];
+  refreshUI();
+}
+
+function refreshUI() {
+  syncAxisInputs();
+  showNotes();
+  updateSwatches();
+  renderTable();
+  render();
+}
+
+function updateNext() {
+  const box = $("next"), msgEl = $("nextMsg"), acts = $("nextActs"), tag = $("nextTag");
+  acts.textContent = "";
+  let msg = "", tone = "", label = "Sıradaki adım";
+  const btn = (text, fn, primary) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "btn small" + (primary ? " primary" : "");
+    b.textContent = text; b.addEventListener("click", fn);
+    acts.append(b);
+  };
+  if (!S.src || S.isSample) {
+    msg = "Kendi grafiğinin görselini aç, buraya sürükle ya da Ctrl+V ile yapıştır. Şu an örnek bir grafik gösteriliyor.";
+    tone = "act";
+  } else if (S.asking) {
+    msg = "Claude eksenlerdeki sayıları okuyor… Birkaç saniye sürebilir; istersen sayıları kendin de yazabilirsin.";
+    label = "Okunuyor";
+  } else {
+    const n = S.sheets.length;
+    const names = S.sheets.map((sh) => sh.name).join(", ");
+    const head = n > 1 ? `Görselde ${n} grafik bulundu (${names}). ` : "";
+    const pending = S.sheets.filter((sh) => sh.rows.length && !sheetValued(sh));
+    const nm = n > 1 ? `${S.sheet.name} grafiğinin ` : "";
+    if (!S.rows.length) {
+      msg = head + (n > 1 ? `${S.sheet.name} grafiğinde ` : "") + "sütun ya da çizgi bulunamadı. Grafiği “Bölge seç” ile çerçevele.";
+      tone = "warn"; label = "Bir sorun var";
+      btn("Bölge seç", () => setMode("region"));
+    } else if (!sheetValued(S.sheet)) {
+      msg = head + `Şimdi ${nm}eksenlerindeki en alttaki ve en üstteki sayıyı görselin altındaki kutulara yaz.`;
+      tone = "act";
+      btn("Kutulara git", () => { $("axisStrip").scrollIntoView({ behavior: "smooth", block: "center" }); $("L_lo").focus({ preventScroll: true }); }, true);
+    } else if (pending.length) {
+      msg = head + `${S.sheet.name} hazır. Sıradaki: ${pending[0].name} grafiği.`;
+      tone = "act";
+      btn(`${pending[0].name} grafiğine geç`, () => activate(S.sheets.indexOf(pending[0])), true);
+    } else {
+      msg = (n > 1 ? `${n} grafiğin değerleri okundu. ` : "Değerler okundu. ") + "Sağdaki yeni grafiği görselle karşılaştır; doğruysa “Illustrator için kopyala”ya bas.";
+      tone = "ok"; label = "Hazır";
+    }
+  }
+  box.className = "next" + (tone ? " " + tone : "");
+  tag.textContent = label;
+  msgEl.textContent = msg;
+}
+
 /* ---------------- Claude ---------------- */
-let sampleFn = null, askCtl = null;
-async function regionBlob() {
-  const R = S.region, w = R.x1 - R.x0, h = R.y1 - R.y0;
+let sampleFn = null, sampleMax = 1, askCtl = null;
+async function regionBlob(R) {
+  const w = R.x1 - R.x0, h = R.y1 - R.y0;
   const k = clamp(1100 / Math.max(w, h), 1, 3);
   const c = document.createElement("canvas");
   c.width = Math.round(w * k); c.height = Math.round(h * k);
@@ -1979,82 +2398,94 @@ async function regionBlob() {
   g.drawImage(S.src, R.x0, R.y0, w, h, 0, 0, c.width, c.height);
   return await new Promise((res) => c.toBlob(res, "image/png"));
 }
-const ASK_PROMPT = `The image is a climate chart (Turkish geography textbook style): monthly or seasonal precipitation drawn as bars and temperature drawn as a line, with one vertical axis on each side.
-Read the printed tick labels on both vertical axes, the axis titles or units printed above or beside each axis, and the category labels under the horizontal axis.
+function askPrompt(n) {
+  return `You will see ${n} image${n > 1 ? "s" : ""}. Each image is one climate chart (Turkish geography textbook style): monthly or seasonal precipitation drawn as bars and temperature drawn as a line, with one vertical axis on each side.
+For each image, read the printed tick labels on both vertical axes, the axis titles or units printed above or beside each axis, and the category labels under the horizontal axis.
 Use the unit marks (°C means temperature; mm or kg/m² means precipitation), the legend and the axis titles to decide which axis is which.
-Reply with only this JSON object:
-{"left":{"quantity":"temperature" or "precipitation","bottom":number,"top":number,"step":number,"title":"text printed above or beside this axis, exactly as printed, or empty"},
+Reply with only this JSON object, with exactly ${n} item${n > 1 ? "s" : ""} in "charts", in the same order as the images:
+{"charts":[{"left":{"quantity":"temperature" or "precipitation","bottom":number,"top":number,"step":number,"title":"text printed above or beside this axis, exactly as printed, or empty"},
  "right":{"quantity":"temperature" or "precipitation","bottom":number,"top":number,"step":number,"title":"..."},
  "labels":[category labels from left to right, exactly as printed, for example "O","Ş","M" or "kış","ilkb."],
  "temperature":[your estimate of the temperature for each label, or null],
- "precipitation":[your estimate of the precipitation for each label, or null]}
-"bottom" and "top" are the lowest and highest numbers printed on that axis; "step" is the difference between two neighbouring printed numbers. Use a dot as the decimal separator. Write superscripts as plain Unicode (m²). If several charts are visible, read only the largest complete one.`;
-
-function maybeAsk() {
-  if (sampleFn && S.src && !S.isSample && $("autoAsk").checked) askClaude();
+ "precipitation":[your estimate of the precipitation for each label, or null]}]}
+"bottom" and "top" are the lowest and highest numbers printed on that axis; "step" is the difference between two neighbouring printed numbers. Use a dot as the decimal separator. Write superscripts as plain Unicode (m²).`;
 }
-async function askClaude() {
-  if (!sampleFn || !S.src) return;
-  if (askCtl) askCtl.abort();
-  const btn = $("askBtn");
-  btn.disabled = true;
-  setNote("askNote", "Claude görseli okuyor… (ilk seferde izin isteyebilir)");
-  const ctl = new AbortController();
-  askCtl = ctl;
-  try {
-    const blob = await regionBlob();
-    const d = await sampleFn.json(ASK_PROMPT, { images: [blob], signal: ctl.signal });
-    if (ctl.signal.aborted) return;
-    const ok = applyClaude(d);
-    if (!ok) { setNote("askNote", "Claude'un cevabı anlaşılamadı. Eksen sayılarını elle gir.", true); return; }
-    const r = findAxes();
-    setNote("axisNote", r.msg, !r.ok || /kontrol et/.test(r.msg));
-    readValues();
-    setNote("askNote", `Okundu: sol ${roleName(S.axes.L.role)} ${fmt(S.axes.L.lo)}–${fmt(S.axes.L.hi)}, sağ ${roleName(S.axes.R.role)} ${fmt(S.axes.R.lo)}–${fmt(S.axes.R.hi)}, ${S.claude.labels.length} etiket.`);
-  } catch (e) {
-    const code = e && e.code;
-    const msg = {
-      not_granted: "Claude'a erişim izni verilmedi.",
-      sampling_disabled: "Bu hesapta Claude kullanılamıyor.",
-      images_unavailable: "Bu görünümde görsel gönderilemiyor.",
-      rate_limited: "Şu an çok fazla istek var; biraz sonra tekrar dene.",
-      image_rejected: "Görsel gönderilemedi; daha küçük bir bölge seç.",
-      invalid_json: "Claude'un cevabı anlaşılamadı; tekrar dene.",
-      cancelled: "",
-    }[code];
-    setNote("askNote", msg !== undefined ? msg : "Claude'a ulaşılamadı; biraz sonra tekrar dene.", !!msg);
-    if (code === "not_granted" || code === "sampling_disabled" || code === "images_unavailable") $("askBox").hidden = true;
-  } finally {
-    if (askCtl === ctl) { btn.disabled = false; askCtl = null; }
-  }
+function maybeAsk(list) {
+  if (sampleFn && S.src && !S.isSample && $("autoAsk").checked) askClaude(list || S.sheets);
 }
 const roleName = (r) => (r === "t" ? "sıcaklık" : "yağış");
-function applyClaude(d) {
+function applyClaudeTo(sh, d, takeTitles) {
   if (!d || typeof d !== "object" || !d.left || !d.right) return false;
   const conv = (o) => ({
     role: /temp|sıcak|sicak|°c/i.test(String(o.quantity)) ? "t" : "p",
     lo: Number(o.bottom), hi: Number(o.top), step: Number(o.step),
+    title: typeof o.title === "string" ? o.title.trim() : "",
   });
   const L = conv(d.left), R = conv(d.right);
-  const titles = { L: typeof d.left.title === "string" ? d.left.title.trim() : "", R: typeof d.right.title === "string" ? d.right.title.trim() : "" };
   if (![L.lo, L.hi, R.lo, R.hi].every(isFinite) || L.hi === L.lo || R.hi === R.lo) return false;
   if (L.role === R.role) R.role = L.role === "t" ? "p" : "t";
   for (const [k, v] of [["L", L], ["R", R]]) {
-    const A = S.axes[k];
+    const A = sh.axes[k];
     A.role = v.role; A.lo = v.lo; A.hi = v.hi;
     A.step = isFinite(v.step) && v.step > 0 ? v.step : (v.hi - v.lo) / 4;
+    if (takeTitles && v.title) { if (v.role === "t") ST.tTitle = v.title; else ST.pTitle = v.title; }
   }
   const arr = (a) => Array.isArray(a) ? a.map((v) => (v === null || v === "" || !isFinite(Number(v)) ? null : Number(v))) : [];
-  const labels = Array.isArray(d.labels) ? d.labels.map((s) => String(s).trim()) : [];
-  S.claude = { labels, t: arr(d.temperature), p: arr(d.precipitation) };
-  for (const k of ["L", "R"]) {
-    if (!titles[k]) continue;
-    if (S.axes[k].role === "t") ST.tTitle = titles[k]; else ST.pTitle = titles[k];
-  }
-  syncStyleInputs();
-  saveStyle();
-  syncAxisInputs();
+  sh.claude = { labels: Array.isArray(d.labels) ? d.labels.map((x) => String(x).trim()) : [], t: arr(d.temperature), p: arr(d.precipitation) };
   return true;
+}
+async function askClaude(list) {
+  list = (list || S.sheets).filter(Boolean);
+  if (!sampleFn || !S.src || !list.length) return;
+  if (askCtl) askCtl.abort();
+  const ctl = new AbortController();
+  askCtl = ctl;
+  S.asking = true;
+  $("askBtn").disabled = true;
+  setNote("askNote", "Claude görseli okuyor… (ilk seferde izin isteyebilir)");
+  updateNext();
+  let ok = 0, failed = false;
+  try {
+    const per = Math.max(1, Math.min(6, sampleMax));
+    for (let i = 0; i < list.length; i += per) {
+      const batch = list.slice(i, i + per);
+      const blobs = await Promise.all(batch.map((sh) => regionBlob(sh.region)));
+      const d = await sampleFn.json(askPrompt(batch.length), { images: blobs, signal: ctl.signal });
+      if (ctl.signal.aborted) return;
+      const charts = Array.isArray(d) ? d : d && Array.isArray(d.charts) ? d.charts : d && d.left ? [d] : [];
+      batch.forEach((sh, j) => { if (applyClaudeTo(sh, charts[j], i + j === 0)) ok++; });
+    }
+  } catch (e) {
+    failed = true;
+    const code = e && e.code;
+    const msg = {
+      not_granted: "Claude'a izin verilmedi. Sayıları kutulara kendin yaz.",
+      sampling_disabled: "Bu hesapta Claude kullanılamıyor. Sayıları kutulara kendin yaz.",
+      images_unavailable: "Bu görünümde görsel gönderilemiyor. Sayıları kutulara kendin yaz.",
+      rate_limited: "Şu an çok fazla istek var; biraz sonra tekrar dene ya da sayıları kendin yaz.",
+      image_rejected: "Görsel gönderilemedi; daha küçük bir bölge seç.",
+      invalid_json: "Claude'un cevabı anlaşılamadı; tekrar dene.",
+      cancelled: "",
+    }[code];
+    setNote("askNote", msg !== undefined ? msg : "Claude'a ulaşılamadı; sayıları kutulara kendin yaz.", !!msg);
+    if (code === "not_granted" || code === "sampling_disabled" || code === "images_unavailable") $("askBox").hidden = true;
+  } finally {
+    if (askCtl === ctl) {
+      askCtl = null;
+      S.asking = false;
+      $("askBtn").disabled = false;
+      if (ok) {
+        S.batch = true;
+        for (const sh of list) if (sh.claude) withSheet(sh, runSheet);
+        S.batch = false;
+        syncStyleInputs(); saveStyle();
+        setNote("askNote", `Claude ${list.length > 1 ? ok + " grafiğin" : "grafiğin"} eksen sayılarını okudu. Kutulardaki sayıları kontrol et.`);
+      } else if (!failed) {
+        setNote("askNote", "Claude'un cevabı anlaşılamadı. Sayıları kutulara kendin yaz.", true);
+      }
+      refreshUI();
+    }
+  }
 }
 
 /* ---------------- sample chart ---------------- */
@@ -2143,11 +2574,6 @@ async function copyText(text, okMsg) {
 }
 
 /* ---------------- wiring ---------------- */
-function newSelection() {
-  S.curIdx = -1;
-  S.claude = null;
-  if (askCtl) askCtl.abort();
-}
 $("fileIn").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; if (f) loadBlob(f); e.target.value = ""; });
 document.addEventListener("paste", (e) => {
   const items = (e.clipboardData && e.clipboardData.items) || [];
@@ -2165,15 +2591,14 @@ document.addEventListener("drop", (e) => {
   if (f && f.type.startsWith("image/")) loadBlob(f);
 });
 
-$("regionBtn").addEventListener("click", () => setMode(S.mode === "region" ? "idle" : "region"));
+$("regionBtn").addEventListener("click", () => setMode(S.mode === "region" && S.regionTarget === "active" ? "idle" : "region", "active"));
+$("addSheet").addEventListener("click", () => setMode(S.mode === "region" && S.regionTarget === "new" ? "idle" : "region", "new"));
 $("allBtn").addEventListener("click", () => {
   if (!S.src) return;
   const prev = S.region;
-  newSelection();
   S.region = { x0: 0, y0: 0, x1: S.W, y1: S.H };
   placeDefaultLines(prev);
-  autoRun();
-  maybeAsk();
+  runSheet();
 });
 $("zoomSel").addEventListener("change", (e) => { S.zoom = e.target.value; layoutCanvas(); });
 $("maskChk").addEventListener("change", (e) => { S.showMask = e.target.checked; render(); });
@@ -2184,24 +2609,25 @@ for (const b of document.querySelectorAll(".seg button[data-side]")) {
     const k = b.dataset.side, o = k === "L" ? "R" : "L";
     S.axes[k].role = b.dataset.role;
     S.axes[o].role = b.dataset.role === "t" ? "p" : "t";
-    syncAxisInputs();
-    readValues();
+    applyAxesToAll();
+    runSheet();
   });
 }
-for (const id of ["L_lo", "L_hi", "L_step", "R_lo", "R_hi", "R_step"]) $(id).addEventListener("change", axisInputsChanged);
-$("findBtn").addEventListener("click", () => {
-  if (!S.src) return;
-  const r = findAxes();
-  setNote("axisNote", r.msg, !r.ok || /kontrol et/.test(r.msg));
-  readValues();
-});
+for (const id of ["L_lo", "L_hi", "L_step", "R_lo", "R_hi", "R_step"]) {
+  $(id).addEventListener("change", axisInputsChanged);
+  $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); axisInputsChanged(); } });
+}
+for (const id of ["L_step", "R_step"]) $(id).addEventListener("input", () => { $(id).dataset.touched = "1"; });
+$("applyAxes").addEventListener("click", axisInputsChanged);
+$("sameAxes").addEventListener("change", () => { if ($("sameAxes").checked && sheetValued(S.sheet)) { S.batch = true; applyAxesToAll(); S.batch = false; refreshUI(); } });
+$("findBtn").addEventListener("click", () => { if (S.src) runSheet(); });
 
 $("catSel").addEventListener("change", () => { $("customRow").hidden = $("catSel").value !== "custom"; readValues(); });
 $("customLabels").addEventListener("change", readValues);
 $("pickBar").addEventListener("click", () => setMode(S.mode === "pickBar" ? "idle" : "pickBar"));
 $("pickLine").addEventListener("click", () => setMode(S.mode === "pickLine" ? "idle" : "pickLine"));
-$("autoBar").addEventListener("click", () => { S.barAuto = true; readValues(); });
-$("autoLine").addEventListener("click", () => { S.lineAuto = true; readValues(); });
+$("autoBar").addEventListener("click", () => { S.barAuto = true; readValues(); applyImageColors(); renderPreview(); });
+$("autoLine").addEventListener("click", () => { S.lineAuto = true; readValues(); applyImageColors(); renderPreview(); });
 for (const k of ["bar", "line"]) {
   const inp = $(k + "Tol"), out = $(k + "TolOut");
   inp.value = S[k + "Tol"]; out.value = S[k + "Tol"];
@@ -2233,44 +2659,26 @@ for (const k of Object.keys(ST)) {
     saveStyle();
   });
 }
-$("panelName").addEventListener("input", renderChips);
 
-$("addBtn").addEventListener("click", () => {
-  if (!S.rows.length) { setNote("outNote", "Önce bir grafik oku.", true); return; }
-  let name;
-  if (S.curIdx >= 0) name = S.panels[S.curIdx].name;
-  else {
-    name = $("panelName").value.trim() || String.fromCharCode(65 + S.panels.length);
-    const P = currentPanel(name);
-    const at = S.panels.findIndex((q) => q.name === name);
-    if (at >= 0) { S.panels[at] = P; S.curIdx = at; } else { S.panels.push(P); S.curIdx = S.panels.length - 1; }
-  }
-  const used = new Set(S.panels.map((q) => q.name));
-  let next = "";
-  for (let c = 65; c <= 90; c++) { const ch = String.fromCharCode(c); if (!used.has(ch)) { next = ch; break; } }
-  $("panelName").value = next;
-  updateOutput();
-  setMode("region");
-  setNote("outNote", `${name || "Grafik"} kaydedildi. Şimdi görselde ${next ? next + " grafiğini" : "sıradaki grafiği"} dikdörtgen içine al.`);
-});
 $("copySvg").addEventListener("click", () => {
-  if (!lastSVG) { setNote("outNote", "Önce bir grafik oku.", true); return; }
+  if (!lastSVG) { setNote("outNote", "Önce eksen sayılarını yaz; yeni grafik çizilince kopyalanabilir.", true); return; }
   copyText(lastSVG, "Kopyalandı. Illustrator'da bir belge açıp Ctrl+V ile yapıştır.");
 });
 $("dlSvg").addEventListener("click", () => {
   if (!lastSVG) return;
   saveFile("iklim-grafigi.svg", '<?xml version="1.0" encoding="UTF-8"?>\n' + lastSVG);
 });
+$("copyScript").addEventListener("click", () => {
+  const t = scriptText();
+  if (!t) { setNote("outNote", "Önce eksen sayılarını yaz.", true); return; }
+  copyText(t, "Script verisi kopyalandı. Illustrator'da iklim-grafigi.jsx'i çalıştırıp “Veri” sekmesine yapıştır.");
+});
 
 /* ---------------- start ---------------- */
-S.axes.L.lo = 0; S.axes.L.hi = 40; S.axes.L.step = 10;
-S.axes.R.lo = 0; S.axes.R.hi = 300; S.axes.R.step = 100;
-syncAxisInputs();
 syncStyleInputs();
 $("dlSvg").hidden = framed;
-renderTable();
-setImage(sampleChart(), true);
-window.__iklim = { S, ST, loadBlob, autoRun, readValues, findAxes, syncAxisInputs, syncStyleInputs, currentPanel, renderPreview, setMode, layoutCanvas, buildChart, livePanels, get lastSVG() { return lastSVG; } };
+setImage(sampleChart(), true, { L: { role: "t", lo: 0, hi: 40, step: 10 }, R: { role: "p", lo: 0, hi: 300, step: 100 } });
+window.__iklim = { S, ST, loadBlob, autoRun, runSheet, readValues, findAxes, detectPanels, activate, syncAxisInputs, syncStyleInputs, axisInputsChanged, currentPanel, livePanels, scriptText, renderPreview, setMode, layoutCanvas, buildChart, get lastSVG() { return lastSVG; } };
 
 if (window.claude && typeof window.claude.use === "function") {
   window.claude.use("sample").then(async (s) => {
@@ -2278,8 +2686,10 @@ if (window.claude && typeof window.claude.use === "function") {
     const lim = await s.limits().catch(() => null);
     if (!lim || !lim.images) return;
     sampleFn = s;
+    sampleMax = lim.images.maxCount || 1;
     $("askBox").hidden = false;
-    $("askBtn").addEventListener("click", askClaude);
+    $("askBtn").addEventListener("click", () => askClaude(S.sheets));
+    if (S.src && !S.isSample && !S.sheets.every(sheetValued)) maybeAsk(S.sheets);
   }).catch(() => {});
   window.claude.use("downloads").then((d) => { if (d) { dl = d; $("dlSvg").hidden = false; } }).catch(() => {});
 }

@@ -3,16 +3,21 @@
 `iklim-grafigi-cizici.html` tarayıcıda çalışan tek dosyalık bir araçtır.
 Çift tıklayıp aç; kurulum gerekmez.
 
-1. Sıcaklık–yağış grafiğinin görselini aç, sürükle ya da Ctrl+V ile yapıştır.
-2. İki eksenin en alt ve en üst sayısını gir. Uygulama eksen çizgilerini,
-   sütunları ve sıcaklık çizgisini kendisi bulur ve değerleri ölçer.
-3. Değerleri tablodan ya da görseldeki işaretleri sürükleyerek düzelt.
-4. "Illustrator için kopyala"ya bas, Illustrator'da Ctrl+V ile yapıştır
-   (ya da SVG'yi indirip Dosya › Aç ile aç). Grafik gerçek ölçüsünde,
-   düzenlenebilir vektör olarak gelir.
+1. **Görsel aç** (ya da sürükle / Ctrl+V). Görseldeki grafikler kendiliğinden
+   bulunur; A, B, C… diye sekmelere ayrılır. Sütunlar ve sıcaklık çizgisi işaretlenir.
+2. Görselin altındaki kutulara her eksenin **en alttaki ve en üstteki sayısını** yaz.
+   Sayılar bütün grafiklerde aynıysa "Bu sayılar bütün grafiklerde aynı"yı işaretle.
+   claude.ai'de açıldığında bu sayıları Claude kendisi okur.
+3. Sağdaki yeni grafiği görselle karşılaştır. Yanlış bir değeri tabloda düzelt
+   ya da görseldeki işareti sürükle.
+4. **Illustrator için kopyala** → Illustrator'da Ctrl+V (ya da SVG'yi indirip
+   Dosya › Aç). Grafik gerçek ölçüsünde, düzenlenebilir vektör olarak gelir.
 
-A, B, C… gibi birden çok grafik için her birini "Bölge seç" ile çerçevele
-ve "Kaydet, sıradakine geç"e bas; hepsi tek seferde yan yana çizilir.
+En üstteki "Sıradaki adım" kutusu her an ne yapman gerektiğini yazar.
 
-claude.ai'de açıldığında "Claude'a okut" düğmesi eksen sayılarını ve
-başlıkları da otomatik okur.
+## Illustrator scripti
+
+`../illustrator-scripts/iklim-grafigi.jsx` aynı grafikleri doğrudan Illustrator
+içinde, CMYK renklerle çizer. Araçta **Script için veri kopyala**'ya bas,
+Illustrator'da Dosya › Komut Dosyaları › Diğer Komut Dosyası… ile scripti aç,
+"Veri" sekmesine yapıştır ve **Grafiği çiz**'e bas.
