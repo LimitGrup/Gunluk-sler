@@ -559,7 +559,7 @@ class MainWindow(QMainWindow):
 
     def measure(self, text: str):
         f = QFont(self.font_family())
-        f.setPointSizeF(100)
+        f.setPixelSize(100)          # piksel: ekran çözünürlüğünden bağımsız
         r = QFontMetricsF(f).tightBoundingRect(text)
         return r.left(), r.top(), r.right(), r.bottom()
 

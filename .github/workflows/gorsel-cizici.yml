@@ -7,6 +7,10 @@ on:
       - ".github/workflows/gorsel-cizici.yml"
   workflow_dispatch:
 
+concurrency:
+  group: gorsel-cizici-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:

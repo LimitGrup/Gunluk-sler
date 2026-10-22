@@ -59,7 +59,7 @@ def recognize(png_path: str, width: int, height: int) -> list[dict]:
         if isinstance(ok, tuple):
             ok = ok[0]
         out = []
-        for obs in (req.results() or []):
+        for line_no, obs in enumerate(req.results() or []):
             cands = obs.topCandidates_(1)
             if not cands:
                 continue
@@ -85,7 +85,7 @@ def recognize(png_path: str, width: int, height: int) -> list[dict]:
                     if len(words) > 1:
                         continue
                     box = _to_px(obs.boundingBox(), width, height)
-                out.append({"text": word, "box": box, "conf": float(cand.confidence())})
+                out.append({"text": word, "box": box, "conf": float(cand.confidence()), "line": line_no})
         return out
     except Exception:
         return []
@@ -180,5 +180,46 @@ def place(texts: list, rgb: np.ndarray, measure, bg=None) -> list:
         x = x0 - l * k
         y = y1 - bot * k
         out.append({"text": t["text"], "x": float(x), "y": float(y), "size": float(size),
-                    "color": col, "box": (float(x0), float(y0), float(x1), float(y1))})
+                    "color": col, "box": (float(x0), float(y0), float(x1), float(y1)), "line": t.get("line")})
+    return _merge_lines(out)
+
+
+def _merge_lines(items: list) -> list:
+    """Aynı satırdaki kelimeleri tek yazı yap (Illustrator'da satır satır düzenlenir)."""
+    groups, rest = {}, []
+    for it in items:
+        if it.get("line") is None:
+            rest.append(it)
+        else:
+            groups.setdefault(it["line"], []).append(it)
+    out = list(rest)
+    for words in groups.values():
+        words.sort(key=lambda w: w["x"])
+        cur = [words[0]]
+        for w in words[1:]:
+            prev = cur[-1]
+            size = float(np.median([q["size"] for q in cur]))
+            gap = w["box"][0] - prev["box"][2]
+            same_base = abs(w["y"] - prev["y"]) < 0.25 * size
+            if same_base and -0.1 * size < gap < 0.8 * size and abs(w["size"] - size) < 0.25 * size:
+                cur.append(w)
+            else:
+                out.append(_join(cur))
+                cur = [w]
+        out.append(_join(cur))
     return out
+
+
+def _join(words: list) -> dict:
+    if len(words) == 1:
+        return words[0]
+    sizes = [w["size"] for w in words]
+    return {
+        "text": " ".join(w["text"] for w in words),
+        "x": words[0]["x"],
+        "y": float(np.median([w["y"] for w in words])),
+        "size": float(np.median(sizes)),
+        "color": words[0]["color"],
+        "box": (words[0]["box"][0], min(w["box"][1] for w in words), words[-1]["box"][2], max(w["box"][3] for w in words)),
+        "line": words[0].get("line"),
+    }
