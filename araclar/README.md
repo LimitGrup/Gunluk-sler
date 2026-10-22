@@ -4,7 +4,10 @@
 Çift tıklayıp aç; kurulum gerekmez. Ders kitaplarındaki **iklim** (sütun + çizgi,
 iki eksen), **sütun**, **çizgi** ve **gruplu sütun** (her kategoride yan yana renkli
 sütunlar, bir ya da iki eksen) grafiklerini okur; türü kendisi anlar. Eksenleri
-çentiksiz (yalnız kılavuz çizgili) ve sayıları renkli basılmış grafikleri de okur.
+çentiksiz (yalnız kılavuz çizgili) ya da renkli (mor, lacivert…) çizilmiş, sayıları
+renkli basılmış grafikleri de okur. Eksende saat yazıyorsa (09.00, 09.30…) değerler de
+saat olarak okunur ve yazılır. Kategori etiketlerinden sayılar (1980, 1990…), tek
+harfler (K, L, M) ve Roma rakamları (I, II, III…) görselden okunur.
 
 1. **Görsel aç** (ya da sürükle / Ctrl+V). Gerisini araç kendisi yapar:
    görseldeki grafikleri bulur (A, B, C… sekmeleri), eksenlerdeki sayıları ve

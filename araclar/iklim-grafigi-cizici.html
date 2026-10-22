@@ -674,6 +674,22 @@ const parseNum = (s) => {
   return isFinite(v) ? v : null;
 };
 const roundTo = (v, r) => Math.round(v / r) * r;
+// Saat eksenleri (09.00, 09.30…): değerler saat cinsinden tutulur (9,5 = 09.30), saat olarak yazılır
+const fmtTime = (v, t) => {
+  if (v === null || v === undefined || !isFinite(v)) return "";
+  let mins = Math.round(v * 60);
+  const neg = mins < 0; mins = Math.abs(mins);
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return (neg ? "-" : "") + (t.pad ? String(h).padStart(2, "0") : String(h)) + t.sep + String(m).padStart(2, "0");
+};
+const fmtV = (A, v) => (A && A.time ? fmtTime(v, A.time) : fmt(v));
+const parseV = (A, s) => {
+  if (A && A.time) {
+    const m = /^\s*(-?)(\d{1,2})\s*[.:,]\s*(\d{1,2})\s*$/.exec(String(s || ""));
+    if (m) return (m[1] ? -1 : 1) * (Number(m[2]) + Number(m[3]) / 60);
+  }
+  return parseNum(s);
+};
 const hex = (c) => c ? "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("").toUpperCase() : "";
 function hsv(r, g, b) {
   const mx = Math.max(r, g, b), mn = Math.min(r, g, b), c = mx - mn;
@@ -850,10 +866,14 @@ function placeDefaultLines(prevRegion) {
   }
 }
 
+// Eksen çizgisi pikseli: gri/siyah. AX_COLOR açıkken koyu renkli çizgiler de (mor, lacivert eksenler);
+// bu yalnız gri/siyah eksen bulunamayınca denenir, yoksa kırmızı sıcaklık çizgisi eksen sanılabilir.
+let AX_COLOR = false;
 function isAxisInk(x, y) {
   const i = (y * S.W + x) * 4, p = S.px;
   const r = p[i], g = p[i + 1], b = p[i + 2];
-  return (Math.max(r, g, b) - Math.min(r, g, b)) < 70 && (0.3 * r + 0.59 * g + 0.11 * b) < 205;
+  const c = Math.max(r, g, b) - Math.min(r, g, b), lum = 0.3 * r + 0.59 * g + 0.11 * b;
+  return (c < 70 && lum < 205) || (AX_COLOR && lum < 110);
 }
 
 // Düzenli aralıklı çentik dizisini bul (aradaki eksik çentiklere izin verir)
@@ -970,6 +990,7 @@ function findAxes() {
         while (b + 1 < xb && runs[b + 1] && runs[b + 1].len >= r.len * 0.7) {
           b++; y0 = Math.min(y0, runs[b].y0); y1 = Math.max(y1, runs[b].y1); len = Math.max(len, runs[b].len);
         }
+        if (b - a > 5) continue;   // eksen ince bir çizgidir; koyu renkli sütun değil
         let ys = ticksFor(a, b, y0, y1);
         if (useGrid) {
           const span = dir > 0 ? R.x1 - b - 4 : a - R.x0 - 4;
@@ -1036,6 +1057,38 @@ function findAxes() {
   const right = choose(pick(xr, R.x1 - 2, ER, -1), null) || null;
   const leftF = (left && left.grid && left.grid.on.length >= 3) ? left : (tickOnly(R.x0 + 1, xl, "L", EL) || left);
   const rightF = (right && right.grid && right.grid.on.length >= 3) ? right : (tickOnly(xr, R.x1 - 1, "R", ER) || right);
+  // Eksenin tamamını kapsa: renkli eksenlerin koyu çekirdeği ve kenar yumuşatması da eksendir
+  const lineLike = (x, y) => {
+    const q = (y * S.W + x) * 4, r = S.px[q], g = S.px[q + 1], b = S.px[q + 2];
+    const c = Math.max(r, g, b) - Math.min(r, g, b), lum = 0.3 * r + 0.59 * g + 0.11 * b;
+    return isAxisInk(x, y) || (c >= 40 && lum < 190);
+  };
+  const widen = (ax) => {
+    if (!ax) return;
+    const colOk = (x) => {
+      if (x < 0 || x >= S.W) return false;
+      let n = 0, t = 0;
+      for (let y = Math.round(ax.y0); y <= Math.round(ax.y1); y++) { t++; if (lineLike(x, y)) n++; }
+      return t > 0 && n / t >= 0.8;
+    };
+    for (let k = 0; k < 4 && colOk(ax.x0 - 1); k++) ax.x0--;
+    for (let k = 0; k < 4 && colOk(ax.x1 + 1); k++) ax.x1++;
+  };
+  widen(leftF); widen(rightF);
+  // Çentiklerin biçimi: dışa, içe ya da eksenin iki yanına taşan (+)
+  S.sheet.tickStyle = null;
+  if (leftF && leftF.grid && !leftF.fromGrid && leftF.grid.on.length >= 3) {
+    let o = 0, i = 0;
+    const on = leftF.grid.on;
+    const hit = (x, y) => [y - 1, y, y + 1].some((yy) => yy >= 0 && yy < S.H && x >= 0 && x < S.W && isAxisInk(x, yy));
+    for (const ty of on) {
+      const y = Math.round(ty - 0.5);
+      if (hit(leftF.x0 - 2, y)) o++;
+      if (hit(leftF.x1 + 2, y) && !hit(leftF.x1 + 14, y)) i++;
+    }
+    const k = on.length * 0.6;
+    S.sheet.tickStyle = o >= k && i >= k ? "cross" : i >= k ? "in" : o >= k ? "out" : null;
+  }
   if (leftF) leftF.side = labelledSide(leftF);
   if (rightF) rightF.side = labelledSide(rightF);
   S.axX.L = leftF; S.axX.R = rightF;
@@ -1152,6 +1205,23 @@ function detectPanels(debug) {
     if (!okG(g)) continue;
     const side = labelledSide({ x0: l.x0, x1: l.x1, grid: g });
     if (side) axes.push({ ...l, g, side });
+  }
+  // JPEG'de bir çentik hizasında kopmuş eksen iki parça görünür: aynı hizadaki bitişik parçaları birleştir
+  axes.sort((a, b) => a.x0 - b.x0 || a.y0 - b.y0);
+  for (let i = 0; i < axes.length; i++) {
+    for (let j = i + 1; j < axes.length; j++) {
+      const A = axes[i], B = axes[j];
+      if (A.side !== B.side || Math.abs(A.x0 - B.x0) > 1) continue;
+      const gapY = B.y0 > A.y1 ? B.y0 - A.y1 : A.y0 > B.y1 ? A.y0 - B.y1 : 0;
+      if (gapY > 8) continue;
+      const d = (A.g.d + B.g.d) / 2;
+      if (Math.abs(A.g.d - B.g.d) > d * 0.15) continue;
+      const ys = [...A.g.on, ...B.g.on].sort((p, q) => p - q);
+      const g = tickGrid(ys);
+      if (!g || g.on.length < A.g.on.length + B.g.on.length - 1) continue;
+      A.y0 = Math.min(A.y0, B.y0); A.y1 = Math.max(A.y1, B.y1); A.x1 = Math.max(A.x1, B.x1); A.g = g;
+      axes.splice(j, 1); j--;
+    }
   }
   // 3) Soldaki ekseni, aynı tabanda sağdaki en yakın eksenle eşle
   axes.sort((a, b) => a.x0 - b.x0);
@@ -1543,8 +1613,17 @@ function labelCenters(xa, xb, yBase) {
 }
 function labelBlobs(xa, xb, yBase) {
   const H = S.H;
+  // Boydan boya inen çizgiler (çerçeve, görselin kenarı) yazı değildir
+  const ya0 = Math.ceil(yBase) + 2, ya1 = Math.min(H, Math.ceil(yBase) + 42);
+  const lineCol = new Uint8Array(Math.max(0, xb - xa + 1));
+  for (let x = xa; x < xb; x++) {
+    let n = 0;
+    for (let y = ya0; y < ya1; y++) if (isTextPx(x, y)) n++;
+    if (ya1 - ya0 >= 10 && n >= (ya1 - ya0) * 0.85) lineCol[x - xa] = 1;
+  }
+  const txt = (x, y) => !lineCol[x - xa] && isTextPx(x, y);
   // Eksenin altındaki ilk yazı bandı: çentik uçları ve çerçeve gibi ince (≤3 px) bantlar atlanır
-  const rowN = (y) => { let n = 0; for (let x = xa; x < xb; x++) if (isTextPx(x, y)) n++; return n; };
+  const rowN = (y) => { let n = 0; for (let x = xa; x < xb; x++) if (txt(x, y)) n++; return n; };
   let y0 = -1, y1 = -1;
   for (let y = Math.ceil(yBase) + 2; y < Math.min(H, yBase + 40); y++) {
     if (rowN(y) < 2) continue;
@@ -1560,13 +1639,15 @@ function labelBlobs(xa, xb, yBase) {
   let cur = null, gap = 0;
   for (let x = xa; x <= xb; x++) {
     let ink = false;
-    if (x < xb) for (let y = y0; y <= y1 && !ink; y++) if (isTextPx(x, y)) ink = true;
+    if (x < xb) for (let y = y0; y <= y1 && !ink; y++) if (txt(x, y)) ink = true;
     if (ink) {
       if (cur && gap < gapMin) { cur.x1 = x; } else { cur = { x0: x, x1: x }; blobs.push(cur); }
       gap = 0;
     } else if (cur) gap++;
   }
-  return blobs.filter((b) => b.x1 - b.x0 >= 1).map((b) => ({ x0: b.x0, x1: b.x1, y0, y1 }));
+  // Tek piksellik lekeleri at; ama "I" gibi ince ve uzun harfler kalsın
+  const inkN = (b) => { let n = 0; for (let x = b.x0; x <= b.x1; x++) for (let y = y0; y <= y1; y++) if (txt(x, y)) n++; return n; };
+  return blobs.filter((b) => b.x1 - b.x0 >= 1 || inkN(b) >= Math.max(4, hgt * 0.6)).map((b) => ({ x0: b.x0, x1: b.x1, y0, y1 }));
 }
 
 // Çizgi grafiği: kategoriler önce etiketlerden, yoksa noktalardan, yoksa çizginin uçlarından
@@ -1639,6 +1720,26 @@ function barsHaveLabels(bars) {
 }
 
 // Sütunun dolgu biçimi: düz, dikey geçişli ya da yatay ışıklı (degrade)
+// Sütunların koyu bir kenar çizgisi var mı? (sütunun hemen solundaki sütun piksel koyu mu)
+function barsOutlined(bars, yZero) {
+  const tall = bars.filter((b) => yZero - b.top >= 8);
+  if (tall.length < 2) return false;
+  let yes = 0;
+  for (const b of tall) {
+    const x = Math.round(b.cx - b.w / 2) - 1;
+    let n = 0, k = 0;
+    for (let y = Math.round(b.top + (yZero - b.top) * 0.25); y < Math.round(yZero - (yZero - b.top) * 0.25); y++) {
+      for (const xx of [x - 1, x, x + 1]) {
+        if (xx < 0 || xx >= S.W) continue;
+        const q = (y * S.W + xx) * 4, lum = 0.3 * S.px[q] + 0.59 * S.px[q + 1] + 0.11 * S.px[q + 2];
+        if (lum < 120) { k++; break; }
+      }
+      n++;
+    }
+    if (n && k / n >= 0.8) yes++;
+  }
+  return yes >= tall.length * 0.7;
+}
 function barStyleFrom(bars, yZero) {
   if (!bars.length) return null;
   const b = bars.reduce((a, c) => (yZero - c.top > yZero - a.top ? c : a));
@@ -1758,11 +1859,13 @@ function readValues() {
   // Etiketler sayıysa (1980, 1990…) görselden oku
   if ($("catSel").value === "auto" && !(S.claude && S.claude.labels && S.claude.labels.length === built.N) && built.N !== 12) {
     const keep = sh.labelsRead && sh.labelsRead.length === built.N ? sh.labelsRead : null;
-    const read = keep || ocrCategoryLabels(labelBlobs(xa, xb, Math.max(yZero, plotBot)), built.N);
+    const lb = labelBlobs(xa, xb, Math.max(yZero, plotBot));
+    const read = keep || ocrCategoryLabels(lb, built.N) || (lb.length === built.N ? ocrRomanLabels(lb) || ocrLetterLabels(lb) : null);
     if (read) { labels = read; sh.labelsRead = read; }
   }
   S.barHalf = bars.length ? median(bars.map((b) => b.w)) / 2 : Math.max(3, built.pitch * 0.3);
   sh.valueLabels = kind === "sutun" ? barsHaveLabels(bars) : false;
+  sh.barOutline = kind !== "cizgi" ? barsOutlined(bars, yZero) : false;
   sh.gridStyle = gridStyleFrom(two ? S.axes.L : S.axes.L, xa, xb);
   sh.barStyle = kind !== "cizgi" ? barStyleFrom(bars, yZero) : null;
   const cl = (S.claude && S.claude.labels && S.claude.labels.length === built.N) ? S.claude : null;
@@ -1897,6 +2000,7 @@ function groupBars(series) {
 const plotTopOf = (A) => Math.min(A.yHi, A.yLo), plotBotOf = (A) => Math.max(A.yHi, A.yLo);
 // Ölçek yuvarlaması: aralığın onda biri (10'luk eksende 1, 1'lik eksende 0,1)
 const autoRound = (A) => {
+  if (A.time) return 1 / 60;   // dakika
   const st = A.step > 0 ? A.step : Math.abs(A.hi - A.lo) / 5;
   return Math.pow(10, Math.floor(Math.log10(st / 10) + 1e-9));
 };
@@ -1979,7 +2083,7 @@ function readGrouped(force) {
   let labels = labelsFor(N);
   if ($("catSel").value === "auto" && !(S.claude && S.claude.labels && S.claude.labels.length === N) && N !== 12) {
     const keep = sh.labelsRead && sh.labelsRead.length === N ? sh.labelsRead : null;
-    const read = keep || (blobs.length === N ? (ocrCategoryLabels(blobs, N) || ocrLetterLabels(blobs)) : null);
+    const read = keep || (blobs.length === N ? (ocrCategoryLabels(blobs, N) || ocrRomanLabels(blobs) || ocrLetterLabels(blobs)) : null);
     if (read) { labels = read; sh.labelsRead = read; }
   }
   const okNum = (v) => v !== null && v !== undefined && isFinite(v);
@@ -2012,6 +2116,7 @@ function readGrouped(force) {
   });
   S.barHalf = wMed / 2;
   sh.valueLabels = barsHaveLabels(groups.flat());
+  sh.barOutline = barsOutlined(groups.flat(), yZero);
   sh.gridStyle = gridStyleFrom(L, xa, xb);
   sh.barStyle = null;
   const notes = [`${KIND_NAMES.gruplu} · ${N} kategori, ${k} seri`];
@@ -2031,11 +2136,11 @@ function afterRead() {
 /* ---------------- values / table ---------------- */
 function valT(A, r) {
   if (!A || r.lineY === null || !axisValued(A)) return null;
-  return roundTo(valAt(A, r.lineY), Number($("tRound").value));
+  return roundTo(valAt(A, r.lineY), A.time ? 1 / 60 : Number($("tRound").value));
 }
 function valP(A, r) {
   if (!A || r.barY === null || !axisValued(A)) return null;
-  const v = roundTo(valAt(A, r.barY), Number($("pRound").value));
+  const v = roundTo(valAt(A, r.barY), A.time ? 1 / 60 : Number($("pRound").value));
   return v < 0 ? 0 : v;
 }
 const rowT = (r) => valT(lineAxisOf(S.sheet), r);
@@ -2128,20 +2233,20 @@ function renderTable() {
       if (i === 1 && fillLabelSequence()) { renderTable(); return; }
       updateOutput();
     }, "Etiket");
-    const tdT = mk("v t" + cellCls(r, "t"), fmt(rowT(r)), (v) => {
-      const n = parseNum(v);
+    const tdT = mk("v t" + cellCls(r, "t"), fmtV(lineAxisOf(S.sheet), rowT(r)), (v) => {
+      const n = parseV(lineAxisOf(S.sheet), v);
       r.lineY = n === null ? null : yAtVal(lineAxisOf(S.sheet), n);
       r.lineSrc = "el"; r.warnT = null;
       refreshRow(i); render();
     }, kindOf(S.sheet) === "iklim" ? "Sıcaklık" : "Değer");
-    const tdP = mk("v p" + cellCls(r, "p"), fmt(rowP(r)), (v) => {
-      const n = parseNum(v);
+    const tdP = mk("v p" + cellCls(r, "p"), fmtV(barAxisOf(S.sheet), rowP(r)), (v) => {
+      const n = parseV(barAxisOf(S.sheet), v);
       r.barY = n === null ? null : yAtVal(barAxisOf(S.sheet), Math.max(0, n));
       r.barSrc = "el"; r.warnP = null;
       refreshRow(i); render();
     }, kindOf(S.sheet) === "iklim" ? "Yağış" : "Değer");
-    if (r.warnT !== null) tdT.title = "Claude: " + fmt(r.warnT);
-    if (r.warnP !== null) tdP.title = "Claude: " + fmt(r.warnP);
+    if (r.warnT !== null) tdT.title = "Claude: " + fmtV(lineAxisOf(S.sheet), r.warnT);
+    if (r.warnP !== null) tdP.title = "Claude: " + fmtV(barAxisOf(S.sheet), r.warnP);
     tr.append(tdI, tdL, tdT, tdP);
     tb.append(tr);
   });
@@ -2171,14 +2276,15 @@ function renderGroupedRows(tb) {
       updateOutput();
     }));
     sh.series.forEach((_, j) => {
-      const td = cell("v g" + j + gCls(r, j), fmt(valG(sh, r, j)), seriesName(sh, j), (v) => {
-        const n = parseNum(v);
+      const Aj = sh.axes[seriesAxisKey(sh, j)];
+      const td = cell("v g" + j + gCls(r, j), fmtV(Aj, valG(sh, r, j)), seriesName(sh, j), (v) => {
         const A = sh.axes[seriesAxisKey(sh, j)];
+        const n = parseV(A, v);
         r.ys[j] = n === null ? null : yAtVal(A, n);
         r.srcs[j] = "el"; if (r.warnS) r.warnS[j] = null;
         refreshRow(i); render();
       }, true);
-      if (r.warnS && r.warnS[j] !== null && r.warnS[j] !== undefined) td.title = "Claude: " + fmt(r.warnS[j]);
+      if (r.warnS && r.warnS[j] !== null && r.warnS[j] !== undefined) td.title = "Claude: " + fmtV(Aj, r.warnS[j]);
       tr.append(td);
     });
     tb.append(tr);
@@ -2198,7 +2304,7 @@ function refreshRow(i) {
       const td = tr.querySelector("td.g" + j);
       if (!td) return;
       td.className = "v g" + j + gCls(r, j);
-      if (document.activeElement !== td.firstChild) td.firstChild.value = fmt(valG(S.sheet, r, j));
+      if (document.activeElement !== td.firstChild) td.firstChild.value = fmtV(S.sheet.axes[seriesAxisKey(S.sheet, j)], valG(S.sheet, r, j));
     });
     updateOutput();
     return;
@@ -2206,8 +2312,8 @@ function refreshRow(i) {
   const tdT = tr.querySelector("td.t"), tdP = tr.querySelector("td.p");
   tdT.className = "v t" + cellCls(r, "t");
   tdP.className = "v p" + cellCls(r, "p");
-  if (document.activeElement !== tdT.firstChild) tdT.firstChild.value = fmt(rowT(r));
-  if (document.activeElement !== tdP.firstChild) tdP.firstChild.value = fmt(rowP(r));
+  if (document.activeElement !== tdT.firstChild) tdT.firstChild.value = fmtV(lineAxisOf(S.sheet), rowT(r));
+  if (document.activeElement !== tdP.firstChild) tdP.firstChild.value = fmtV(barAxisOf(S.sheet), rowP(r));
   updateOutput();
 }
 function markSel() {
@@ -2250,7 +2356,7 @@ function panelOf(sh) {
   const kind = kindOf(sh);
   if (kind === "gruplu" && sh.series) {
     const keys = usedKeys(sh);
-    const info2 = (A, side) => ({ side, lo: A.lo, hi: A.hi, step: A.step });
+    const info2 = (A, side) => ({ side, lo: A.lo, hi: A.hi, step: A.step, time: A.time || null });
     const ser = sh.series.map((_, j) => ({ name: seriesName(sh, j), color: seriesColor(sh, j), axis: seriesAxisKey(sh, j) === "R" ? "sag" : "sol" }));
     return {
       name: sh.name, kind, t: null, p: info2(sh.axes.L, "sol"),
@@ -2261,7 +2367,7 @@ function panelOf(sh) {
   }
   const bA = barAxisOf(sh), lA = lineAxisOf(sh);
   const side = (A) => (A === sh.axes.L ? "sol" : "sag");
-  const info = (A) => (A ? { side: side(A), lo: A.lo, hi: A.hi, step: A.step } : null);
+  const info = (A) => (A ? { side: side(A), lo: A.lo, hi: A.hi, step: A.step, time: A.time || null } : null);
   return {
     name: sh.name, kind,
     t: info(lA), p: info(bA),
@@ -2414,7 +2520,7 @@ function panelSVG(P, L, T, W, H, showLetter, single) {
   const leftA = grp2 ? P.axes.sol : two ? (tA.side === "sol" ? tA : pA) : (pA || tA);
   const rightA = grp2 ? P.axes.sag : two ? (leftA === tA ? pA : tA) : null;
   const lv = tickVals(leftA), rv = rightA ? tickVals(rightA) : [];
-  const ls = lv.map(fmt), rs = rv.map(fmt);
+  const ls = lv.map((v) => fmtV(leftA, v)), rs = rv.map((v) => fmtV(rightA, v));
   const wl = Math.max(0, ...ls.map((s) => textW(s, fs))), wr = Math.max(0, ...rs.map((s) => textW(s, fs)));
   const tOut = ST.tick === "out" || ST.tick === "cross" ? tickLen : 0;
   const tIn = ST.tick === "in" || ST.tick === "cross" ? tickLen : 0;
@@ -2473,7 +2579,7 @@ function panelSVG(P, L, T, W, H, showLetter, single) {
         const baseVal = A.lo <= 0 && A.hi >= 0 ? 0 : A.lo;
         const by = yOf(A, baseVal), ty = yOf(A, v), x0 = cx(ci) - groupW / 2 + j * bw * (1 + inner);
         if (Math.abs(by - ty) > 0.05) G.bars.push(`<rect x="${n2(x0)}" y="${n2(Math.min(ty, by))}" width="${n2(bw)}" height="${n2(Math.abs(by - ty))}" fill="${s.color}"${ST.barStroke ? ' stroke="#000000" stroke-width="0.3"' : ""}/>`);
-        if (ST.valLabels) G.values.push(svgText(fmt(v), x0 + bw / 2, ty - fs * 0.45, "middle", fs * 0.9, 0, true));
+        if (ST.valLabels) G.values.push(svgText(fmtV(A, v), x0 + bw / 2, ty - fs * 0.45, "middle", fs * 0.9, 0, true));
       });
     });
   }
@@ -2485,7 +2591,7 @@ function panelSVG(P, L, T, W, H, showLetter, single) {
       if (r.p === null || r.p === undefined) return;
       const ty = yOf(pA, r.p), h = by - ty;
       if (h > 0.05) G.bars.push(`<rect x="${n2(cx(k) - bw / 2)}" y="${n2(ty)}" width="${n2(bw)}" height="${n2(h)}" fill="${barFill}"${ST.barStroke ? ' stroke="#000000" stroke-width="0.3"' : ""}/>`);
-      if (ST.valLabels && !two) G.values.push(svgText(fmt(r.p), cx(k), ty - fs * 0.45, "middle", fs, 0, true));
+      if (ST.valLabels && !two) G.values.push(svgText(fmtV(pA, r.p), cx(k), ty - fs * 0.45, "middle", fs, 0, true));
     });
   }
 
@@ -2524,7 +2630,7 @@ function panelSVG(P, L, T, W, H, showLetter, single) {
         G.line.push(`<path d="${d}" fill="none" stroke="${ST.lineColor}" stroke-width="${n2(ST.lineW)}" stroke-linejoin="round" stroke-linecap="round"/>`);
       }
       if (ST.dots || pts.length === 1) for (const p of pts) G.line.push(`<circle cx="${n2(p[0])}" cy="${n2(p[1])}" r="${n2(ST.dotD / 2)}" fill="${ST.lineColor}"/>`);
-      if (ST.valLabels && !two) for (const p of pts) G.values.push(svgText(fmt(p[2]), p[0], p[1] - Math.max(ST.dotD, 2) - fs * 0.3, "middle", fs, 0, true));
+      if (ST.valLabels && !two) for (const p of pts) G.values.push(svgText(fmtV(tA, p[2]), p[0], p[1] - Math.max(ST.dotD, 2) - fs * 0.3, "middle", fs, 0, true));
     }
   }
 
@@ -2618,8 +2724,10 @@ function applyImageColors() {
   if (k === "gruplu" && ST.legend === "none") { ST.legend = "each"; legendAuto = true; }
   else if (k !== "gruplu" && legendAuto) { if (ST.legend === "each") ST.legend = "none"; legendAuto = false; }
   if (!ST.useImgColors) { syncStyleInputs(); return; }
-  if (S.sheet.noTicks && ST.tick !== "none") { ST.tick = "none"; tickAuto = true; }
-  else if (!S.sheet.noTicks && tickAuto) { if (ST.tick === "none") ST.tick = "out"; tickAuto = false; }
+  const ts = S.sheet.noTicks ? "none" : S.sheet.tickStyle;
+  if (ts) { tickAuto = ST.tick !== ts || tickAuto; ST.tick = ts; }
+  else if (tickAuto) { ST.tick = "out"; tickAuto = false; }
+  if (S.sheet.barOutline !== undefined && k !== "cizgi") ST.barStroke = !!S.sheet.barOutline;
   if (S.barColor && k !== "cizgi") ST.barColor = rgbToHex(S.barColor);
   if (S.lineColor && k !== "sutun") ST.lineColor = rgbToHex(S.lineColor);
   const bs = S.sheet.barStyle;
@@ -2659,9 +2767,9 @@ function syncAxisInputs() {
   $("axisStrip").classList.toggle("need", need);
   for (const k of ["L", "R"]) {
     const A = S.axes[k];
-    $(k + "_lo").value = fmt(A.lo);
-    $(k + "_hi").value = fmt(A.hi);
-    $(k + "_step").value = fmt(A.step);
+    $(k + "_lo").value = fmtV(A, A.lo);
+    $(k + "_hi").value = fmtV(A, A.hi);
+    $(k + "_step").value = fmtV(A, A.step);
     $(k + "_step").dataset.touched = "0";
     $(k + "_lo").classList.remove("missing"); $(k + "_hi").classList.remove("missing");
     for (const b of document.querySelectorAll(`.seg button[data-side="${k}"]`)) b.setAttribute("aria-pressed", String(b.dataset.role === A.role));
@@ -2753,9 +2861,26 @@ function labelInkHue() {
   return bi * 10 + 5;
 }
 
+// Eksenleri bul; gri/siyah sol eksen yoksa renkli (mor, lacivert…) eksen çizgilerini de dene
+function findAxesAny() {
+  const fa = () => { AX_COLOR = !!S.sheet.axisColorInk; try { return findAxes(); } finally { AX_COLOR = false; } };
+  // Sol eksenin niteliği: çentikleri ve yanında sayı etiketleri var mı
+  const q = () => { const a = S.axX.L; return !a || !a.grid ? 0 : (a.grid.on.length >= 3 ? 2 : 0) + (a.side ? 2 : 0) + Math.min(a.grid.on.length, 20) / 100; };
+  let r = fa();
+  if (q() < 4 && !S.sheet.axisColorInk) {
+    const q1 = q();
+    S.sheet.axisColorInk = true;
+    const r2 = fa();
+    if (q() > q1) return r2;
+    S.sheet.axisColorInk = false;
+    r = fa();
+  }
+  return r;
+}
+
 function runSheet() {
   if (S.sheet.claudeKind === undefined) S.sheet.claudeKind = null;
-  let r = findAxes();
+  let r = findAxesAny();
   S.inkHue = labelInkHue();
   // Eksen sayıları girilmediyse görselden oku
   const need = (S.sheet.twoAxes || kindOf(S.sheet) === "iklim") ? ["L", "R"] : ["L"];
@@ -2765,7 +2890,7 @@ function runSheet() {
     for (const k of need) {
       const A = S.axes[k], f = got[k];
       if (axisValued(A) || !f) continue;
-      A.lo = f.lo; A.hi = f.hi; A.step = f.step; A.fromImage = true; any = true;
+      A.lo = f.lo; A.hi = f.hi; A.step = f.step; A.time = f.time || null; A.fromImage = true; any = true;
     }
     S.sheet.ocrOk = need.every((k) => axisValued(S.axes[k]));
     // Hangi eksen sıcaklık? Sıcaklık eksi olabilir ve küçük kalır; yağış 0'dan başlar ve büyür
@@ -2778,7 +2903,7 @@ function runSheet() {
       else if (tempLike(L) && tempLike(R)) tSide = L.lo < 0 && R.lo >= 0 ? "L" : R.lo < 0 && L.lo >= 0 ? "R" : null;
       if (tSide) { S.axes[tSide].role = "t"; S.axes[tSide === "L" ? "R" : "L"].role = "p"; }
     }
-    if (any) r = findAxes();
+    if (any) r = findAxesAny();
   }
   S.axisMsg = [r.msg, !r.ok || /kontrol et/.test(r.msg)];
   // Eksenler çentiksiz (yalnız kılavuz çizgili) çizilmişse yeni grafikte de çentik olmasın
@@ -2806,25 +2931,31 @@ function markMissing() {
   const ids = usedKeys(S.sheet).flatMap((k) => [k + "_lo", k + "_hi"]);
   let miss = 0;
   for (const id of ["L_lo", "L_hi", "R_lo", "R_hi"]) {
-    const m = ids.includes(id) && parseNum($(id).value) === null;
+    const m = ids.includes(id) && parseV(S.axes[id[0]], $(id).value) === null;
     $(id).classList.toggle("missing", m);
     if (m) miss++;
   }
   return miss;
 }
 function axisInputsChanged() {
+  // "09:30" gibi iki nokta üst üsteli yazım saat demektir
+  for (const k of ["L", "R"]) {
+    const A = S.axes[k];
+    if (!A.time && ["_lo", "_hi"].some((s) => /^\s*\d{1,2}:\d{2}\s*$/.test($(k + s).value))) A.time = { pad: /^\s*0\d/.test($(k + "_lo").value), sep: ":" };
+  }
+  const near = (a, b) => a === b || (a !== null && b !== null && Math.abs(a - b) < 1e-6);
   const same = usedKeys(S.sheet).every((k) => {
     const A = S.axes[k];
-    const st = parseNum($(k + "_step").value);
-    return parseNum($(k + "_lo").value) === A.lo && parseNum($(k + "_hi").value) === A.hi && (st === A.step || st === null);
+    const st = parseV(A, $(k + "_step").value);
+    return near(parseV(A, $(k + "_lo").value), A.lo) && near(parseV(A, $(k + "_hi").value), A.hi) && (near(st, A.step) || st === null);
   });
   if (same) return;
   for (const k of ["L", "R"]) {
     const A = S.axes[k];
-    const lo = parseNum($(k + "_lo").value), hi = parseNum($(k + "_hi").value);
-    if (lo !== A.lo || hi !== A.hi) A.fromImage = false;
+    const lo = parseV(A, $(k + "_lo").value), hi = parseV(A, $(k + "_hi").value);
+    if (!near(lo, A.lo) || !near(hi, A.hi)) A.fromImage = false;
     A.lo = lo; A.hi = hi;
-    const st = parseNum($(k + "_step").value);
+    const st = parseV(A, $(k + "_step").value);
     if (st !== null && st > 0 && $(k + "_step").dataset.touched === "1") A.step = st;
     else if (axisValued(A) && A.nTicks > 1) A.step = (A.hi - A.lo) / (A.nTicks - 1);
     else if (axisValued(A)) A.step = st > 0 ? st : (A.hi - A.lo) / 4;
@@ -3075,6 +3206,7 @@ function fitProgression(vals, opts) {
   return { lo: r(best.lo), step: r(best.step), hi: r(best.lo + (vals.length - 1) * best.step), hits: best.hits, n: vals.length };
 }
 
+const TIME_STEPS = [5, 10, 15, 20, 30, 60, 120, 180].map((m) => m / 60);
 // Bir sayı dizisi önerisini (ör. 0, 100, 200…) yazı tiplerinde çizip görseldeki etiketlerle karşılaştır
 const NICE_STEPS = [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 100, 150, 200, 250, 300, 400, 500, 1000, 2000, 2500, 5000];
 const SYN_FONT_LIST = ["Arial", "Helvetica", "Helvetica Neue", "Verdana", "Segoe UI", "Tahoma", "Calibri", "Futura", "Gill Sans", "Myriad Pro", "Frutiger", "Univers",
@@ -3182,7 +3314,7 @@ function recognizeSequence(boxes, reads, opts) {
   if (have < Math.min(3, n)) return null;
   const tbs = boxes.map((b) => (b ? tightBox(b) : null));
   const digitsEst = tbs.map((t) => (t ? (t.x1 - t.x0 + 1) / (t.y1 - t.y0 + 1) / 0.7 : null));
-  const effLen = (str) => [...str].reduce((a, ch) => a + (ch === "-" ? 0.7 : ch === "," || ch === "." ? 0.4 : 1), 0);
+  const effLen = (str) => [...str].reduce((a, ch) => a + (ch === "-" ? 0.7 : ch === "," || ch === "." || ch === ":" ? 0.4 : 1), 0);
   // Etiket genişlikleri yazı uzunluklarıyla orantılı mı? (yazı tipinden bağımsız)
   const widthFit = (strs) => {
     const pts = tbs.map((t, i) => (t ? [effLen(strs[i]), t.x1 - t.x0 + 1, t.y1 - t.y0 + 1] : null)).filter(Boolean);
@@ -3219,13 +3351,43 @@ function recognizeSequence(boxes, reads, opts) {
     const step = (idx[b][1] - idx[a][1]) / (idx[b][0] - idx[a][0]);
     if (niceAxisStep(step)) add(idx[a][1] - idx[a][0] * step, step);
   }
-  if (!hyps.size) return null;
+  // Saat ekseni (09.00, 09.30…): okunanlardan en az ikisi "ss.dd" biçimindeyse saat dizilerini de dene
+  const tIdx = [];
+  (opts.raws || []).forEach((s, i) => {
+    const m = s && /^(\d{1,2})[.,:](\d{2})$/.exec(s);
+    if (m && Number(m[2]) < 60 && Number(m[1]) < 25) tIdx.push([i, Number(m[1]) + Number(m[2]) / 60, m[1].length === 2]);
+  });
+  const timeHyps = [];
+  if (tIdx.length >= 2) {
+    const th = new Map();
+    const addT = (lo, st) => {
+      if (lo < -1e-9 || lo > 24 || Math.abs(lo / st - Math.round(lo / st)) > 1e-6) return;
+      const hits = tIdx.filter(([i, v]) => Math.abs(v - (lo + i * st)) < 1e-6).length;
+      if (hits >= 2) th.set(`${lo.toFixed(5)}|${st.toFixed(5)}`, { lo, step: st, hits });
+    };
+    for (const st of TIME_STEPS) for (const [i, v] of tIdx) addT(v - i * st, st);
+    const pad = tIdx.filter((q) => q[2]).length >= tIdx.length / 2;
+    for (const h of th.values()) {
+      const t = { pad, sep: "." };
+      const strs = boxes.map((_, i) => fmtTime(h.lo + i * h.step, t));
+      timeHyps.push({ ...h, time: t, sc: scoreStrings(boxes, strs) + 0.2 * (h.hits / tIdx.length) - 0.35 * widthFit(strs), agree: h.hits / tIdx.length });
+    }
+    // en iyisi için iki nokta üst üste (09:30) yazımını da dene
+    timeHyps.sort((a, b) => b.sc - a.sc);
+    if (timeHyps.length) {
+      const h = timeHyps[0], t = { pad: h.time.pad, sep: ":" };
+      const strs = boxes.map((_, i) => fmtTime(h.lo + i * h.step, t));
+      const sc = scoreStrings(boxes, strs) + 0.2 * h.agree - 0.35 * widthFit(strs);
+      if (sc > h.sc) timeHyps.unshift({ ...h, time: t, sc });
+    }
+  }
+  if (!hyps.size && !timeHyps.length) return null;
   // Puan: çizilen dizinin görselle benzerliği + rakam rakam okunanlarla uyuşma
   const scored = [...hyps.values()].map((h) => {
     const strs = boxes.map((_, i) => fmtS(h.lo + i * h.step));
     const agree = idx.length ? idx.filter(([i, v]) => Math.abs(v - (h.lo + i * h.step)) < 1e-6).length / idx.length : 0;
     return { ...h, sc: scoreStrings(boxes, strs) + 0.2 * agree - 0.35 * widthFit(strs), agree };
-  }).sort((a, b) => b.sc - a.sc);
+  }).concat(timeHyps).sort((a, b) => b.sc - a.sc);
   const best = scored[0], second = scored[1] ? scored[1].sc : -9;
   if (window.__ocrDbg) window.__ocrDbg.push({ reads: reads.join(","), top: scored.slice(0, 3).map((q) => `${q.lo}+${q.step}:${q.sc.toFixed(3)}/${q.agree.toFixed(2)}`) });
   const minSc = opts.minScore || 0.5;
@@ -3233,7 +3395,9 @@ function recognizeSequence(boxes, reads, opts) {
   const ok = (best.sc >= minSc && (margin >= 0.04 || best.agree >= 0.6)) ||
     (best.sc >= minSc - 0.08 && (margin >= 0.12 || (margin >= 0.08 && best.agree >= 0.4)));
   const r = (v) => Math.round(v * 1000) / 1000;
-  const out = { lo: r(best.lo), step: r(best.step), hi: r(best.lo + (n - 1) * best.step), score: best.sc, margin, ok };
+  const out = best.time
+    ? { lo: best.lo, step: best.step, hi: best.lo + (n - 1) * best.step, score: best.sc, margin, ok, time: best.time }
+    : { lo: r(best.lo), step: r(best.step), hi: r(best.lo + (n - 1) * best.step), score: best.sc, margin, ok };
   if (opts.raw) return out;
   return ok ? out : null;
 }
@@ -3266,19 +3430,21 @@ function readAxisWith(ax, side, ys, d, startX, useMask, edge, tickLen) {
       }
     }
   }
-  const boxes = [], reads = [];
+  const boxes = [], reads = [], raws = [];
   for (const y of ys) {
     const box = axisLabelBox(ax, side, y, d, startX);
     boxes.push(box);
-    reads.push(box ? parseLabelNum(ocrBox(box.x0, box.y0, box.x1, box.y1)) : null);
+    const s = box ? ocrBox(box.x0, box.y0, box.x1, box.y1) : null;
+    raws.push(s);
+    reads.push(parseLabelNum(s));
   }
   // boyu ötekilerden çok farklı kutular yanlış kesilmiştir; sayma
   const hs = boxes.filter(Boolean).map((b) => b.y1 - b.y0 + 1);
   const mh = median(hs);
   boxes.forEach((b, i) => {
-    if (b && ((b.y1 - b.y0 + 1) > mh * 1.6 || (b.y1 - b.y0 + 1) < mh * 0.5)) { boxes[i] = null; reads[i] = null; }
+    if (b && ((b.y1 - b.y0 + 1) > mh * 1.6 || (b.y1 - b.y0 + 1) < mh * 0.5)) { boxes[i] = null; reads[i] = null; raws[i] = null; }
   });
-  const fit = recognizeSequence(boxes, reads, { raw: true });
+  const fit = recognizeSequence(boxes, reads, { raw: true, raws });
   ocrMask = null;
   return fit;
 }
@@ -3304,6 +3470,7 @@ function ocrAxes() {
     if (okA && okB && (okA.lo !== okB.lo || okA.step !== okB.step) && Math.abs(okA.score - okB.score) < 0.1) fit = null;
     // İki yol da aynı diziyi en iyi bulduysa, tek tek eşiğin biraz altında kalsalar da kabul et
     if (!fit && a && b && a.lo === b.lo && a.step === b.step && Math.min(a.score, b.score) >= 0.42 && Math.min(a.margin, b.margin) >= 0.03) fit = a;
+    if (window.__ocrDbg) window.__ocrDbg.push({ k, a, b });
     if (fit) res[k] = fit;
   }
   return res;
@@ -3370,6 +3537,21 @@ function ocrLetterLabels(blobs) {
   if (seq && seq.mean >= 0.55 && seq.mean >= indep.mean - 0.05) return seq.chs;
   if (indep.pick.every((p) => p.sc >= 0.6 && p.margin >= 0.03)) return indep.pick.map((p) => p.ch);
   return null;
+}
+
+// Roma rakamıyla kategori etiketleri (I, II, III, IV…)
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+function ocrRomanLabels(blobs) {
+  const n = blobs ? blobs.length : 0;
+  if (n < 2 || n > ROMAN.length) return null;
+  const boxes = blobs.map((b) => ({ x0: b.x0, x1: b.x1, y0: b.y0, y1: b.y1 }));
+  let best = null;
+  for (let s0 = 0; s0 + n <= ROMAN.length; s0++) {
+    const strs = ROMAN.slice(s0, s0 + n);
+    const sc = scoreStrings(boxes, strs) + (s0 === 0 ? 0.05 : 0);   // çoğunlukla I'den başlar
+    if (!best || sc > best.sc) best = { sc, strs };
+  }
+  return best && best.sc >= 0.6 ? best.strs : null;
 }
 
 /* ---------------- canvas ---------------- */
@@ -3481,7 +3663,7 @@ function render() {
       const sel = S.sel && S.sel.kind === "axis" && S.sel.side === k && S.sel.key === key;
       ctx.strokeStyle = col; ctx.lineWidth = sel ? 2.5 : 1.5;
       ctx.beginPath(); ctx.moveTo(xa * s, y); ctx.lineTo(xb * s, y); ctx.stroke();
-      const label = fmt(key === "yLo" ? A.lo : A.hi);
+      const label = fmtV(A, key === "yLo" ? A.lo : A.hi);
       const tw = ctx.measureText(label).width + 10;
       const bx = k === "L" ? xa * s : xb * s - tw;
       ctx.fillStyle = col;
@@ -3791,8 +3973,35 @@ function lineThickness(px, w, h) {
   const ws = widths.filter((v) => v <= 30);
   return ws.length ? median(ws) : 1;
 }
+// En uzun ince dikey çizginin (çoğunlukla eksen) kalınlığı; renkli eksenleri de sayar
+function tallLineWidth(px, w, h) {
+  const ink = (x, y) => {
+    const i = (y * w + x) * 4, r = px[i], g = px[i + 1], b = px[i + 2];
+    const c = Math.max(r, g, b) - Math.min(r, g, b), lum = 0.3 * r + 0.59 * g + 0.11 * b;
+    return (c < 70 && lum < 190) || (c >= 40 && lum < 190);
+  };
+  const len = new Array(w).fill(0);
+  for (let x = 0; x < w; x++) {
+    let best = 0, cur = 0, gap = 0;
+    for (let y = 0; y < h; y++) {
+      if (ink(x, y)) { cur += 1 + gap; gap = 0; if (cur > best) best = cur; }
+      else if (cur && gap < 3) gap++;
+      else { cur = 0; gap = 0; }
+    }
+    len[x] = best;
+  }
+  // uzun sütun grupları: 8 pikselden genişse sütundur, çizgi değil
+  const groups = [];
+  let g = null;
+  for (let x = 0; x < w; x++) {
+    if (len[x] >= Math.max(40, h * 0.12)) { if (g && g.x1 === x - 1) { g.x1 = x; g.len = Math.max(g.len, len[x]); } else { g = { x0: x, x1: x, len: len[x] }; groups.push(g); } }
+    else g = null;
+  }
+  const thin = groups.filter((q) => q.x1 - q.x0 + 1 <= 8 && q.x0 > 2 && q.x1 < w - 3).sort((a, b) => b.len - a.len);
+  return thin.length ? thin[0].x1 - thin[0].x0 + 1 : 1;
+}
 
-function setImage(img, isSample, preset) {
+function setImage(img, isSample, preset, forceK) {
   let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
   let c = document.createElement("canvas");
   c.width = w; c.height = h;
@@ -3802,7 +4011,7 @@ function setImage(img, isSample, preset) {
   // Büyütülmüş ya da çok büyük görselleri okuma için normal ölçeğe küçült
   if (!isSample) {
     const th = lineThickness(g.getImageData(0, 0, w, h).data, w, h);
-    let k = th >= 2.5 ? 1.5 / th : 1;
+    let k = forceK || (th >= 2.5 ? 1.5 / th : 1);
     if (Math.max(w, h) * k > 2400) k = 2400 / Math.max(w, h);
     if (k < 0.95) {
       const c2 = document.createElement("canvas");
@@ -3839,6 +4048,11 @@ function setImage(img, isSample, preset) {
       }
     }
     S.batch = false;
+    // Hiçbir şey okunamadıysa ve eksen renkli ve kalınsa (büyütülmüş görsel), küçültüp yeniden dene
+    if (!isSample && !forceK && S.sheets.every((sh) => !sh.rows.length || !sheetValued(sh))) {
+      const tw = tallLineWidth(S.px, S.W, S.H);
+      if (tw >= 3) { setImage(img, false, preset, Math.max(0.2, 2 / tw)); return; }
+    }
     S.loading = false;
     applyImageColors();
     refreshUI();
@@ -3963,7 +4177,8 @@ Reply with only this JSON object, with exactly ${n} item${n > 1 ? "s" : ""} in "
  "precipitation":[climate charts: precipitation for each label, or null],
  "series":[grouped charts only: one item per bar series, in the order its bars stand inside each group from left to right: {"name":"legend text of this series exactly as printed","axis":"left" or "right" (the vertical axis its values are read on),"values":[value for each label, or null]}],
  "value_labels":true or false}]}
-"bottom" and "top" are the lowest and highest numbers printed on that axis; "step" is the difference between two neighbouring printed numbers. Use a dot as the decimal separator. Write superscripts as plain Unicode (m²).`;
+"bottom" and "top" are the lowest and highest numbers printed on that axis; "step" is the difference between two neighbouring printed numbers.
+If an axis shows clock times (09.00, 09.30, 10.00…), give that axis and its values in decimal hours (09.30 → 9.5, step 30 minutes → 0.5) and add "time":true to that axis. Use a dot as the decimal separator. Write superscripts as plain Unicode (m²).`;
 }
 function maybeAsk(list) {
   if (sampleFn && S.src && !S.isSample && $("autoAsk").checked) askClaude(list || S.sheets);
@@ -3976,11 +4191,16 @@ function applyClaudeTo(sh, d, takeTitles) {
     role: /temp|sıcak|sicak|°c/i.test(String(o.quantity)) ? "t" : "p",
     lo: Number(o.bottom), hi: Number(o.top), step: Number(o.step),
     title: typeof o.title === "string" ? o.title.trim() : "",
+    time: o.time === true,
   });
   const L = conv(d.left);
   if (![L.lo, L.hi].every(isFinite) || L.hi === L.lo) return false;
   const arr = (a) => Array.isArray(a) ? a.map((v) => (v === null || v === "" || !isFinite(Number(v)) ? null : Number(v))) : [];
-  const setAx = (A, v) => { A.lo = v.lo; A.hi = v.hi; A.step = isFinite(v.step) && v.step > 0 ? v.step : (v.hi - v.lo) / 4; };
+  const setAx = (A, v) => {
+    A.lo = v.lo; A.hi = v.hi; A.step = isFinite(v.step) && v.step > 0 ? v.step : (v.hi - v.lo) / 4;
+    if (v.time) A.time = A.time || { pad: true, sep: "." };
+    else if (!A.fromImage) A.time = null;
+  };
   if (kind === "iklim") {
     if (!d.right) return false;
     const R = conv(d.right);
@@ -4249,11 +4469,11 @@ $("copyTsv").addEventListener("click", () => {
   if (kindOf(S.sheet) === "gruplu" && S.sheet.series) {
     const sh = S.sheet;
     const lines = [["Etiket"].concat(sh.series.map((_, j) => seriesName(sh, j))).join("\t")]
-      .concat(S.rows.map((r) => [r.label].concat(sh.series.map((_, j) => fmt(valG(sh, r, j)))).join("\t")));
+      .concat(S.rows.map((r) => [r.label].concat(sh.series.map((_, j) => fmtV(sh.axes[seriesAxisKey(sh, j)], valG(sh, r, j)))).join("\t")));
     copyText(lines.join("\n"), "Tablo kopyalandı; Excel'e yapıştırabilirsin.");
     return;
   }
-  const lines = ["Etiket\tSıcaklık\tYağış"].concat(S.rows.map((r) => `${r.label}\t${fmt(rowT(r))}\t${fmt(rowP(r))}`));
+  const lines = ["Etiket\tSıcaklık\tYağış"].concat(S.rows.map((r) => `${r.label}\t${fmtV(lineAxisOf(S.sheet), rowT(r))}\t${fmtV(barAxisOf(S.sheet), rowP(r))}`));
   copyText(lines.join("\n"), "Tablo kopyalandı; Excel'e yapıştırabilirsin.");
 });
 
@@ -4293,7 +4513,7 @@ $("copyScript").addEventListener("click", () => {
 syncStyleInputs();
 $("dlSvg").hidden = framed;
 setImage(sampleChart(), true, { L: { role: "t", lo: 0, hi: 40, step: 10 }, R: { role: "p", lo: 0, hi: 300, step: 100 } });
-window.__iklim = { S, ST, dbg: { axisLabelBox, pxDark, ocrBox, tightBox, withSheet, labelBlobs, isTextPx, ocrLetterDbg: (b) => ocrLetterLabels(b) }, dbgOcr: () => S.sheets.map((sh) => { let out = {}; withSheet(sh, () => { for (const k of ["L", "R"]) { const A = S.axes[k], ax = S.axX[k]; if (!ax || !axisReady(A) || !(A.nTicks > 1)) continue; const d = Math.abs(A.yLo - A.yHi) / (A.nTicks - 1); out[k] = { side: ax.side, n: A.nTicks, labs: [] }; for (let i = 0; i < A.nTicks; i++) { const y = A.yLo + (A.yHi - A.yLo) * i / (A.nTicks - 1); const b = axisLabelBox(ax, ax.side || k, y, d); out[k].labs.push(b ? [ocrBox(b.x0, b.y0, b.x1, b.y1), b.x1 - b.x0 + 1, b.y1 - b.y0 + 1] : null); } } }); return sh.name + " " + JSON.stringify(out); }), loadBlob, autoRun, runSheet, readValues, findAxes, detectPanels, activate, syncAxisInputs, syncStyleInputs, axisInputsChanged, currentPanel, livePanels, scriptText, renderPreview, setMode, layoutCanvas, buildChart, get lastSVG() { return lastSVG; } };
+window.__iklim = { S, ST, dbg: { axisLabelBox, pxDark, ocrBox, tightBox, withSheet, labelBlobs, isTextPx, tallLineWidth, ocrLetterDbg: (b) => ocrLetterLabels(b), romanDbg: (b) => { const n = b.length; const boxes = b.map((q) => ({ x0: q.x0, x1: q.x1, y0: q.y0, y1: q.y1 })); const out = []; for (let s0 = 0; s0 + n <= ROMAN.length; s0++) out.push([ROMAN.slice(s0, s0 + n).join(" "), scoreStrings(boxes, ROMAN.slice(s0, s0 + n)).toFixed(3)]); return out; } }, dbgOcr: () => S.sheets.map((sh) => { let out = {}; withSheet(sh, () => { for (const k of ["L", "R"]) { const A = S.axes[k], ax = S.axX[k]; if (!ax || !axisReady(A) || !(A.nTicks > 1)) continue; const d = Math.abs(A.yLo - A.yHi) / (A.nTicks - 1); out[k] = { side: ax.side, n: A.nTicks, labs: [] }; for (let i = 0; i < A.nTicks; i++) { const y = A.yLo + (A.yHi - A.yLo) * i / (A.nTicks - 1); const b = axisLabelBox(ax, ax.side || k, y, d); out[k].labs.push(b ? [ocrBox(b.x0, b.y0, b.x1, b.y1), b.x1 - b.x0 + 1, b.y1 - b.y0 + 1] : null); } } }); return sh.name + " " + JSON.stringify(out); }), loadBlob, autoRun, runSheet, readValues, findAxes, detectPanels, activate, syncAxisInputs, syncStyleInputs, axisInputsChanged, currentPanel, livePanels, scriptText, renderPreview, setMode, layoutCanvas, buildChart, get lastSVG() { return lastSVG; } };
 
 if (window.claude && typeof window.claude.use === "function") {
   window.claude.use("sample").then(async (s) => {
