@@ -24,6 +24,10 @@ jobs:
           - os: windows-latest
             name: windows
     runs-on: ${{ matrix.os }}
+    env:
+      # Windows konsolu Türkçe harfleri yazabilsin
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
     defaults:
       run:
         working-directory: gorsel-cizici
