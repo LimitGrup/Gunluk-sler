@@ -1,5 +1,9 @@
 # İklim Grafiği Çizici
 
+> **Yeni:** Her türlü basit çizimi (grafik, şekil, harita) görselden düzenlenebilir
+> vektöre çeviren, internetsiz çalışan masaüstü uygulaması için
+> [`../gorsel-cizici`](../gorsel-cizici/README.md) klasörüne bakın.
+
 `iklim-grafigi-cizici.html` tarayıcıda çalışan tek dosyalık bir araçtır.
 Çift tıklayıp aç; kurulum gerekmez. Ders kitaplarındaki **iklim** (sütun + çizgi,
 iki eksen), **sütun**, **çizgi** ve **gruplu sütun** (her kategoride yan yana renkli
