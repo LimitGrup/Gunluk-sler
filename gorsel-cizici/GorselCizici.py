@@ -36,6 +36,38 @@ def _selftest() -> int:
     return 0 if ok else 1
 
 
+def _ocr_test() -> int:
+    """Mac'in yazı tanımasını dener: Türkçe bir satır çizip okur."""
+    import os
+    import tempfile
+
+    from PIL import Image, ImageDraw, ImageFont
+
+    from gorsel_cizici import metin
+
+    print("yazı tanıma var mı:", metin.available())
+    if not metin.available():
+        return 0 if sys.platform != "darwin" else 1
+    font = None
+    for p in ("/System/Library/Fonts/Supplemental/Arial.ttf", "/System/Library/Fonts/Helvetica.ttc", "/Library/Fonts/Arial.ttf"):
+        if os.path.exists(p):
+            font = ImageFont.truetype(p, 28)
+            break
+    im = Image.new("RGB", (640, 120), "white")
+    d = ImageDraw.Draw(im)
+    d.text((20, 20), "Batı Doğu Kuzey Güney", font=font, fill="black")
+    d.text((20, 70), "Yağış 1980 Sıcaklık", font=font, fill="black")
+    fd, path = tempfile.mkstemp(suffix=".png")
+    os.close(fd)
+    im.save(path)
+    words = metin.recognize(path, im.width, im.height)
+    os.remove(path)
+    for w in words:
+        print(" ", w["text"], [round(v) for v in w["box"]], round(w["conf"], 2), "satır", w.get("line"))
+    print("OCR", "TAMAM" if words else "HATA", len(words), "kelime")
+    return 0 if words else 1
+
+
 def _convert(src: str, dst: str) -> int:
     from gorsel_cizici.cizim import load_rgb
     from gorsel_cizici.svg import to_svg
@@ -51,6 +83,8 @@ def _convert(src: str, dst: str) -> int:
 if __name__ == "__main__":
     if "--test" in sys.argv:
         sys.exit(_selftest())
+    if "--ocr-test" in sys.argv:
+        sys.exit(_ocr_test())
     if len(sys.argv) >= 4 and sys.argv[1] == "--svg":
         sys.exit(_convert(sys.argv[2], sys.argv[3]))
     from gorsel_cizici.arayuz import main

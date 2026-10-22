@@ -38,6 +38,9 @@ jobs:
           pip install -r requirements.txt pyinstaller
       - name: Çizim motorunu dene
         run: python GorselCizici.py --test
+      - name: Mac yazı tanımasını dene
+        if: runner.os == 'macOS'
+        run: python GorselCizici.py --ocr-test
       - name: Simge (Mac)
         if: runner.os == 'macOS'
         run: |
@@ -50,7 +53,9 @@ jobs:
         run: pyinstaller --noconfirm GorselCizici.spec
       - name: Paketlenmiş uygulamayı dene (Mac)
         if: runner.os == 'macOS'
-        run: QT_QPA_PLATFORM=offscreen dist/GorselCizici.app/Contents/MacOS/GorselCizici --test
+        run: |
+          QT_QPA_PLATFORM=offscreen dist/GorselCizici.app/Contents/MacOS/GorselCizici --test
+          dist/GorselCizici.app/Contents/MacOS/GorselCizici --ocr-test
       - name: Paketlenmiş uygulamayı dene (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

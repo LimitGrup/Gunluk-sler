@@ -37,7 +37,7 @@ def recognize(png_path: str, width: int, height: int) -> list[dict]:
         from Foundation import NSURL
 
         url = NSURL.fileURLWithPath_(png_path)
-        handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(url, None)
+        handler = Vision.VNImageRequestHandler.alloc().initWithURL_options_(url, {})
         req = Vision.VNRecognizeTextRequest.alloc().init()
         req.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
         req.setUsesLanguageCorrection_(False)
