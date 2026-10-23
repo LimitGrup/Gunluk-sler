@@ -36,10 +36,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Gereken paketler
+      - name: Gereken paketler (Windows)
+        if: runner.os == 'Windows'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
+      - name: Gereken paketler (Mac, macOS 12 ve üstünde çalışan sürümler)
+        if: runner.os == 'macOS'
+        # derleme makinesinin macOS'u yeni: pip kendiliğinden yalnız yeni macOS'ta çalışan
+        # kütüphaneleri seçer (uygulama eski Mac'lerde açılmaz). macOS 12 için olanlar indirilip kurulur.
+        run: |
+          python -m pip install --upgrade pip
+          pip download --only-binary=:all: --platform "macosx_12_0_$(uname -m)" --python-version 3.12 \
+            --implementation cp --abi cp312 --abi abi3 --abi none -r requirements.txt -d tekerlek
+          pip install --no-index --find-links tekerlek -r requirements.txt
+          pip install pyinstaller
       - name: Çizim motorunu dene
         run: python GorselCizici.py --test
       - name: Mac yazı tanımasını dene
@@ -55,6 +66,22 @@ jobs:
         run: python paketleme/simge.py --ico
       - name: Uygulamayı paketle
         run: pyinstaller --noconfirm GorselCizici.spec
+      - name: En düşük macOS sürümünü denetle (12)
+        if: runner.os == 'macOS'
+        run: |
+          ARCH=$(uname -m)
+          bad=0
+          n=0
+          while IFS= read -r -d '' f; do
+            case "$(file -b "$f")" in *Mach-O*) ;; *) continue ;; esac
+            n=$((n + 1))
+            v=$(otool -arch "$ARCH" -l "$f" 2>/dev/null | awk '/LC_BUILD_VERSION/{b=1} b&&$1=="minos"{print $2; exit} /LC_VERSION_MIN_MACOSX/{m=1} m&&$1=="version"{print $2; exit}') || true
+            if [ -z "$v" ]; then echo "bu mimari ($ARCH) yok ya da okunamadı: $f"; bad=1; continue; fi
+            if [ "${v%%.*}" -gt 12 ]; then echo "macOS $v istiyor: $f"; bad=1; fi
+          done < <(find dist/GorselCizici.app -type f -print0)
+          echo "$n ikili dosya denetlendi"
+          test "$n" -gt 0
+          test "$bad" = 0
       - name: Paketlenmiş uygulamayı dene (Mac)
         if: runner.os == 'macOS'
         run: |

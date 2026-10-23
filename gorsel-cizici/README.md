@@ -40,6 +40,7 @@ Tek tıkla indirin (GitHub hesabı gerekmez):
   https://github.com/LimitGrup/Gunluk-sler/releases/download/gorsel-cizici/GorselCizici-windows.zip
 
 (Hangisi olduğunu  › Bu Mac Hakkında'da "Çip" ya da "İşlemci" satırı söyler.)
+Mac sürümleri macOS 12 (Monterey) ve üstünde çalışır.
 
 Chrome "Tehlikeli indirme işlemi engellendi" diyebilir: uygulama Apple'a parayla kayıtlı
 (imzalı) olmadığı için böyle der, dosyada sorun yoktur. İndirme balonundaki **›** okuna
