@@ -66,9 +66,13 @@ jobs:
         run: |
           $p = Start-Process -FilePath "dist/GorselCizici/GorselCizici.exe" -ArgumentList "--test" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "test başarısız: $($p.ExitCode)" }
-      - name: Zip (Mac)
+      - name: Kurulum dosyası (Mac, .dmg)
         if: runner.os == 'macOS'
-        run: ditto -c -k --sequesterRsrc --keepParent dist/GorselCizici.app GorselCizici-${{ matrix.name }}.zip
+        run: |
+          mkdir -p dmg
+          cp -R dist/GorselCizici.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Gorsel Cizici" -srcfolder dmg -ov -format UDZO GorselCizici-${{ matrix.name }}.dmg
       - name: Zip (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -76,5 +80,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: GorselCizici-${{ matrix.name }}
-          path: gorsel-cizici/GorselCizici-${{ matrix.name }}.zip
+          path: |
+            gorsel-cizici/GorselCizici-${{ matrix.name }}.dmg
+            gorsel-cizici/GorselCizici-${{ matrix.name }}.zip
+          if-no-files-found: error
           retention-days: 90

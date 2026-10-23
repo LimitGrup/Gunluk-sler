@@ -25,9 +25,14 @@ Katmanlar ayrıdır: Dolgular, Çizgiler, Üstteki şekiller, Yazılar.
 
    (Hangisi olduğunu  › Bu Mac Hakkında'da "Çip" ya da "İşlemci" satırı söyler.)
 
+Chrome "Tehlikeli indirme işlemi engellendi" diyebilir: uygulama Apple'a parayla kayıtlı
+(imzalı) olmadığı için böyle der, dosyada sorun yoktur. İndirme balonundaki **›** okuna
+basıp **"Yine de indir"**i seçin ya da Safari ile indirin.
+
 ## Mac'te ilk açılış
 
-1. İndirilen zip'i açın, **GorselCizici.app**'i **Uygulamalar** klasörüne taşıyın.
+1. **GorselCizici-….dmg** dosyasını açın, **GorselCizici**'yi yanındaki **Applications
+   (Uygulamalar)** klasörüne sürükleyin.
 2. Uygulama Apple'a kayıtlı olmadığı için ilk açılışta uyarı çıkar:
    **Sistem Ayarları › Gizlilik ve Güvenlik**'te en altta **"Yine de Aç"**'a basın.
    "Hasarlı" derse Terminal'de bir kez şunu çalıştırın:

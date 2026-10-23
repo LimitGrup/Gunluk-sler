@@ -48,6 +48,8 @@ class Element:
     bold: bool = False
     anchor: str = "start"
     grad: dict | None = None        # renk geçişi: {"type": "linear"|"radial", ..., "stops": [(konum, (r,g,b))]}
+    stroke: tuple | None = None     # dolgunun kenar çizgisi rengi (dikdörtgen + kontur tek nesne)
+    stroke_width: float = 0.0
 
 
 @dataclass
@@ -842,6 +844,7 @@ class Options:
     text_mask: np.ndarray | None = None  # özgün boyutta yazı pikselleri (doğrulanmış yazılar): şekle çevrilmez
     glyphs: bool = True          # harfleri dolgulu şekil olarak çiz
     gradients: bool = True       # renk geçişli bölgeleri degrade dolgu yap
+    cizim: bool = True           # izlenen şekilleri çizim nesnelerine çevir (dikdörtgen, çizgi, kontur)
 
 
 def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
@@ -1081,6 +1084,9 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
         # görselle karşılaştır: tutmayan çizgiyi at, eksik kalan yeri görseldeki biçimiyle çiz
         elements.extend(_verify_strokes(sel, cov[k], cc, stats, f, colors[k], tol, w, h))
 
+    if opts.cizim:
+        from . import duzen
+        elements = duzen.cizimlestir(elements, colors[bg])
     # --- çizim sırası: büyük dolgular altta; çizgiler; küçük dolgular (nokta, simge) ve harfler üstte
     diag = math.hypot(w, h)
     small_lim = (0.025 * diag) ** 2
@@ -1214,6 +1220,8 @@ def _stroke_elements(items, color, tol, under=None):
         dotted = float(np.median(dashes)) <= wd * 1.4
         col, wd2 = tone(wd, a, (p0 + p1) / 2, dot=dotted)
         pat, cap = _dash_pattern(dashes, gaps, wd2)
+        if float(np.median(gaps)) < 0.8:
+            pat, cap = None, "butt"     # aralıksız parçalar: düz çizgi (araya giren şekiller bölmüş)
         p0, p1 = _snap_axis(p0, p1, 1.0)
         out.append(Element("stroke", col, prim={"type": "line", "x1": p0[0], "y1": p0[1], "x2": p1[0], "y2": p1[1]},
                            width=wd2, dash=pat, cap=cap,
@@ -1424,6 +1432,7 @@ def _rescale(elements, s):
     import re
     for e in elements:
         e.width *= s
+        e.stroke_width *= s
         e.area *= s * s
         e.bbox = tuple(v * s for v in e.bbox)
         if e.dash:

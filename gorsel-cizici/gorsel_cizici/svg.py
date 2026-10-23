@@ -66,18 +66,23 @@ def to_svg(scene: Scene, st: Style | None = None) -> str:
                     defs.append(f'<linearGradient id="{gid}" gradientUnits="userSpaceOnUse" x1="{_f(g["x1"])}" y1="{_f(g["y1"])}" x2="{_f(g["x2"])}" y2="{_f(g["y2"])}">{stops}</linearGradient>')
                 col = f"url(#{gid})"
             p = e.prim
+            ks = ""
+            if e.stroke is not None:
+                kc = st.color or _hex(e.stroke)
+                kw = (st.stroke_pt / s) if st.stroke_pt else e.stroke_width
+                ks = f' stroke="{kc}" stroke-width="{_f(kw)}" stroke-linejoin="miter"'
             if p and p["type"] == "rect":
-                fills.append(f'<rect x="{_f(p["x"])}" y="{_f(p["y"])}" width="{_f(p["w"])}" height="{_f(p["h"])}" fill="{col}"/>')
+                fills.append(f'<rect x="{_f(p["x"])}" y="{_f(p["y"])}" width="{_f(p["w"])}" height="{_f(p["h"])}" fill="{col}"{ks}/>')
             elif p and p["type"] == "circle":
-                fills.append(f'<circle cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" r="{_f(p["r"])}" fill="{col}"/>')
+                fills.append(f'<circle cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" r="{_f(p["r"])}" fill="{col}"{ks}/>')
             elif p and p["type"] == "ellipse":
                 rot = f' transform="rotate({_f(p["rot"])} {_f(p["cx"])} {_f(p["cy"])})"' if abs(p.get("rot", 0)) > 0.5 else ""
-                fills.append(f'<ellipse cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" rx="{_f(p["rx"])}" ry="{_f(p["ry"])}" fill="{col}"{rot}/>')
+                fills.append(f'<ellipse cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" rx="{_f(p["rx"])}" ry="{_f(p["ry"])}" fill="{col}"{rot}{ks}/>')
             elif p and p["type"] == "polygon":
                 pts = " ".join(f"{_f(x)},{_f(y)}" for x, y in p["pts"])
-                fills.append(f'<polygon points="{pts}" fill="{col}"/>')
+                fills.append(f'<polygon points="{pts}" fill="{col}"{ks}/>')
             elif e.d:
-                fills.append(f'<path d="{e.d}" fill="{col}" fill-rule="evenodd"/>')
+                fills.append(f'<path d="{e.d}" fill="{col}" fill-rule="evenodd"{ks}/>')
             continue
         # çizgi
         col = st.color or _hex(e.color)
