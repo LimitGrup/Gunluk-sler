@@ -1746,6 +1746,7 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
         elements = duzen.izgara_tamamla(elements, rgb, colors[bg])
         elements = duzen.koordinat_izgarasi(elements, rgb)
         elements = duzen.soluk_lekeler(elements, rgb, colors[bg])
+        elements = duzen.zemin_cizgileri(elements, rgb, colors[bg])
     # --- çizim sırası: büyük dolgular altta; çizgiler; küçük dolgular (nokta, simge) ve harfler üstte
     diag = math.hypot(w, h)
     small_lim = (0.025 * diag) ** 2
