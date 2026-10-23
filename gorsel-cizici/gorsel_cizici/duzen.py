@@ -463,11 +463,10 @@ def _line_of(e):
 
 def _same_ink(c1, c2) -> bool:
     """Aynı çizginin parçaları mı (zemine göre biraz farklı görünen gri tonlar dahil)."""
-    a, b = np.array(c1, float), np.array(c2, float)
-    if np.linalg.norm(a - b) < 30:
+    d = math.sqrt((c1[0] - c2[0]) ** 2 + (c1[1] - c2[1]) ** 2 + (c1[2] - c2[2]) ** 2)
+    if d < 30:
         return True
-    gray = lambda c: float(np.ptp(c)) < 25  # noqa: E731
-    return gray(a) and gray(b) and np.linalg.norm(a - b) < 140
+    return d < 140 and max(c1) - min(c1) < 25 and max(c2) - min(c2) < 25
 
 
 def _split_polylines(strokes: list) -> list:
@@ -517,9 +516,11 @@ def _merge_lines(strokes: list) -> list:
         placed = False
         for g in groups:
             gs, gd, ga = g["s"], g["d"], g["a"]
-            if not _same_ink(gs.color, s.color) or max(gs.width, s.width) > 1.9 * min(gs.width, s.width) + 0.2:
+            if max(gs.width, s.width) > 1.9 * min(gs.width, s.width) + 0.2:
                 continue
             if abs(float(gd @ d)) < 0.9995:
+                continue
+            if not _same_ink(gs.color, s.color):
                 continue
             nrm = np.array([-gd[1], gd[0]])
             if abs(float((a - ga) @ nrm)) > 0.8 or abs(float((b - ga) @ nrm)) > 0.8:
@@ -586,11 +587,11 @@ def _merge_dashes(elements: list) -> list:
         tol = max(0.8, 0.5 * w0)
         mem = []
         for e, a, b, w in pieces:
-            if id(e) in used or not _same_ink(e.color, e0.color):
-                continue
-            if max(w, w0) > 2.2 * min(w, w0) + 0.3:
+            if id(e) in used or max(w, w0) > 2.2 * min(w, w0) + 0.3:
                 continue
             if abs(float((a - a0) @ nrm)) > tol or abs(float((b - a0) @ nrm)) > tol:
+                continue
+            if not _same_ink(e.color, e0.color):
                 continue
             ta, tb = float((a - a0) @ d), float((b - a0) @ d)
             if e.kind == "fill":
@@ -772,12 +773,14 @@ def _drop_crumbs(elements: list, background) -> list:
         if e.grad:
             colors |= {tuple(int(v) for v in c) for _o, c in e.grad["stops"]}
     # görselde gerçekten kullanılan renkler (büyük şekiller ve harfler): bunlar kırıntı sayılmaz
-    real = [np.array(e.color, float) for e in elements
-            if e.kind != "text" and not e.grad and (_size(e) >= 4 or e.layer == "harf")]
+    real = {tuple(int(v) for v in e.color) for e in elements
+            if e.kind != "text" and not e.grad and (_size(e) >= 4 or e.layer == "harf")}
+    real = np.array(sorted(real), float).reshape(-1, 3)
 
     def is_real(c):
-        c = np.array(c, float)
-        return any(np.linalg.norm(c - r) < 14 for r in real)
+        if not len(real):
+            return False
+        return bool((np.linalg.norm(real - np.array(c, float), axis=1) < 14).any())
 
     out = []
     for e in elements:
