@@ -16,14 +16,16 @@ Katmanlar ayrıdır: Dolgular, Çizgiler, Üstteki şekiller, Yazılar.
 
 ## İndirme
 
-1. GitHub'da bu depoda **Actions** sekmesine girin.
-2. Soldan **Görsel Çizici uygulaması**'nı seçin, en üstteki (yeşil tikli) çalıştırmaya tıklayın.
-3. Sayfanın altındaki **Artifacts** bölümünden indirin:
-   - `GorselCizici-mac-apple-silicon` → M1, M2, M3, M4 işlemcili Mac'ler
-   - `GorselCizici-mac-intel` → Intel işlemcili Mac'ler
-   - `GorselCizici-windows` → Windows
+Tek tıkla indirin (GitHub hesabı gerekmez):
 
-   (Hangisi olduğunu  › Bu Mac Hakkında'da "Çip" ya da "İşlemci" satırı söyler.)
+- **Mac – Apple çipli (M1, M2, M3, M4):**
+  https://github.com/LimitGrup/Gunluk-sler/releases/download/gorsel-cizici/GorselCizici-mac-apple-silicon.dmg
+- **Mac – Intel:**
+  https://github.com/LimitGrup/Gunluk-sler/releases/download/gorsel-cizici/GorselCizici-mac-intel.dmg
+- **Windows:**
+  https://github.com/LimitGrup/Gunluk-sler/releases/download/gorsel-cizici/GorselCizici-windows.zip
+
+(Hangisi olduğunu  › Bu Mac Hakkında'da "Çip" ya da "İşlemci" satırı söyler.)
 
 Chrome "Tehlikeli indirme işlemi engellendi" diyebilir: uygulama Apple'a parayla kayıtlı
 (imzalı) olmadığı için böyle der, dosyada sorun yoktur. İndirme balonundaki **›** okuna
