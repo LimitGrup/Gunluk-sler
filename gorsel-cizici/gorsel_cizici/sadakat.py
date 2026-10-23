@@ -134,6 +134,9 @@ def element_polys(e) -> tuple:
     p = e.prim
     if p:
         t = p["type"]
+        if t == "rrect" or (t == "rect" and abs(p.get("rot", 0.0)) > 1e-6):
+            from . import sekil
+            return ("fill" if e.kind == "fill" else "stroke"), [(sekil.prim_points(p), True)]
         if t == "rect":
             x, y, w, h = p["x"], p["y"], p["w"], p["h"]
             poly = np.array([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], float)
@@ -151,8 +154,8 @@ def element_polys(e) -> tuple:
             y = p["ry"] * np.sin(a)
             poly = np.column_stack([p["cx"] + x * math.cos(r) - y * math.sin(r), p["cy"] + x * math.sin(r) + y * math.cos(r)])
             return ("fill" if e.kind == "fill" else "stroke"), [(poly, True)]
-        if t == "polygon":
-            return "fill", [(np.array(p["pts"], float), True)]
+        if t in ("polygon", "path"):
+            return ("fill" if e.kind == "fill" else "stroke"), [(np.array(p["pts"], float), True)]
         if t == "line":
             return "stroke", [(np.array([[p["x1"], p["y1"]], [p["x2"], p["y2"]]], float), False)]
     if e.d:

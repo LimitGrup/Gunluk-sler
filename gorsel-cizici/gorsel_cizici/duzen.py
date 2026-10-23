@@ -17,10 +17,11 @@ noktalı yollar olur. Bu adım onları gerçek çizim nesnelerine çevirir:
 from __future__ import annotations
 
 import math
+import re
 
 import numpy as np
 
-from . import egri, sadakat
+from . import egri, sadakat, sekil
 
 
 def _area(P: np.ndarray) -> float:
@@ -40,7 +41,7 @@ def _f(v: float) -> str:
 # ---------------------------------------------------------------- dolgular
 def _rectify(e) -> bool:
     """Dikdörtgene benzeyen dolguyu <rect> yap."""
-    if e.prim and e.prim.get("type") in ("rect", "circle", "ellipse"):
+    if e.prim:
         return e.prim["type"] == "rect"
     _k, polys = _poly_of(e)
     if len(polys) != 1:
@@ -183,7 +184,8 @@ def _union_rects(fills: list) -> list:
     """İnce bir çizginin böldüğü aynı renkli/aynı degradeli komşu parçaları tek dikdörtgen yap."""
     _dead = []
     # yalnız degradeli ya da dikdörtgen olmuş, en az birkaç piksellik parçalar aday
-    alive = [e for e in fills if e.layer != "harf" and (e.grad is not None or (e.prim and e.prim.get("type") == "rect"))
+    alive = [e for e in fills if e.layer != "harf" and (e.grad is not None or (e.prim and e.prim.get("type") == "rect"
+                                                                                 and not e.prim.get("rot")))
              and _size(e) >= 3]
     if len(alive) > 1500:
         alive = alive[:1500]
@@ -280,7 +282,7 @@ def _merge_outlines(fills: list, strokes: list) -> set:
             for gy in range(int(y0 // cell), int(y1 // cell) + 1):
                 grid.setdefault((gx, gy), []).append(i)
     for r in fills:
-        if not (r.prim and r.prim.get("type") == "rect") or r.stroke is not None:
+        if not (r.prim and r.prim.get("type") == "rect") or r.prim.get("rot") or r.stroke is not None:
             continue
         x, y, w, h = r.prim["x"], r.prim["y"], r.prim["w"], r.prim["h"]
         if w < 3 or h < 3:
@@ -357,7 +359,8 @@ def _on_blend(c, a, b, tol=22.0) -> bool:
 def _rect_strokes(fills: list, strokes: list, background) -> list:
     """Aynı renkteki sütunların çoğu konturluysa hepsi aynı konturu alır; kenarlarının üstünde
     kalan parça çizgiler (konturun kopukları, kenar gölgeleri) silinir."""
-    rects = [r for r in fills if r.prim and r.prim.get("type") == "rect" and r.layer != "harf"
+    rects = [r for r in fills if r.prim and r.prim.get("type") in ("rect", "rrect") and not r.prim.get("rot")
+             and r.layer != "harf"
              and min(r.prim["w"], r.prim["h"]) >= 3]
     groups = []
     for r in rects:
@@ -389,42 +392,38 @@ def _rect_strokes(fills: list, strokes: list, background) -> list:
     stroked = [r for r in rects if r.stroke is not None]
     if not stroked:
         return strokes
+    import cv2
+    polys = {id(r): sekil.prim_points(r.prim).astype(np.float32) for r in stroked}
     out = []
     for sk in strokes:
-        if sk.dash or sk.kind != "stroke":
+        if sk.kind != "stroke" or (sk.dash and _size(sk) > 30):
             out.append(sk)
             continue
-        ln = _line_of(sk)
-        if ln is None:
+        kind, pp = sadakat.element_polys(sk)
+        if not pp:
             out.append(sk)
             continue
-        a, b = np.asarray(ln[0], float), np.asarray(ln[1], float)
-        x0, y0 = np.minimum(a, b) - 2
-        x1, y1 = np.maximum(a, b) + 2
-        near = [r for r in stroked if r.prim["x"] - 2 <= x1 and r.prim["x"] + r.prim["w"] + 2 >= x0
-                and r.prim["y"] - 2 <= y1 and r.prim["y"] + r.prim["h"] + 2 >= y0]
-        if not near:
-            out.append(sk)
-            continue
-        n = max(2, int(np.hypot(*(b - a)) / 0.5) + 1)
-        P = a + (b - a) * np.linspace(0, 1, n)[:, None]
-        on = np.zeros(n, bool)
-        ok_col = False
-        for r in near:
+        Q = np.vstack([sadakat_dense(p_, c_) for p_, c_ in pp])
+        bx0, by0 = Q.min(axis=0)
+        bx1, by1 = Q.max(axis=0)
+        hit = False
+        for r in stroked:
             x, y, w, h = r.prim["x"], r.prim["y"], r.prim["w"], r.prim["h"]
-            tol = max(1.5, 0.6 * max(sk.width, r.stroke_width) + 0.8)
-            inx = (P[:, 0] >= x - tol) & (P[:, 0] <= x + w + tol)
-            iny = (P[:, 1] >= y - tol) & (P[:, 1] <= y + h + tol)
-            e = ((np.minimum(np.abs(P[:, 0] - x), np.abs(P[:, 0] - x - w)) <= tol) & iny) | \
-                ((np.minimum(np.abs(P[:, 1] - y), np.abs(P[:, 1] - y - h)) <= tol) & inx)
-            if e.any():
-                on |= e
-                if _de(sk.color, r.stroke) < 25 or _on_blend(sk.color, r.stroke, background) or \
-                        _on_blend(sk.color, r.stroke, r.color):
-                    ok_col = True
-        if ok_col and on.mean() >= 0.95:
-            continue
-        out.append(sk)
+            if bx0 < x - 4 or by0 < y - 4 or bx1 > x + w + 4 or by1 > y + h + 4:
+                continue
+            # rengi kutunun konturu ya da onun zemine/dolguya karışımı olmalı
+            if not (_de(sk.color, r.stroke) < 25 or _on_blend(sk.color, r.stroke, background)
+                    or _on_blend(sk.color, r.stroke, r.color)):
+                continue
+            tol = max(1.6, 0.6 * max(sk.width, r.stroke_width) + 1.0)
+            pg = polys[id(r)]
+            step = max(1, len(Q) // 60)
+            dd = np.array([abs(cv2.pointPolygonTest(pg, (float(qx), float(qy)), True)) for qx, qy in Q[::step]])
+            if (dd <= tol).mean() >= 0.9:
+                hit = True
+                break
+        if not hit:
+            out.append(sk)
     return out
 
 
@@ -475,7 +474,7 @@ def _split_polylines(strokes: list) -> list:
     from .vektor import Element
     out = []
     for s in strokes:
-        if s.prim or not s.d or s.dash or any(c in s.d for c in "CAZ"):
+        if s.prim or not s.d or s.dash or any(c in s.d for c in "CAZ") or s.layer == "veri":
             out.append(s)
             continue
         polys = sadakat.flatten(s.d)
@@ -704,6 +703,449 @@ def _closed_shape(s) -> None:
         s.d = ""
 
 
+def _baglantilar(elements: list) -> list:
+    """Yatay/dikey bağlantı çizgilerini (şema, ağaç) temizle:
+
+    - aynı hizadaki parçalar tek çizgi; uçlar kesiştikleri çizgiye ya da kutunun kenarına
+      tam oturur (aradaki boşluklar kapanır),
+    - köşede birleşen çizgiler tek yol (ör. ⊓ biçimli dağıtıcı), düz devam eden kol da aynı yolda,
+    - köşelerdeki küçük dolgu parçaları (kalın köşe izleri) atılır,
+    - aynı renkteki bağlantıların kalınlığı aynı.
+    """
+    from .vektor import Element
+    # köşeleri yumuşamış dik açılı yolları (⊓, ├ biçimli) düz parçalara ayır
+    extra = []
+    for e in elements:
+        if e.kind != "stroke" or e.dash or e.prim or not e.d or "Z" in e.d:
+            continue
+        pp = sadakat.flatten(e.d)
+        if len(pp) != 1 or len(pp[0][0]) < 2:
+            continue
+        P = pp[0][0]
+        if np.ptp(P[:, 0]) + np.ptp(P[:, 1]) < 12:
+            continue
+        v = egri.rdp(P, max(1.2, 0.6 * e.width))
+        if len(v) < 2 or len(v) > 10:
+            continue
+        ok = True
+        parts = []
+        for a, b in zip(v[:-1], v[1:]):
+            L = float(np.hypot(*(b - a)))
+            if L < 1e-6:
+                continue
+            ang = math.degrees(math.atan2(abs(b[1] - a[1]), abs(b[0] - a[0])))
+            # köşedeki çok kısa yuvarlatma parçası atlanır; kısa parçalar en yakın yöne
+            # oturtulur; uzun parçalar zaten yatay/dikey olmalı
+            if L < max(3.0, 1.5 * e.width):
+                continue
+            if L < 8:
+                if ang <= 30:
+                    yy = (a[1] + b[1]) / 2
+                    a, b = np.array([a[0], yy]), np.array([b[0], yy])
+                elif ang >= 60:
+                    xx = (a[0] + b[0]) / 2
+                    a, b = np.array([xx, a[1]]), np.array([xx, b[1]])
+                else:
+                    ok = False
+                    break
+                parts.append((a, b))
+                continue
+            lim = 7 if L < 20 else 8
+            if ang <= lim:
+                yy = (a[1] + b[1]) / 2
+                a, b = np.array([a[0], yy]), np.array([b[0], yy])
+            elif ang >= 90 - lim:
+                xx = (a[0] + b[0]) / 2
+                a, b = np.array([xx, a[1]]), np.array([xx, b[1]])
+            else:
+                ok = False
+                break
+            parts.append((a, b))
+        if not ok or not parts:
+            continue
+        for a, b in parts:
+            extra.append(Element("stroke", e.color, prim={"type": "line", "x1": float(a[0]), "y1": float(a[1]),
+                                                         "x2": float(b[0]), "y2": float(b[1])}, width=e.width,
+                                 bbox=(float(min(a[0], b[0])), float(min(a[1], b[1])), float(max(a[0], b[0])), float(max(a[1], b[1])))))
+        e.layer = "_bolundu"
+    if extra:
+        elements = [e for e in elements if e.layer != "_bolundu"] + extra
+    segs = []
+    kisa = []      # köşe arayışı için bütün yatay/dikey parçalar (kısalar dahil): (renk, yön, uç1, uç2)
+    for e in elements:
+        if e.kind != "stroke" or e.dash:
+            continue
+        ln = _line_of(e)
+        if ln is None:
+            continue
+        a, b = np.asarray(ln[0], float), np.asarray(ln[1], float)
+        dx, dy = abs(b[0] - a[0]), abs(b[1] - a[1])
+        L = math.hypot(dx, dy)
+        if L >= 1.0 and (dy <= 0.36 * L or dx <= 0.36 * L):
+            kisa.append((e.color, "h" if dy <= 0.36 * L else "v", a, b))
+        if L < 3:
+            continue
+        if dy <= max(0.9, 0.035 * L):
+            y = (a[1] + b[1]) / 2
+            segs.append({"e": e, "o": "h", "c": y, "lo": min(a[0], b[0]), "hi": max(a[0], b[0]), "w": e.width})
+        elif dx <= max(0.9, 0.035 * L):
+            x = (a[0] + b[0]) / 2
+            segs.append({"e": e, "o": "v", "c": x, "lo": min(a[1], b[1]), "hi": max(a[1], b[1]), "w": e.width})
+    if len(segs) < 2:
+        return elements
+    used = set()
+    # renk gruplarına ayır
+    groups = []
+    for sg in segs:
+        for g in groups:
+            if _same_ink(g[0]["e"].color, sg["e"].color) and _de(g[0]["e"].color, sg["e"].color) < 25:
+                g.append(sg)
+                break
+        else:
+            groups.append([sg])
+    targets = []   # kutu kenarları: (yön, koordinat, alt, üst)
+    for e in elements:
+        p = e.prim or {}
+        if e.kind == "fill" and p.get("type") in ("rect", "rrect") and not p.get("rot") and e.layer != "harf":
+            x, y, w_, h_ = p["x"], p["y"], p["w"], p["h"]
+            r = p.get("r", 0.0)
+            targets += [("h", y, x + r, x + w_ - r), ("h", y + h_, x + r, x + w_ - r),
+                        ("v", x, y + r, y + h_ - r), ("v", x + w_, y + r, y + h_ - r)]
+    out_new = []
+    drop_fills = set()
+    for g in groups:
+        if len(g) < 2 and not targets:
+            continue
+        wmed = float(np.median([sg["w"] for sg in g]))
+        tol = max(2.0, 1.2 * wmed)
+        g_col = g[0]["e"].color
+        dik = [(o_, a_, b_) for c_, o_, a_, b_ in kisa if _same_ink(c_, g_col) and _de(c_, g_col) < 25]
+
+        def kose(o, c, pos):
+            # parçanın bu ucu dik bir parçanın ucuyla köşe yapıyor mu (küçük sütunun üst kenarı):
+            # köşede biten uç başka yere uzatılmaz, öbür parçayla birleşmez
+            pt = np.array([pos, c]) if o == "h" else np.array([c, pos])
+            for o2, a_, b_ in dik:
+                if o2 == o:
+                    continue
+                if min(float(np.hypot(*(a_ - pt))), float(np.hypot(*(b_ - pt)))) <= 1.5:
+                    return True
+            return False
+        # aynı hizadakileri eşitle ve birleştir
+        merged = []
+        for o in ("h", "v"):
+            items = sorted([sg for sg in g if sg["o"] == o], key=lambda t: t["c"])
+            clusters = []
+            for sg in items:
+                if clusters and abs(sg["c"] - clusters[-1][-1]["c"]) <= tol:
+                    clusters[-1].append(sg)
+                else:
+                    clusters.append([sg])
+            for cl in clusters:
+                c = float(np.median([t["c"] for t in cl]))
+                cl.sort(key=lambda t: t["lo"])
+                cur = None
+                for t in cl:
+                    if cur:
+                        gap = t["lo"] - cur["hi"]
+                        son = cur["parts"][-1]
+                        # kısa parçalar arasındaki, boyları kadar boşluk kopukluk değil, ayrı şekillerdir
+                        izin = min(max(3 * wmed, 12), max(1.5 + wmed, 0.5 * min(son["hi"] - son["lo"],
+                                                                                 t["hi"] - t["lo"])))
+                        if gap > 1.5 + wmed and (kose(o, c, cur["hi"]) or kose(o, c, t["lo"])):
+                            izin = 1.5 + wmed
+                    if cur and t["lo"] <= cur["hi"] + izin:
+                        cur["hi"] = max(cur["hi"], t["hi"])
+                        cur["parts"].append(t)
+                    else:
+                        cur = {"o": o, "c": c, "lo": t["lo"], "hi": t["hi"], "parts": [t]}
+                        merged.append(cur)
+        if len(merged) < 2 and not targets:
+            continue
+        reach = 2 * wmed + 4
+        # uçları kesiştikleri dik çizgiye ya da kutu kenarına oturt (çizgi kısalıp yok olmasın)
+        for m in merged:
+            L0 = m["hi"] - m["lo"]
+            for end in ("lo", "hi"):
+                pos = m[end]
+                other = m["hi"] if end == "lo" else m["lo"]
+                best = None
+                # köşede biten uç yalnız o köşeye oturur; kısa parça boyundan fazla uzatılmaz
+                lim = 2.0 if kose(m["o"], m["c"], pos) else max(2.0, L0)
+                cands = [(q["c"], q["lo"] - reach, q["hi"] + reach) for q in merged
+                         if q is not m and q["o"] != m["o"]]
+                cands += [(c, lo - 1, hi + 1) for o, c, lo, hi in targets if o != m["o"]]
+                for c, lo, hi in cands:
+                    d = abs(c - pos)
+                    if d > min(reach, lim) or not (lo <= m["c"] <= hi):
+                        continue
+                    # çizginin içinden geçtiği dik çizgiye kısaltma yalnız kenar yumuşatması kadar
+                    # (eksenin iki yanına taşan çentik yarıya inmesin)
+                    ice = (c > pos) if end == "lo" else (c < pos)
+                    if ice and d > max(1.5, wmed):
+                        continue
+                    newL = (other - c) if end == "lo" else (c - other)
+                    if newL < max(2.0, 0.5 * L0):
+                        continue
+                    if best is None or d < best[0]:
+                        best = (d, c)
+                if best is not None:
+                    m[end] = best[1]
+            if m["lo"] > m["hi"]:
+                m["lo"], m["hi"] = m["hi"], m["lo"]
+        # köşe izleri: yatay ile dikey parçanın buluştuğu köşedeki küçük aynı renkli dolgular
+        # (grafik çizgisinin veri noktaları köşe değildir)
+        uc_h, uc_v = [], []
+        for m in merged:
+            for v in (m["lo"], m["hi"]):
+                if m["o"] == "h":
+                    uc_h.append((v, m["c"]))
+                else:
+                    uc_v.append((m["c"], v))
+        pts = [p for p in uc_h if any(math.hypot(p[0] - q[0], p[1] - q[1]) <= 2 * wmed + 4 for q in uc_v)]
+        pts += [q for q in uc_v if any(math.hypot(p[0] - q[0], p[1] - q[1]) <= 2 * wmed + 4 for p in uc_h)]
+        for e in elements:
+            if e.kind != "fill" or id(e) in drop_fills or e.layer == "harf":
+                continue
+            if _size(e) > 3 * wmed + 6 or not _same_ink(e.color, g[0]["e"].color):
+                continue
+            cx, cy = (e.bbox[0] + e.bbox[2]) / 2, (e.bbox[1] + e.bbox[3]) / 2
+            if any(math.hypot(cx - px, cy - py) <= 2 * wmed + 4 for px, py in pts):
+                drop_fills.add(id(e))
+        # köşede buluşanları tek yola diz: uç noktalarından grafik
+        def ends(m):
+            if m["o"] == "h":
+                return (round(m["lo"], 1), round(m["c"], 1)), (round(m["hi"], 1), round(m["c"], 1))
+            return (round(m["c"], 1), round(m["lo"], 1)), (round(m["c"], 1), round(m["hi"], 1))
+        adj = {}
+        for i, m in enumerate(merged):
+            for pnt in ends(m):
+                adj.setdefault(pnt, []).append(i)
+        done = set()
+        col = min((t["e"] for m in merged for t in m["parts"]), key=lambda e: sum(e.color)).color
+        for i, m in enumerate(merged):
+            if i in done:
+                continue
+            # zinciri iki yöne uzat
+            chain = [i]
+            done.add(i)
+            for direction in (0, 1):
+                cur = i
+                pnt = ends(m)[direction]
+                while True:
+                    nxt = [j for j in adj.get(pnt, []) if j not in done]
+                    if len(adj.get(pnt, [])) != 2 or len(nxt) != 1:
+                        break
+                    j = nxt[0]
+                    done.add(j)
+                    if direction == 0:
+                        chain.insert(0, j)
+                    else:
+                        chain.append(j)
+                    e0, e1 = ends(merged[j])
+                    pnt = e1 if e0 == pnt else e0
+                    cur = j
+            # yolu noktalar olarak yaz
+            if len(chain) == 1:
+                a, b = ends(merged[chain[0]])
+                poly = [a, b]
+            else:
+                poly = []
+                for idx_c, j in enumerate(chain):
+                    a, b = ends(merged[j])
+                    if not poly:
+                        nb = ends(merged[chain[1]])
+                        if a in nb:
+                            a, b = b, a
+                        poly = [a, b]
+                    else:
+                        if a == poly[-1]:
+                            poly.append(b)
+                        elif b == poly[-1]:
+                            poly.append(a)
+                        else:
+                            poly.append(a)
+                            poly.append(b)
+            P = np.array(poly, float)
+            # kalınlık: aynı renkteki bağlantılarınki (ölçüm oynaması eşitlenir); bu yolun kendi
+            # kalınlığı ondan belirgin farklıysa (aynı renkte kalın bir çizgi ile ince harf çubukları)
+            # kendi kalınlığı kalır
+            ws_ = np.array([float(t["e"].width) for j in chain for t in merged[j]["parts"]])
+            ls_ = np.array([max(1.0, float(t["hi"] - t["lo"])) for j in chain for t in merged[j]["parts"]])
+            o_ = np.argsort(ws_)
+            w_kendi = float(ws_[o_][np.searchsorted(np.cumsum(ls_[o_]), 0.5 * float(ls_.sum()))])
+            wd_ = wmed if abs(w_kendi - wmed) <= 0.35 * wmed else w_kendi
+            if len(P) == 2:
+                el = Element("stroke", col, prim={"type": "line", "x1": float(P[0][0]), "y1": float(P[0][1]),
+                                                  "x2": float(P[1][0]), "y2": float(P[1][1])}, width=wd_, cap="butt")
+            else:
+                d = "M" + "L".join(f"{_f(x)} {_f(y)}" for x, y in P)
+                el = Element("stroke", col, d=d, width=wd_, cap="butt")
+            el.join = "miter"
+            el.bbox = (float(P[:, 0].min()), float(P[:, 1].min()), float(P[:, 0].max()), float(P[:, 1].max()))
+            out_new.append(el)
+            for j in chain:
+                for t in merged[j]["parts"]:
+                    used.add(id(t["e"]))
+    if not used and not drop_fills:
+        return elements
+    return [e for e in elements if id(e) not in used and id(e) not in drop_fills] + out_new
+
+
+def _gorunmez(elements: list) -> list:
+    """Altındaki dolguyla aynı renkte olan küçük çizgi ve kırıntıları at (görünmezler, yalnız
+    nesne kalabalığı yaparlar: harf aralarında kalan kutu rengi, kenar pürüzleri)."""
+    import cv2
+    shapes = []
+    for e in elements:
+        if e.kind != "fill" or e.layer == "harf" or e.grad or _size(e) < 8:
+            continue
+        kind, pp = sadakat.element_polys(e)
+        if not pp:
+            continue
+        P = max((p_ for p_, _c in pp), key=lambda q: len(q))
+        if len(P) < 3:
+            continue
+        shapes.append((e, P.astype(np.float32), e.bbox))
+    if not shapes:
+        return elements
+    out = []
+    for e in elements:
+        if e.layer == "harf" or e.kind == "text" or _size(e) > 30 or (e.kind == "fill" and e.stroke is not None):
+            out.append(e)
+            continue
+        kind, pp = sadakat.element_polys(e)
+        if not pp:
+            out.append(e)
+            continue
+        Q = np.vstack([p_ for p_, _c in pp])
+        x0, y0 = Q.min(axis=0)
+        x1, y1 = Q.max(axis=0)
+        gone = False
+        for S, P, b in shapes:
+            if S is e or b[0] > x0 or b[1] > y0 or b[2] < x1 or b[3] < y1 or _size(S) <= _size(e):
+                continue
+            if _de(S.color, e.color) >= 12:
+                continue
+            if all(cv2.pointPolygonTest(P, (float(qx), float(qy)), True) >= 0.5 for qx, qy in Q[:: max(1, len(Q) // 20)]):
+                gone = True
+                break
+        if not gone:
+            out.append(e)
+    return out
+
+
+def _kumele(vals, tol_abs, tol_rel=0.0):
+    """Yakın değerleri kümele; her değerin küme ortancasını döndür."""
+    vals = np.asarray(vals, float)
+    order = np.argsort(vals)
+    out = vals.copy()
+    grp = [order[0]]
+    for i in order[1:]:
+        ref = float(np.median(vals[grp]))
+        if abs(vals[i] - ref) <= max(tol_abs, tol_rel * abs(ref)):
+            grp.append(i)
+        else:
+            out[grp] = float(np.median(vals[grp]))
+            grp = [i]
+    out[grp] = float(np.median(vals[grp]))
+    return out
+
+
+def _hizala(elements: list) -> None:
+    """Aynı türdeki kutuları eşitle ve hizala (bir tasarımcının yapacağı gibi):
+    aynı renkteki benzer kutular aynı boyut, aynı köşe yuvarlaklığı ve aynı konturu alır;
+    neredeyse aynı hizadaki kenarlar tam hizalanır."""
+    # panel (üstünde başka şekiller duran çerçeveli zemin) kapsayıcıdır: içindekilere hizalanmaz
+    boxes = [e for e in elements if e.kind == "fill" and e.prim and e.prim.get("type") in ("rect", "rrect")
+             and not e.prim.get("rot") and e.layer != "harf" and min(e.prim["w"], e.prim["h"]) >= 4
+             and not getattr(e, "panel", False)]
+    if len(boxes) < 2:
+        return
+    # benzer kutu grupları: dolgu rengi ve boyut
+    groups = []
+    for e in boxes:
+        for g in groups:
+            r = g[0]
+            same_stroke = (r.stroke is None) == (e.stroke is None) and (r.stroke is None or _de(r.stroke, e.stroke) < 15)
+            if (same_stroke and _de(r.color, e.color) < 10
+                    and abs(r.prim["w"] - e.prim["w"]) <= 0.12 * max(r.prim["w"], e.prim["w"])
+                    and abs(r.prim["h"] - e.prim["h"]) <= 0.15 * max(r.prim["h"], e.prim["h"])):
+                g.append(e)
+                break
+        else:
+            groups.append([e])
+    for g in groups:
+        if len(g) < 2:
+            continue
+        n_rr = sum(1 for e in g if e.prim["type"] == "rrect")
+        rounded = n_rr * 2 >= len(g)
+        rs = [e.prim.get("r", 0.0) for e in g if e.prim["type"] == "rrect"]
+        r_med = float(np.median(rs)) if rs else 0.0
+        ws = _kumele([e.prim["w"] for e in g], 1.5, 0.03)
+        hs = _kumele([e.prim["h"] for e in g], 1.5, 0.04)
+        st = [e for e in g if e.stroke is not None]
+        sw = float(np.median([e.stroke_width for e in st])) if st else 0.0
+        sc = None
+        if st and len(st) * 2 >= len(g):
+            # en sık kontur rengi
+            votes = []
+            for e in st:
+                for v in votes:
+                    if _de(v[0].stroke, e.stroke) < 12:
+                        v.append(e)
+                        break
+                else:
+                    votes.append([e])
+            sc = max(votes, key=len)[0].stroke
+        for e, w_, h_ in zip(g, ws, hs):
+            cx = e.prim["x"] + e.prim["w"] / 2
+            cy = e.prim["y"] + e.prim["h"] / 2
+            p = {"type": "rrect" if rounded and r_med > 0.5 else "rect", "x": cx - w_ / 2, "y": cy - h_ / 2,
+                 "w": float(w_), "h": float(h_)}
+            if p["type"] == "rrect":
+                p["r"] = min(r_med, w_ / 2, h_ / 2)
+            e.prim = p
+            if sc is not None:
+                e.stroke, e.stroke_width = sc, sw
+    # kenar hizası: yakın sol/üst kenarlar aynı çizgiye, sonra yakın sağ/alt kenarlar
+    for key, size in (("x", "w"), ("y", "h")):
+        lefts = _kumele([e.prim[key] for e in boxes], 2.0)
+        for e, v in zip(boxes, lefts):
+            e.prim[key] = float(v)
+        rights = _kumele([e.prim[key] + e.prim[size] for e in boxes], 2.0)
+        for e, v in zip(boxes, rights):
+            nw = float(v) - e.prim[key]
+            if abs(nw - e.prim[size]) <= 2.0:
+                e.prim[size] = nw
+                if e.prim["type"] == "rrect":
+                    e.prim["r"] = min(e.prim["r"], e.prim["w"] / 2, e.prim["h"] / 2)
+    # şemadaki köşe yuvarlaklıkları birbirine yakınsa hepsi aynı
+    rr = [e for e in boxes if e.prim["type"] == "rrect"]
+    if len(rr) >= 2:
+        rv = _kumele([e.prim["r"] for e in rr], 1.0, 0.25)
+        for e, v in zip(rr, rv):
+            e.prim["r"] = float(min(v, e.prim["w"] / 2, e.prim["h"] / 2))
+    for e in boxes:
+        pp = sekil.prim_points(e.prim)
+        e.bbox = (float(pp[:, 0].min()), float(pp[:, 1].min()), float(pp[:, 0].max()), float(pp[:, 1].max()))
+    # aynı renkteki konturlar aynı kalınlıkta
+    st = [e for e in elements if e.kind == "fill" and e.stroke is not None]
+    groups = []
+    for e in st:
+        for g in groups:
+            if _de(g[0].stroke, e.stroke) < 12:
+                g.append(e)
+                break
+        else:
+            groups.append([e])
+    for g in groups:
+        if len(g) >= 2:
+            w = float(np.median([e.stroke_width for e in g]))
+            for e in g:
+                e.stroke_width = w
+
+
 def _simplify_curve(s) -> None:
     """Çok noktalı Bézier eğrisini daha az noktayla yeniden yaz."""
     if not s.d or "C" not in s.d:
@@ -782,6 +1224,31 @@ def _drop_crumbs(elements: list, background) -> list:
             return False
         return bool((np.linalg.norm(real - np.array(c, float), axis=1) < 14).any())
 
+    harf_kut = np.array([e.bbox for e in elements if e.layer == "harf"], float).reshape(-1, 4)
+    kutular = [e.prim for e in elements if e.kind == "fill" and e.prim and e.prim.get("type") in ("rect", "rrect")
+               and not e.prim.get("rot") and e.layer != "harf"]
+
+    def kutu_kenarinda(p):
+        x1, y1, x2, y2 = p["x1"], p["y1"], p["x2"], p["y2"]
+        for q in kutular:
+            X0, Y0, X1, Y1 = q["x"], q["y"], q["x"] + q["w"], q["y"] + q["h"]
+            for xe in (X0, X1):
+                if abs(x1 - xe) <= 1.2 and abs(x2 - xe) <= 1.2 and \
+                        min(y1, y2) >= Y0 - 1.5 and max(y1, y2) <= Y1 + 1.5:
+                    return True
+            for ye in (Y0, Y1):
+                if abs(y1 - ye) <= 1.2 and abs(y2 - ye) <= 1.2 and \
+                        min(x1, x2) >= X0 - 1.5 and max(x1, x2) <= X1 + 1.5:
+                    return True
+        return False
+
+    def harf_yaninda(e):
+        if not len(harf_kut):
+            return False
+        cx, cy = (e.bbox[0] + e.bbox[2]) / 2, (e.bbox[1] + e.bbox[3]) / 2
+        return bool(((harf_kut[:, 0] - 3 <= cx) & (cx <= harf_kut[:, 2] + 3) &
+                     (harf_kut[:, 1] - 3 <= cy) & (cy <= harf_kut[:, 3] + 3)).any())
+
     out = []
     for e in elements:
         if e.kind == "text" or e.grad:
@@ -790,12 +1257,20 @@ def _drop_crumbs(elements: list, background) -> list:
         sz = _size(e)
         if sz < 1.2 and (e.kind != "fill" or e.area < 1.5):
             continue            # tek pikselden küçük toz
+        if e.layer != "harf" and not e.stroke and harf_yaninda(e) and (
+                sz <= 3.5 or (sz <= 12 and _lightness(e.color) >= 80)):
+            continue            # yazının kenarından kalmış kırıntı (koyu nokta ya da açık hâle)
         if e.layer != "harf" and not e.stroke and _de(e.color, background) < 12 and \
-                (e.kind == "stroke" and e.width <= 2.5 or e.kind == "fill" and sz <= 4):
-            continue            # zeminden ayırt edilmeyen soluk kırıntı / kenar çizgisi
+                (e.kind == "stroke" and e.width <= 2.5 and (sz <= 40 or _de(e.color, background) < 6)
+                 or e.kind == "fill" and sz <= 4):
+            continue            # zeminden ayırt edilmeyen soluk kırıntı / kenar çizgisi (uzun ızgara değil)
         small = sz <= 6 or (e.kind == "stroke" and e.width <= 1.3 and sz <= 10)
         if small and e.layer != "harf" and not is_real(e.color) and _is_blend(e.color, colors):
             continue            # kenar yumuşatmasından kalan ara renk
+        if (e.kind == "stroke" and not e.dash and e.width <= 1.5 and e.layer != "cerceve"
+                and e.prim and e.prim.get("type") == "line" and _lightness(e.color) >= 55
+                and kutu_kenarinda(e.prim)):
+            continue            # bir kutunun kenarı boyunca kalan açık renkli kenar yumuşatması şeridi
         out.append(e)
     return out
 
@@ -862,7 +1337,19 @@ def _fit_clean(U: np.ndarray, x0: float, y0: float, k: int):
     Uo = cv2.morphologyEx(U, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * rad + 1, 2 * rad + 1)))
     if Uo.sum() < 0.6 * U.sum():
         return r
-    return _fit_clean1(Uo, x0, y0, k)
+    r2 = _fit_clean1(Uo, x0, y0, k)
+    if r2[0] is None and r2[1] is None:
+        return r
+    # çıkıntılar atılınca bulunan şekil bütün nesneyi de karşılamalı (kalın kollar çıkıntı değildir)
+    from .vektor import Element
+    from scipy import ndimage
+    m2 = sadakat.rasterize(Element("fill", (0, 0, 0), prim=r2[0], d=r2[1] or ""), k, x0, y0, U.shape) > 0
+    Uf = ndimage.binary_fill_holes(U > 0)
+    inter = np.count_nonzero(Uf & m2)
+    uni = np.count_nonzero(Uf | m2)
+    if not uni or inter / uni < 0.85:
+        return r
+    return r2
 
 
 def _fit_clean1(U: np.ndarray, x0: float, y0: float, k: int):
@@ -1069,7 +1556,8 @@ def _objects(elements: list, background=(255, 255, 255)) -> list:
     from .vektor import Element
     k = 2
     fills = sorted([e for e in elements if e.kind == "fill" and e.layer != "harf" and not e.grad
-                    and _size(e) >= 6 and not (e.prim and e.prim.get("type") == "rect")],
+                    and _size(e) >= 6 and not (e.prim and e.prim.get("type") in ("rect", "rrect", "polygon", "path"))
+                    and not getattr(e, "temiz", False)],
                    key=lambda e: e.area)
     used = set()
     out_new = []
@@ -1088,7 +1576,8 @@ def _objects(elements: list, background=(255, 255, 255)) -> list:
             if e is S or id(e) in used or e.kind == "text" or e.layer == "harf" or e.grad:
                 continue
             b = e.bbox
-            if (e.kind == "fill" and not (e.prim and e.prim.get("type") == "rect") and e.area <= 3.0 * S.area
+            if (e.kind == "fill" and not (e.prim and e.prim.get("type") in ("rect", "rrect", "polygon", "path"))
+                    and e.area <= 3.0 * S.area
                     and _overlaps(b, near) and b[0] >= far[0] and b[1] >= far[1] and b[2] <= far[2] and b[3] <= far[3]
                     and _is_shade(e.color, S.color)):
                 shade_c.append(e)
@@ -1117,7 +1606,11 @@ def _objects(elements: list, background=(255, 255, 255)) -> list:
                 if r.any() and float((r & (base > 0)).sum()) / float(r.sum()) >= 0.7:
                     shades.append(e)
         members = [S] + shades
-        fit = _fit_clean(_mask_of(members, X0, Y0, W, H, k), X0, Y0, k)
+        if S.prim and S.prim.get("type") in ("circle", "ellipse") and sum(e.area for e in shades) < 0.15 * S.area:
+            # temiz daireye değen küçük kırıntılar şekli bozmaz: şekil kendi biçimiyle kalır
+            fit = _fit_clean(base, X0, Y0, k)
+        else:
+            fit = _fit_clean(_mask_of(members, X0, Y0, W, H, k), X0, Y0, k)
         if fit[0] is None and fit[1] is None and shades:
             members = [S]
             fit = _fit_clean(base, X0, Y0, k)
@@ -1168,13 +1661,23 @@ def _objects(elements: list, background=(255, 255, 255)) -> list:
                 tot[tuple(e.color)] = tot.get(tuple(e.color), 0.0) + float(r.sum())
             col = max(tot, key=tot.get)
             same = [(e, r) for e, r in cands if _de(e.color, col) < 15]
+            # hepsi şeklin içinden geçen tek bir yatay/dikey doğrunun parçalarıysa (dairenin
+            # ortasından geçen ızgara çizgisi) kenar çizgisi değildir
+            dz_ = [e.prim for e, _r in same if e.kind == "stroke" and e.prim and e.prim.get("type") == "line"]
+            if len(dz_) == len(same) and dz_:
+                ys_ = [(q["y1"] + q["y2"]) / 2 for q in dz_]
+                xs_ = [(q["x1"] + q["x2"]) / 2 for q in dz_]
+                yat = all(abs(q["y1"] - q["y2"]) < 1.0 for q in dz_) and max(ys_) - min(ys_) <= 1.5
+                dik = all(abs(q["x1"] - q["x2"]) < 1.0 for q in dz_) and max(xs_) - min(xs_) <= 1.5
+                if yat or dik:
+                    same = []
             # kenarın yeterince büyük bir kısmını kaplamalı
             edge = (U > 0) & ~(cv2.erode(U, np.ones((3, 3), np.uint8)) > 0)
             cov = np.zeros_like(edge)
             for _e, r in same:
                 cov |= r
             cov = cv2.dilate(cov.astype(np.uint8), np.ones((2 * ring_r + 1, 2 * ring_r + 1), np.uint8)) > 0
-            if edge.any() and float((edge & cov).sum()) / float(edge.sum()) >= 0.35:
+            if same and edge.any() and float((edge & cov).sum()) / float(edge.sum()) >= 0.35:
                 sc = col
                 ws = [e.width for e, _r in same if e.kind == "stroke" and e.width > 0]
                 if ws:
@@ -1246,7 +1749,1123 @@ def _consistent(objs: list) -> list:
 
 
 # ---------------------------------------------------------------- ana adım
+def _uzayan_kenarlar(elements: list) -> list:
+    """Kenarları köşelerden dışarı uzayan konturlu kutu (ızgara çizgileri arasında kalan alan):
+    kutu konturu yerine dört tam çizgi; çizgilerin köşeden taşan parçaları bu çizgilere katılır."""
+    from .vektor import Element
+    strokes = [e for e in elements if e.kind == "stroke" and e.layer != "cerceve" and not e.dash]
+    pts_of = {}
+    for s_ in strokes:
+        _k, polys = sadakat.element_polys(s_)
+        if polys:
+            pts_of[id(s_)] = np.vstack([sadakat_dense(p, c) for p, c in polys])
+    drop = set()
+    add = []
+    for e in elements:
+        if not (e.kind == "fill" and e.stroke is not None and e.prim and e.prim.get("type") == "rect"
+                and not e.prim.get("rot")):
+            continue
+        q = e.prim
+        X0, Y0, X1, Y1 = q["x"], q["y"], q["x"] + q["w"], q["y"] + q["h"]
+        sides = [("v", X0, Y0, Y1), ("v", X1, Y0, Y1), ("h", Y0, X0, X1), ("h", Y1, X0, X1)]
+        ext = [[lo, hi] for _o, _c, lo, hi in sides]
+        uc = 0
+        used = []
+        for s_ in strokes:
+            if id(s_) in drop or id(s_) not in pts_of or _de(s_.color, e.stroke) >= 20:
+                continue
+            P = pts_of[id(s_)]
+            on_any = np.zeros(len(P), bool)
+            for si, (o, c, lo, hi) in enumerate(sides):
+                if o == "v":
+                    on = (np.abs(P[:, 0] - c) <= 1.5) & ((P[:, 1] < lo - 1) | (P[:, 1] > hi + 1))
+                    vals = P[on, 1]
+                else:
+                    on = (np.abs(P[:, 1] - c) <= 1.5) & ((P[:, 0] < lo - 1) | (P[:, 0] > hi + 1))
+                    vals = P[on, 0]
+                on_any |= on
+                if on.any():
+                    # köşeye bitişik olmalı
+                    near_lo = vals.max() >= lo - 2.5 and vals.max() <= lo + 0.5
+                    near_hi = vals.min() <= hi + 2.5 and vals.min() >= hi - 0.5
+                    if (vals < lo).any() and near_lo:
+                        ext[si][0] = min(ext[si][0], float(vals.min()))
+                    if (vals > hi).any() and near_hi:
+                        ext[si][1] = max(ext[si][1], float(vals.max()))
+            if on_any.mean() >= 0.85:
+                used.append(s_)
+        uz = [(ext[si][0] < lo - 2) + (ext[si][1] > hi + 2) for si, (o, c, lo, hi) in enumerate(sides)]
+        uc = sum(uz)
+        # ızgara: hem dikey hem yatay kenarlar köşelerden taşmalı (yalnız yatay kenarları uzayan
+        # ölçek çubuğu parçası ızgara değildir)
+        if uc < 4 or not (uz[0] + uz[1]) or not (uz[2] + uz[3]):
+            continue
+        w = e.stroke_width
+        for si, (o, c, lo, hi) in enumerate(sides):
+            a_, b_ = ext[si]
+            if o == "v":
+                pr = {"type": "line", "x1": c, "y1": a_, "x2": c, "y2": b_}
+                bb = (c, a_, c, b_)
+            else:
+                pr = {"type": "line", "x1": a_, "y1": c, "x2": b_, "y2": c}
+                bb = (a_, c, b_, c)
+            add.append(Element("stroke", e.stroke, prim=pr, width=w, bbox=bb))
+        e.stroke, e.stroke_width = None, 0.0
+        for s_ in used:
+            drop.add(id(s_))
+    return [e for e in elements if id(e) not in drop] + add
+
+
+def _ortulu_birlestir(elements: list) -> list:
+    """Üstüne sütunlar oturduğu için parçalanmış düz çizgi (grafiğin yatay ekseni): aynı doğrudaki
+    parçalar, aralarındaki boşluğu kutular kapatıyorsa tek çizgi olur."""
+    # kutunun kenar çizgisi ve kenar yumuşatması kadar pay
+    kut = [(e.bbox, (e.stroke_width / 2 if e.stroke is not None else 0.0) + 1.5)
+           for e in elements if e.kind == "fill" and e.prim and e.prim.get("type") in ("rect", "rrect", "polygon")
+           and not e.prim.get("rot") and e.layer != "harf"]
+    if not kut:
+        return elements
+    lines = [e for e in elements if e.kind == "stroke" and not e.dash and e.prim and e.prim.get("type") == "line"
+             and e.layer != "cerceve"]
+    drop = set()
+    for yon in ("h", "v"):
+        grp = []
+        for e in lines:
+            p = e.prim
+            if yon == "h" and abs(p["y1"] - p["y2"]) < 0.5:
+                grp.append((p["y1"], min(p["x1"], p["x2"]), max(p["x1"], p["x2"]), e))
+            elif yon == "v" and abs(p["x1"] - p["x2"]) < 0.5:
+                grp.append((p["x1"], min(p["y1"], p["y2"]), max(p["y1"], p["y2"]), e))
+        grp.sort(key=lambda t: (round(t[0]), t[1]))
+        used = set()
+        for i, (c, lo, hi, e) in enumerate(grp):
+            if id(e) in used:
+                continue
+            chain = [(c, lo, hi, e)]
+            cur_hi = hi
+            for c2, lo2, hi2, e2 in grp[i + 1:]:
+                if id(e2) in used or abs(c2 - c) > 1.5 or _de(e2.color, e.color) >= 15 or lo2 < cur_hi - 1:
+                    continue
+                gap_lo, gap_hi = cur_hi, lo2
+                if gap_hi - gap_lo > 3:
+                    tol = max(2.0, e.width + 1.0)
+                    cov = 0.0
+                    for (X0, Y0, X1, Y1), m_ in kut:
+                        if yon == "h":
+                            on = abs(Y1 - c) <= tol + m_ - 1.5 or abs(Y0 - c) <= tol + m_ - 1.5
+                            a_, b_ = X0 - m_, X1 + m_
+                        else:
+                            on = abs(X1 - c) <= tol + m_ - 1.5 or abs(X0 - c) <= tol + m_ - 1.5
+                            a_, b_ = Y0 - m_, Y1 + m_
+                        if on:
+                            cov += max(0.0, min(b_, gap_hi + 1) - max(a_, gap_lo - 1))
+                    if cov < 0.8 * (gap_hi - gap_lo):
+                        continue
+                chain.append((c2, lo2, hi2, e2))
+                cur_hi = max(cur_hi, hi2)
+            if len(chain) < 2:
+                continue
+            for _c, _l, _h, ee in chain:
+                used.add(id(ee))
+            for _c, _l, _h, ee in chain[1:]:
+                drop.add(id(ee))
+            p = e.prim
+            lo0 = min(t[1] for t in chain)
+            if yon == "h":
+                p["x1"], p["x2"] = lo0, cur_hi
+                p["y1"] = p["y2"] = float(np.median([t[0] for t in chain]))
+                e.bbox = (lo0, p["y1"], cur_hi, p["y1"])
+            else:
+                p["y1"], p["y2"] = lo0, cur_hi
+                p["x1"] = p["x2"] = float(np.median([t[0] for t in chain]))
+                e.bbox = (p["x1"], lo0, p["x1"], cur_hi)
+            e.width = float(np.median([t[3].width for t in chain]))
+
+    def kapali(yon, c, g0, g1, wd):
+        if g1 - g0 <= 3:
+            return True
+        tol = max(2.0, wd + 1.0)
+        cov = 0.0
+        for (X0, Y0, X1, Y1), m_ in kut:
+            if yon == "h":
+                on = abs(Y1 - c) <= tol + m_ - 1.5 or abs(Y0 - c) <= tol + m_ - 1.5
+                a_, b_ = X0 - m_, X1 + m_
+            else:
+                on = abs(X1 - c) <= tol + m_ - 1.5 or abs(X0 - c) <= tol + m_ - 1.5
+                a_, b_ = Y0 - m_, Y1 + m_
+            if on:
+                cov += max(0.0, min(b_, g1 + 1) - max(a_, g0 - 1))
+        return cov >= 0.8 * (g1 - g0)
+
+    # köşeli yolun (eksen ile taban çizgisi) ucundaki düz kol aynı doğrudaki parçayla birleşir
+    yollar = []
+    for e in elements:
+        if (e.kind != "stroke" or e.dash or e.prim or not e.d or "Z" in e.d or e.layer == "cerceve"
+                or id(e) in drop):
+            continue
+        pp = sadakat.flatten(e.d)
+        if len(pp) != 1 or len(pp[0][0]) < 3 or not re.fullmatch(r"M[\d.\s-]+(L[\d.\s-]+)+", e.d.strip()):
+            continue
+        yollar.append((e, [list(map(float, q)) for q in pp[0][0]]))
+    for e, P in yollar:
+        degisti = False
+        for uc in (0, -1):
+            pe, pi = P[uc], P[1] if uc == 0 else P[-2]
+            if abs(pe[1] - pi[1]) < 0.5 and abs(pe[0] - pi[0]) >= 1:
+                yon, c, ileri = "h", pe[1], 1.0 if pe[0] > pi[0] else -1.0
+                pos = pe[0]
+            elif abs(pe[0] - pi[0]) < 0.5 and abs(pe[1] - pi[1]) >= 1:
+                yon, c, ileri = "v", pe[0], 1.0 if pe[1] > pi[1] else -1.0
+                pos = pe[1]
+            else:
+                continue
+            adaylar = []
+            for l_ in lines:
+                if id(l_) in drop or _de(l_.color, e.color) >= 15:
+                    continue
+                q = l_.prim
+                if yon == "h" and abs(q["y1"] - q["y2"]) < 0.5 and abs(q["y1"] - c) <= 1.5:
+                    lo, hi = min(q["x1"], q["x2"]), max(q["x1"], q["x2"])
+                elif yon == "v" and abs(q["x1"] - q["x2"]) < 0.5 and abs(q["x1"] - c) <= 1.5:
+                    lo, hi = min(q["y1"], q["y2"]), max(q["y1"], q["y2"])
+                else:
+                    continue
+                yakin, uzak = (lo, hi) if ileri > 0 else (hi, lo)
+                if (yakin - pos) * ileri < -1.0:
+                    continue
+                adaylar.append(((yakin - pos) * ileri, yakin, uzak, l_))
+            for _g, yakin, uzak, l_ in sorted(adaylar, key=lambda t: t[0]):
+                g0, g1 = sorted((pos, yakin))
+                if not kapali(yon, c, g0, g1, e.width):
+                    break
+                if (uzak - pos) * ileri > 0:
+                    pos = uzak
+                drop.add(id(l_))
+                degisti = True
+            if yon == "h":
+                P[uc][0] = pos
+            else:
+                P[uc][1] = pos
+        if degisti:
+            e.d = "M" + "L".join(f"{_f(x)} {_f(y)}" for x, y in P)
+            A = np.array(P)
+            e.bbox = (float(A[:, 0].min()), float(A[:, 1].min()), float(A[:, 0].max()), float(A[:, 1].max()))
+    return [e for e in elements if id(e) not in drop]
+
+
+def _isaret_bagla(elements: list) -> None:
+    """Grafik çizgisinin parçaları veri noktalarına (aynı renkte küçük daireler) tam ulaşsın: ucu
+    bir dairenin yakınında biten çizgi dairenin merkezine uzatılır."""
+    daire = [e for e in elements if e.kind == "fill" and e.prim and e.prim.get("type") == "circle"
+             and e.prim["r"] <= 8 and e.layer != "harf"]
+    if not daire:
+        return
+    for s_ in elements:
+        if s_.kind != "stroke" or not s_.prim or s_.prim.get("type") != "line":
+            continue
+        p = s_.prim
+        if s_.dash:
+            # kesikli sanılan çizgi: aralıklarında aynı renkte işaretler varsa düz çizgidir
+            v = np.array([p["x2"] - p["x1"], p["y2"] - p["y1"]], float)
+            L = float(np.hypot(*v))
+            if L < 1e-6:
+                continue
+            u = v / L
+            on = 0
+            for d in daire:
+                # veri noktası çizgiden kalındır (kesikli çizginin nokta kırıntıları işaret değil)
+                if _de(d.color, s_.color) >= 15 or d.prim["r"] < max(1.2, 0.9 * s_.width):
+                    continue
+                q = d.prim
+                w_ = np.array([q["cx"] - p["x1"], q["cy"] - p["y1"]])
+                t = float(w_ @ u)
+                if -q["r"] <= t <= L + q["r"] and abs(float(w_[0] * u[1] - w_[1] * u[0])) <= q["r"]:
+                    on += 1
+            if on < 2:
+                continue
+            s_.dash = None
+        secim = {}
+        for kx, ky in (("x1", "y1"), ("x2", "y2")):
+            best = None
+            for d in daire:
+                if _de(d.color, s_.color) >= 15 or d.prim["r"] < max(1.2, 0.9 * s_.width):
+                    continue
+                q = d.prim
+                dd = math.hypot(p[kx] - q["cx"], p[ky] - q["cy"])
+                if dd <= q["r"] + max(2.0, 2 * s_.width) + 1.0 and (best is None or dd < best[0]):
+                    best = (dd, q["cx"], q["cy"], id(d))
+            if best is not None:
+                secim[(kx, ky)] = best
+        # iki uç aynı işarete bağlanmaz (kısa parça yok olur): yalnız yakın olan uç bağlanır
+        if len(secim) == 2:
+            (k1, b1), (k2, b2) = secim.items()
+            if b1[3] == b2[3]:
+                del secim[k2 if b2[0] > b1[0] else k1]
+        for (kx, ky), best in secim.items():
+            p[kx], p[ky] = best[1], best[2]
+        s_.bbox = (min(p["x1"], p["x2"]), min(p["y1"], p["y2"]), max(p["x1"], p["x2"]), max(p["y1"], p["y2"]))
+
+
+def _hucre_birlestir(elements: list) -> list:
+    """Üstünden ızgara çizgileri geçen düz renkli alan (koordinat ızgarası) çizgilerle hücrelere
+    bölünmüş, her hücre ızgara renginde konturlu çıkmış olabilir: aynı renkteki, kenarları çakışarak
+    bir dikdörtgeni dolduran hücreler tek dikdörtgen olur; hücre kenarları ızgara çizgisi olarak
+    aynı renkteki çizgi parçalarıyla birleşip baştan sona kesintisiz çizilir."""
+    import cv2
+    from .vektor import Element
+    huc = [e for e in elements if e.kind == "fill" and e.layer != "harf" and e.prim
+           and e.prim.get("type") == "rect" and not e.prim.get("rot") and e.stroke is not None]
+    if len(huc) < 3:
+        return elements
+    out = elements
+    kullanildi = set()
+
+    def kutu(e):
+        p = e.prim
+        if p and p.get("type") == "rect":
+            return (p["x"], p["y"], p["x"] + p["w"], p["y"] + p["h"])
+        return tuple(e.bbox)
+
+    for e0 in huc:
+        if id(e0) in kullanildi:
+            continue
+        kont = [e for e in huc if id(e) not in kullanildi and _de(e.color, e0.color) < 6
+                and _de(e.stroke, e0.stroke) < 15]
+        if len(kont) < 3:
+            continue
+        sw = float(np.median([e.stroke_width for e in kont]))
+        kont_id = set(id(e) for e in kont)
+        # aynı renkteki bütün parçalar (konturuz, dikdörtgen olmayan): bitişiklik kümesi kutulardan
+        grup = kont + [e for e in out if e.kind == "fill" and e.layer != "harf" and id(e) not in kont_id
+                       and id(e) not in kullanildi and _de(e.color, e0.color) < 6 and e.bbox[2] - e.bbox[0] >= 2
+                       and e.bbox[3] - e.bbox[1] >= 2]
+        n = len(grup)
+        kut = [kutu(e) for e in grup]
+        komsu = [[] for _ in range(n)]
+        for i in range(n):
+            a = kut[i]
+            for j in range(i + 1, n):
+                b = kut[j]
+                ox = min(a[2], b[2]) - max(a[0], b[0])
+                oy = min(a[3], b[3]) - max(a[1], b[1])
+                if (ox > 2 * sw and oy >= -(sw + 1.0)) or (oy > 2 * sw and ox >= -(sw + 1.0)):
+                    komsu[i].append(j)
+                    komsu[j].append(i)
+        gor = [False] * n
+        for i0 in range(n):
+            if gor[i0] or id(grup[i0]) not in kont_id:
+                continue
+            kume, yig = [], [i0]
+            gor[i0] = True
+            while yig:
+                i = yig.pop()
+                kume.append(i)
+                for j in komsu[i]:
+                    if not gor[j]:
+                        gor[j] = True
+                        yig.append(j)
+            uy = [grup[i] for i in kume]
+            kenarli = [e for e in uy if id(e) in kont_id]
+            if len(kenarli) < 3:
+                continue
+            X0 = min(kut[i][0] for i in kume)
+            Y0 = min(kut[i][1] for i in kume)
+            X1 = max(kut[i][2] for i in kume)
+            Y1 = max(kut[i][3] for i in kume)
+            Wd, Hd = int(math.ceil(X1 - X0)) + 1, int(math.ceil(Y1 - Y0)) + 1
+            if Wd * Hd > 4_000_000:
+                continue
+            m = np.zeros((Hd, Wd), np.uint8)
+            for i in kume:
+                b = kut[i]
+                m[int(round(b[1] - Y0)):int(round(b[3] - Y0)) + 1, int(round(b[0] - X0)):int(round(b[2] - X0)) + 1] = 1
+            k_ = int(2 * math.ceil(sw) + 1)
+            m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((k_, k_), np.uint8))
+            if float(m.mean()) < 0.97:
+                continue
+            for e in uy:
+                kullanildi.add(id(e))
+            # hücre kenarları: ızgara çizgileri
+            kenar = {"h": [], "v": []}
+            for e in kenarli:
+                x0, y0, x1, y1 = kutu(e)
+                kenar["h"] += [(y0, x0, x1), (y1, x0, x1)]
+                kenar["v"] += [(x0, y0, y1), (x1, y0, y1)]
+            sil = set(id(e) for e in uy)
+            yeni = []
+            # alanın kenarına değen aynı renkteki çizgiler (alanın dışına taşan ızgara) de aday
+            for e in out:
+                if e.kind != "stroke" or not e.prim or e.prim.get("type") != "line" or _de(e.color, e0.stroke) >= 15:
+                    continue
+                p = e.prim
+                if abs(p["y1"] - p["y2"]) < 0.6 and Y0 - 1 <= p["y1"] <= Y1 + 1:
+                    lo, hi = min(p["x1"], p["x2"]), max(p["x1"], p["x2"])
+                    if lo <= X1 + 3 and hi >= X0 - 3:
+                        kenar["h"].append(((p["y1"] + p["y2"]) / 2, lo, hi))
+                elif abs(p["x1"] - p["x2"]) < 0.6 and X0 - 1 <= p["x1"] <= X1 + 1:
+                    lo, hi = min(p["y1"], p["y2"]), max(p["y1"], p["y2"])
+                    if lo <= Y1 + 3 and hi >= Y0 - 3:
+                        kenar["v"].append(((p["x1"] + p["x2"]) / 2, lo, hi))
+            for yon in ("h", "v"):
+                ks = sorted(kenar[yon])
+                kumeler = []
+                # (içe kaymış hücre kenarı birkaç piksel yandaki ızgara çizgisidir)
+                for c, lo, hi in ks:
+                    if kumeler and abs(c - kumeler[-1]["cs"][-1]) <= max(1.5, 2 * sw):
+                        kumeler[-1]["parca"].append((lo, hi))
+                        kumeler[-1]["cs"].append(c)
+                    else:
+                        kumeler.append({"c": c, "cs": [c], "parca": [(lo, hi)]})
+                for km in kumeler:
+                    # konum: boya göre ağırlıklı ortanca (uzun çizgi belirler)
+                    cs_ = np.array(km["cs"], float)
+                    ls_ = np.array([max(1.0, hi - lo) for lo, hi in km["parca"]])
+                    o_ = np.argsort(cs_)
+                    c = float(cs_[o_][np.searchsorted(np.cumsum(ls_[o_]), 0.5 * float(ls_.sum()))])
+                    parca = list(km["parca"])
+                    # aynı doğrudaki aynı renkte çizgi parçaları (alanın dışına taşan ızgara)
+                    for e in out:
+                        if e.kind != "stroke" or not e.prim or e.prim.get("type") != "line" or id(e) in sil:
+                            continue
+                        if _de(e.color, e0.stroke) >= 15:
+                            continue
+                        p = e.prim
+                        if yon == "h" and abs(p["y1"] - p["y2"]) < 0.6 and abs((p["y1"] + p["y2"]) / 2 - c) <= max(1.5, 2 * sw):
+                            parca.append((min(p["x1"], p["x2"]), max(p["x1"], p["x2"])))
+                            sil.add(id(e))
+                        elif yon == "v" and abs(p["x1"] - p["x2"]) < 0.6 and abs((p["x1"] + p["x2"]) / 2 - c) <= max(1.5, 2 * sw):
+                            parca.append((min(p["y1"], p["y2"]), max(p["y1"], p["y2"])))
+                            sil.add(id(e))
+                    parca.sort()
+                    birlesik = []
+                    a_lo, a_hi = (X0, X1) if yon == "h" else (Y0, Y1)
+                    for lo, hi in parca:
+                        # boşluk küçükse ya da alanın içindeyse (çizgi alanın üstünden geçer) birleşir
+                        if birlesik and (lo <= birlesik[-1][1] + max(3.0, 2 * sw)
+                                         or (birlesik[-1][1] >= a_lo - 3 and lo <= a_hi + 3)):
+                            birlesik[-1][1] = max(birlesik[-1][1], hi)
+                        else:
+                            birlesik.append([lo, hi])
+                    for lo, hi in birlesik:
+                        if yon == "h":
+                            pr = {"type": "line", "x1": lo, "y1": c, "x2": hi, "y2": c}
+                        else:
+                            pr = {"type": "line", "x1": c, "y1": lo, "x2": c, "y2": hi}
+                        yeni.append(Element("stroke", e0.stroke, prim=pr, width=sw, cap="butt",
+                                            bbox=(min(pr["x1"], pr["x2"]), min(pr["y1"], pr["y2"]),
+                                                  max(pr["x1"], pr["x2"]), max(pr["y1"], pr["y2"]))))
+            alan = Element("fill", e0.color, prim={"type": "rect", "x": X0, "y": Y0, "w": X1 - X0, "h": Y1 - Y0},
+                           area=(X1 - X0) * (Y1 - Y0), bbox=(X0, Y0, X1, Y1), layer="alt")
+            out = [alan] + [e for e in out if id(e) not in sil] + yeni
+    return out
+
+
+def _isaret_boyu(elements: list) -> None:
+    """Grafik çizgisi üstündeki veri noktaları (aynı renkte, çizginin geçtiği küçük daireler) aynı
+    boyda: tasarımcı bir serinin işaretlerini tek boyda çizer; pikselden ölçülen yarıçap oynar."""
+    daire = [e for e in elements if e.kind == "fill" and e.prim and e.prim.get("type") == "circle"
+             and e.prim["r"] <= 8 and e.layer != "harf"]
+    if len(daire) < 3:
+        return
+    yollar = []
+    for s_ in elements:
+        if s_.kind != "stroke" or s_.layer == "harf":
+            continue
+        p = s_.prim or {}
+        if p.get("type") == "line":
+            yollar.append((s_, np.array([[p["x1"], p["y1"]], [p["x2"], p["y2"]]], float)))
+        elif not p and s_.d:
+            for P, _kap in sadakat.flatten(s_.d):
+                if len(P) >= 2:
+                    yollar.append((s_, np.asarray(P, float)))
+    if not yollar:
+        return
+    gruplar = []
+    for d in daire:
+        q = d.prim
+        c = np.array([q["cx"], q["cy"]])
+        ustunde = False
+        for s_, P in yollar:
+            if _de(s_.color, d.color) >= 15 or q["r"] < max(1.2, 0.9 * s_.width):
+                continue
+            a_, b_ = P[:-1], P[1:]
+            v = b_ - a_
+            n2 = np.maximum((v * v).sum(axis=1), 1e-9)
+            t = np.clip(((c - a_) * v).sum(axis=1) / n2, 0, 1)
+            dist = np.hypot(*(a_ + t[:, None] * v - c).T)
+            if float(dist.min()) <= max(1.0, 0.5 * q["r"]):
+                ustunde = True
+                break
+        if not ustunde:
+            continue
+        for g in gruplar:
+            if _de(g[0].color, d.color) < 15:
+                g.append(d)
+                break
+        else:
+            gruplar.append([d])
+    cizgiler = [s_ for s_ in elements if s_.kind == "stroke" and s_.prim and s_.prim.get("type") == "line"
+                and not s_.dash and s_.layer != "harf"]
+    for g in gruplar:
+        if len(g) < 3:
+            continue
+        rm = float(np.median([d.prim["r"] for d in g]))
+        for d in g:
+            q = d.prim
+            if 0.6 * rm <= q["r"] <= 1.6 * rm:
+                q["r"] = rm
+                d.bbox = (q["cx"] - rm, q["cy"] - rm, q["cx"] + rm, q["cy"] + rm)
+                d.area = math.pi * rm * rm
+        # aynı serinin daireye dönüşmemiş işareti (ızgara çizgisinin kestiği, çizgi kökleri değen küçük
+        # leke): iki çizgi parçasının buluştuğu yerde, işaret boyunda ise o da aynı daire
+        for e in elements:
+            if e.kind != "fill" or e.layer == "harf" or _de(e.color, g[0].color) >= 15:
+                continue
+            if e.prim and e.prim.get("type") not in ("polygon", "path", "ellipse"):
+                continue
+            x0, y0, x1, y1 = e.bbox
+            bw, bh = x1 - x0, y1 - y0
+            if not (1.2 * rm <= max(bw, bh) <= 3.5 * rm and min(bw, bh) >= 1.2 * rm):
+                continue
+            uclar = []
+            pay = max(2.0, rm)
+            for s_ in cizgiler:
+                if _de(s_.color, e.color) >= 15:
+                    continue
+                p = s_.prim
+                for kx, ky, ox, oy in (("x1", "y1", "x2", "y2"), ("x2", "y2", "x1", "y1")):
+                    if x0 - pay <= p[kx] <= x1 + pay and y0 - pay <= p[ky] <= y1 + pay:
+                        uclar.append((s_, kx, ky, np.array([p[kx], p[ky]]), np.array([p[ox], p[oy]])))
+            if len(uclar) != 2:
+                continue
+            (s1, _k1, _l1, a1, b1), (s2, _k2, _l2, a2, b2) = uclar
+            if s1 is s2:
+                continue
+            d1, d2 = a1 - b1, a2 - b2
+            den = float(d1[0] * d2[1] - d1[1] * d2[0])
+            if abs(den) < 1e-6 * float(np.hypot(*d1) * np.hypot(*d2)) or abs(den) < 1e-9:
+                continue
+            t = float((a2 - a1)[0] * d2[1] - (a2 - a1)[1] * d2[0]) / den
+            c = a1 + t * d1
+            if not (x0 - 1 <= c[0] <= x1 + 1 and y0 - 1 <= c[1] <= y1 + 1):
+                continue
+            e.prim = {"type": "circle", "cx": float(c[0]), "cy": float(c[1]), "r": rm}
+            e.d = ""
+            e.bbox = (float(c[0]) - rm, float(c[1]) - rm, float(c[0]) + rm, float(c[1]) + rm)
+            e.area = math.pi * rm * rm
+            for s_, kx, ky, _a, _b in uclar:
+                s_.prim[kx], s_.prim[ky] = float(c[0]), float(c[1])
+                p = s_.prim
+                s_.bbox = (min(p["x1"], p["x2"]), min(p["y1"], p["y2"]), max(p["x1"], p["x2"]), max(p["y1"], p["y2"]))
+
+
+def _ayni_simgeler(elements: list) -> list:
+    """Tekrarlanan simge (aynı renkte, aynı boyda daireler: güneş, nokta) hep aynı çizilir: yarıçap
+    ortak, kontur birçoğunda varsa hepsinde (pikselden kimi konturlu kimi konturuz çıkabilir);
+    azında bulunan eş merkezli ayrı halka atılır."""
+    daire = [e for e in elements if e.kind == "fill" and e.prim and e.prim.get("type") == "circle"
+             and e.layer != "harf" and e.prim["r"] >= 2.0]
+    if len(daire) < 3:
+        return elements
+    gruplar = []
+    for d in sorted(daire, key=lambda e: e.prim["r"]):
+        for g in gruplar:
+            rm = float(np.median([q.prim["r"] for q in g]))
+            if _de(g[0].color, d.color) < 12 and abs(d.prim["r"] - rm) <= 0.25 * rm:
+                g.append(d)
+                break
+        else:
+            gruplar.append([d])
+    halkalar = [e for e in elements if e.kind == "stroke" and e.prim and e.prim.get("type") == "circle"]
+    drop = set()
+    for g in gruplar:
+        if len(g) < 3:
+            continue
+        rm = float(np.median([q.prim["r"] for q in g]))
+        konturlu = [q for q in g if q.stroke is not None]
+        if len(konturlu) >= 0.4 * len(g):
+            renkler = []
+            for q in konturlu:
+                for r_ in renkler:
+                    if _de(r_[0].stroke, q.stroke) < 15:
+                        r_.append(q)
+                        break
+                else:
+                    renkler.append([q])
+            en = max(renkler, key=len)
+            sc = en[0].stroke
+            sw = float(np.median([q.stroke_width for q in en]))
+            for q in g:
+                q.stroke, q.stroke_width = sc, sw
+        else:
+            for q in g:
+                q.stroke, q.stroke_width = None, 0.0
+        for q in g:
+            p = q.prim
+            p["r"] = rm
+            q.bbox = (p["cx"] - rm, p["cy"] - rm, p["cx"] + rm, p["cy"] + rm)
+            q.area = math.pi * rm * rm
+        # üstünden çizgi geçtiği için daireye dönüşmemiş aynı simge: dış çizgisinin çoğu bu boyda
+        # bir çemberin üstündeyse o da aynı daire
+        for e in elements:
+            if e.kind != "fill" or e.layer == "harf" or id(e) in drop or _de(e.color, g[0].color) >= 12:
+                continue
+            if e.prim and e.prim.get("type") not in ("polygon", "path", "ellipse", "rrect"):
+                continue
+            if e.prim and e.prim.get("type") == "rrect":
+                # köşe yarıçapı kenarın yarısı kadar olan kare: daire
+                p = e.prim
+                if not p.get("rot") and abs(p["w"] - p["h"]) <= 0.15 * max(p["w"], p["h"]) \
+                        and p.get("r", 0) >= 0.8 * min(p["w"], p["h"]) / 2 and abs(max(p["w"], p["h"]) / 2 - rm) <= 0.3 * rm:
+                    cx, cy = p["x"] + p["w"] / 2, p["y"] + p["h"] / 2
+                    e.prim = {"type": "circle", "cx": float(cx), "cy": float(cy), "r": rm}
+                    e.stroke, e.stroke_width = g[0].stroke, g[0].stroke_width
+                    e.bbox = (cx - rm, cy - rm, cx + rm, cy + rm)
+                    e.area = math.pi * rm * rm
+                    g.append(e)
+                continue
+            if e.prim and e.prim.get("type") == "ellipse":
+                # aynı boyda elips (üstünden çizgi geçtiği için biraz basık oturmuş): aynı daire
+                p = e.prim
+                if 0.7 * rm <= min(p["rx"], p["ry"]) and max(p["rx"], p["ry"]) <= 1.3 * rm:
+                    cx, cy = p["cx"], p["cy"]
+                    e.prim = {"type": "circle", "cx": float(cx), "cy": float(cy), "r": rm}
+                    e.stroke, e.stroke_width = g[0].stroke, g[0].stroke_width
+                    e.bbox = (cx - rm, cy - rm, cx + rm, cy + rm)
+                    e.area = math.pi * rm * rm
+                    g.append(e)
+                continue
+            x0, y0, x1, y1 = e.bbox
+            if not (1.3 * rm <= max(x1 - x0, y1 - y0) <= 2.6 * rm and min(x1 - x0, y1 - y0) >= 0.9 * rm):
+                continue
+            if e.prim and e.prim.get("type") == "polygon":
+                P = np.asarray(e.prim["pts"], float)
+            elif e.d:
+                ps = sadakat.flatten(e.d)
+                if not ps:
+                    continue
+                P = np.asarray(max(ps, key=lambda t: len(t[0]))[0], float)
+            else:
+                continue
+            if len(P) < 8:
+                continue
+            fit = egri.circle_fit(P)
+            if fit is None:
+                continue
+            for _ in range(2):
+                dd = np.abs(np.hypot(P[:, 0] - fit[0], P[:, 1] - fit[1]) - fit[2])
+                ic = P[dd <= max(0.8, 0.12 * fit[2])]
+                if len(ic) < 0.5 * len(P) or len(ic) < 6:
+                    fit = None
+                    break
+                fit = egri.circle_fit(ic)
+                if fit is None:
+                    break
+            if fit is None or abs(fit[2] - rm) > 0.25 * rm or fit[3] > 0.6:
+                continue
+            cx, cy = fit[0], fit[1]
+            e.prim = {"type": "circle", "cx": float(cx), "cy": float(cy), "r": rm}
+            e.d = ""
+            e.stroke, e.stroke_width = g[0].stroke, g[0].stroke_width
+            e.bbox = (cx - rm, cy - rm, cx + rm, cy + rm)
+            e.area = math.pi * rm * rm
+            g.append(e)
+        hs = [h for h in halkalar
+              if any(math.hypot(h.prim["cx"] - q.prim["cx"], h.prim["cy"] - q.prim["cy"]) <= 1.0
+                     and abs(h.prim["r"] - rm) <= 0.35 * rm for q in g)]
+        if hs and len(hs) <= 0.4 * len(g):
+            drop.update(id(h) for h in hs)
+        # konturlu simgenin kenarındaki, kontur renginde ayrı kırıntılar (tırtıklı kenarın parçaları)
+        if g[0].stroke is not None:
+            for e in elements:
+                if e.kind != "fill" or e.layer == "harf" or e in g or _de(e.color, g[0].stroke) >= 20:
+                    continue
+                x0, y0, x1, y1 = e.bbox
+                for q in g:
+                    p = q.prim
+                    if (x0 >= p["cx"] - rm - 2.5 and x1 <= p["cx"] + rm + 2.5 and y0 >= p["cy"] - rm - 2.5
+                            and y1 <= p["cy"] + rm + 2.5):
+                        drop.add(id(e))
+                        break
+    if not drop:
+        return elements
+    return [e for e in elements if id(e) not in drop]
+
+
+def _kesik_ortu(elements: list) -> None:
+    """Kesikli sanılan düz çizgi: aralıkları üstüne oturan kutular (eksen üstündeki sütunlar)
+    kapatıyorsa çizgi düzdür, kesikleri kutuların arası görünen parçalarıdır."""
+    kut = [e.prim for e in elements if e.kind == "fill" and e.prim and e.prim.get("type") in ("rect", "rrect")
+           and not e.prim.get("rot") and e.layer != "harf"]
+    for e in elements:
+        if e.kind != "stroke" or not e.dash or not e.prim or e.prim.get("type") != "line":
+            continue
+        p = e.prim
+        x1, y1, x2, y2 = p["x1"], p["y1"], p["x2"], p["y2"]
+        yatay = abs(y1 - y2) < 0.5
+        dikey = abs(x1 - x2) < 0.5
+        if not (yatay or dikey) or len(e.dash) != 2:
+            continue
+        gap = e.dash[1]
+        L = abs(x2 - x1) + abs(y2 - y1)
+        n_gap = L / max(1e-6, sum(e.dash))
+        hit = 0
+        tol = max(1.5, e.width)
+        for q in kut:
+            X0, Y0, X1, Y1 = q["x"], q["y"], q["x"] + q["w"], q["y"] + q["h"]
+            if yatay:
+                on = abs(Y1 - y1) <= tol or abs(Y0 - y1) <= tol
+                span, lo, hi = X1 - X0, min(x1, x2) - 2, max(x1, x2) + 2
+                inside = X0 >= lo and X1 <= hi
+            else:
+                on = abs(X1 - x1) <= tol or abs(X0 - x1) <= tol
+                span, lo, hi = Y1 - Y0, min(y1, y2) - 2, max(y1, y2) + 2
+                inside = Y0 >= lo and Y1 <= hi
+            if on and inside and span >= 0.6 * gap:
+                hit += 1
+        if hit >= 2 and hit >= 0.6 * n_gap:
+            e.dash = None
+            e.cap = "butt"
+            # uçtaki kutuların altından da geçer
+            for q in kut:
+                X0, Y0, X1, Y1 = q["x"], q["y"], q["x"] + q["w"], q["y"] + q["h"]
+                if yatay and (abs(Y1 - y1) <= tol or abs(Y0 - y1) <= tol):
+                    if X0 <= max(x1, x2) + gap * 1.2 and X1 > max(x1, x2):
+                        if x2 >= x1:
+                            p["x2"] = x2 = X1
+                        else:
+                            p["x1"] = x1 = X1
+                    if X1 >= min(x1, x2) - gap * 1.2 and X0 < min(x1, x2):
+                        if x1 <= x2:
+                            p["x1"] = x1 = X0
+                        else:
+                            p["x2"] = x2 = X0
+                elif dikey and (abs(X1 - x1) <= tol or abs(X0 - x1) <= tol):
+                    if Y0 <= max(y1, y2) + gap * 1.2 and Y1 > max(y1, y2):
+                        if y2 >= y1:
+                            p["y2"] = y2 = Y1
+                        else:
+                            p["y1"] = y1 = Y1
+                    if Y1 >= min(y1, y2) - gap * 1.2 and Y0 < min(y1, y2):
+                        if y1 <= y2:
+                            p["y1"] = y1 = Y0
+                        else:
+                            p["y2"] = y2 = Y0
+            e.bbox = (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
+            # çizginin kutular arasında dolgu olarak kalmış parçaları artık çizginin kendisi
+            bx0, by0, bx1, by1 = e.bbox
+            r_ = e.width / 2 + 1.0
+            for o in elements:
+                if (o.kind == "fill" and o is not e and o.layer != "harf" and _de(o.color, e.color) < 15
+                        and o.bbox[0] >= bx0 - r_ and o.bbox[2] <= bx1 + r_
+                        and o.bbox[1] >= by0 - r_ and o.bbox[3] <= by1 + r_):
+                    o.layer = "_sil"
+    elements[:] = [o for o in elements if o.layer != "_sil"]
+
+
+def _ice_al(fills: list) -> None:
+    """Konturlu şeklin kenarına dayanan iç kutu (köşedeki kare, başlık bandı) konturun içine
+    çekilir: tasarımcının çizdiği gibi kontur görünür kalır, iç şekil onu örtmez."""
+    kut = [e for e in fills if e.prim and e.prim.get("type") in ("rect", "rrect") and not e.prim.get("rot")
+           and e.layer != "harf"]
+    dis = [e for e in fills if e.prim and e.prim.get("type") in ("rect", "rrect", "polygon", "path")
+           and not e.prim.get("rot") and e.stroke is not None and e.stroke_width > 0
+           and not getattr(e, "panel", False) and e.layer != "harf"]
+
+    def kenarlar(S):
+        P = sekil.prim_points(S.prim)
+        Q = np.roll(P, -1, axis=0)
+        dik, yat = [], []
+        for (x1, y1), (x2, y2) in zip(P, Q):
+            if abs(x1 - x2) < 0.3 and abs(y1 - y2) > 1:
+                dik.append((x1, min(y1, y2), max(y1, y2)))
+            elif abs(y1 - y2) < 0.3 and abs(x1 - x2) > 1:
+                yat.append((y1, min(x1, x2), max(x1, x2)))
+        return dik, yat
+
+    def dayali(v, lo, hi, kenar):
+        for c, a_, b_ in kenar:
+            if abs(c - v) <= 1.5 and min(hi, b_) - max(lo, a_) >= 0.8 * (hi - lo):
+                return c
+        return None
+    for o in kut:
+        if o.stroke is not None:
+            continue
+        p = o.prim
+        ox0, oy0, ox1, oy1 = p["x"], p["y"], p["x"] + p["w"], p["y"] + p["h"]
+        for S in dis:
+            if S is o or S.area <= o.area:
+                continue
+            X0, Y0, X1, Y1 = S.bbox
+            if ox0 < X0 - 1.5 or oy0 < Y0 - 1.5 or ox1 > X1 + 1.5 or oy1 > Y1 + 1.5:
+                continue
+            dik, yat = kenarlar(S)
+            h = S.stroke_width / 2
+            n0 = (ox0, oy0, ox1, oy1)
+            c_ = dayali(ox0, oy0, oy1, dik)
+            if c_ is not None:
+                ox0 = c_ + h
+            c_ = dayali(ox1, oy0, oy1, dik)
+            if c_ is not None:
+                ox1 = c_ - h
+            c_ = dayali(oy0, ox0, ox1, yat)
+            if c_ is not None:
+                oy0 = c_ + h
+            c_ = dayali(oy1, ox0, ox1, yat)
+            if c_ is not None:
+                oy1 = c_ - h
+            if (ox0, oy0, ox1, oy1) != n0 and ox1 - ox0 > 1 and oy1 - oy0 > 1:
+                p["x"], p["y"], p["w"], p["h"] = ox0, oy0, ox1 - ox0, oy1 - oy0
+                if p["type"] == "rrect":
+                    p["r"] = min(p["r"], p["w"] / 2, p["h"] / 2)
+                o.bbox = (ox0, oy0, ox1, oy1)
+                break
+
+
+def _renk_birligi(elements: list) -> None:
+    """Birbirine çok yakın çizgi/kontur renklerini tek renk yap, aynı renkteki çizgilerin
+    kalınlıklarını kümele: tasarımcı birkaç renk ve birkaç kalınlık kullanır."""
+    import cv2
+    refs = []
+    for e in elements:
+        if e.layer == "harf":
+            continue
+        if e.kind == "stroke" and e.color is not None:
+            refs.append([e, "color", "width", e.color, _size(e)])
+        elif e.kind == "fill" and e.stroke is not None:
+            b = e.bbox
+            refs.append([e, "stroke", "stroke_width", e.stroke, 2.0 * ((b[2] - b[0]) + (b[3] - b[1]))])
+    if len(refs) < 2:
+        return
+    cols = np.array([r[3] for r in refs], np.float32)[None] / 255.0
+    labc = cv2.cvtColor(cols, cv2.COLOR_RGB2Lab)[0]
+    order = sorted(range(len(refs)), key=lambda i: -refs[i][4])
+    groups = []
+    for i in order:
+        for g in groups:
+            if float(np.linalg.norm(labc[i] - labc[g[0]])) <= 10.0:
+                g.append(i)
+                break
+        else:
+            groups.append([i])
+    for g in groups:
+        col = tuple(int(v) for v in refs[g[0]][3])
+        for i in g:
+            setattr(refs[i][0], refs[i][1], col)
+        if len(g) >= 2:
+            vals = [float(getattr(refs[i][0], refs[i][2])) for i in g]
+            new = _kumele(vals, 0.12, 0.08)
+            for i, v in zip(g, new):
+                setattr(refs[i][0], refs[i][2], float(v))
+
+
+def _izgara_kesik(elements: list) -> list:
+    """Sütunların arkasından geçen kesikli ızgara çizgisi: aynı doğrudaki kesikli parçalar ve tek
+    kesikler toplanır; çizgi kutuların arasında görünen her aralıkta aynı desenle, aynı hizada
+    (kesikler tek bir çizginin kesikleri gibi) yeniden çizilir."""
+    from .vektor import Element
+    kut = []
+    for e in elements:
+        if (e.kind == "fill" and e.prim and e.prim.get("type") in ("rect", "rrect", "polygon")
+                and not e.prim.get("rot") and e.layer != "harf"):
+            m_ = (e.stroke_width / 2 if e.stroke is not None else 0.0) + 0.5
+            kut.append((e.bbox[0] - m_, e.bbox[1] - m_, e.bbox[2] + m_, e.bbox[3] + m_))
+    if not kut:
+        return elements
+    drop = set()
+    add = []
+    for yon in ("h", "v"):
+        items = []
+        for e in elements:
+            if e.kind != "stroke" or not e.prim or e.prim.get("type") != "line" or e.layer == "cerceve":
+                continue
+            if e.dash and len(e.dash) != 2:
+                continue
+            q = e.prim
+            if yon == "h" and abs(q["y1"] - q["y2"]) < 0.6:
+                items.append(((q["y1"] + q["y2"]) / 2, min(q["x1"], q["x2"]), max(q["x1"], q["x2"]), e))
+            elif yon == "v" and abs(q["x1"] - q["x2"]) < 0.6:
+                items.append(((q["x1"] + q["x2"]) / 2, min(q["y1"], q["y2"]), max(q["y1"], q["y2"]), e))
+        items.sort(key=lambda t: t[0])
+        kullanildi = set()
+        for ref in sorted([t for t in items if t[3].dash], key=lambda t: -(t[2] - t[1])):
+            if id(ref[3]) in kullanildi:
+                continue
+            c0, re_ = ref[0], ref[3]
+            D, G = re_.dash
+            P = D + G
+            if D < 1.0 or G < 0.8:
+                continue
+            mem = []
+            for t in items:
+                c, lo, hi, e = t
+                if id(e) in kullanildi or abs(c - c0) > 1.2 or _de(e.color, re_.color) >= 14:
+                    continue
+                if abs(e.width - re_.width) > max(0.6, 0.5 * re_.width):
+                    continue
+                if e.dash:
+                    # deseni farklı ölçülmüş kısa kesikli parça (birkaç kesikten) da bu çizginin parçası
+                    if abs(sum(e.dash) - P) > 0.25 * P and hi - lo > 4.5 * P:
+                        continue
+                elif hi - lo > 2 * P + 0.5:
+                    continue        # en çok iki kesiğin birleştiği parça (üstünden çizgi geçmiş)
+                mem.append(t)
+            if len(mem) < 2:
+                continue
+            # çizgiyi kesen kutular
+            ort = []
+            for X0, Y0, X1, Y1 in kut:
+                if yon == "h":
+                    if Y0 <= c0 <= Y1:
+                        ort.append((X0, X1))
+                elif X0 <= c0 <= X1:
+                    ort.append((Y0, Y1))
+            ort.sort()
+
+            def ortulu(g0, g1):
+                # [g0, g1] aralığının kutularca örtülen payı
+                if g1 <= g0:
+                    return 1.0
+                cov, cur = 0.0, g0
+                for a_, b_ in ort:
+                    if b_ <= cur or a_ >= g1:
+                        continue
+                    cov += min(b_, g1) - max(a_, cur)
+                    cur = max(cur, min(b_, g1))
+                return cov / (g1 - g0)
+            # zincirler: ardışık parçalar arası ya bir iki kesik aralığı ya da kutuların örttüğü yer
+            # (yan yana iki grafiğin aynı hizadaki çizgileri birleşmesin)
+            mem.sort(key=lambda t: t[1])
+            zincirler = [[mem[0]]]
+            for t in mem[1:]:
+                g0, g1 = zincirler[-1][-1][2], t[1]
+                aci = g1 - g0
+                if aci <= 3.2 * P:
+                    zincirler[-1].append(t)
+                    continue
+                # kutularca örtülmeyen kısım iki üç aralıktan uzun olmamalı
+                if ortulu(g0, g1) * aci >= aci - 3.2 * P:
+                    zincirler[-1].append(t)
+                    continue
+                zincirler.append([t])
+            for zn in zincirler:
+                if len(zn) < 2:
+                    continue
+                lo = min(t[1] for t in zn)
+                hi = max(t[2] for t in zn)
+                aral = []
+                cur = lo
+                for a_, b_ in ort:
+                    if b_ <= lo or a_ >= hi:
+                        continue
+                    if a_ > cur:
+                        aral.append((cur, min(a_, hi)))
+                    cur = max(cur, b_)
+                if cur < hi:
+                    aral.append((cur, hi))
+                if len(aral) < 2 and not any(t[3].dash is None for t in zn):
+                    continue
+                # her parça görünen bir aralıkta olmalı
+                if any(not any(a_ - 0.8 <= (t[1] + t[2]) / 2 <= b_ + 0.8 for a_, b_ in aral) for t in zn):
+                    continue
+                # desenin hizası: parçaların başlangıçlarının adıma göre ortak kalanı
+                # (deseni farklı ölçülmüş kesikli parçanın başı güvenilmez)
+                bas = [t[1] for t in zn if not t[3].dash or abs(sum(t[3].dash) - P) <= 0.25 * P]
+                if not bas:
+                    continue
+                ang = np.array([2 * math.pi * (b0_ % P) / P for b0_ in bas])
+                Cm, Sm = float(np.cos(ang).mean()), float(np.sin(ang).mean())
+                if math.hypot(Cm, Sm) < 0.6:
+                    continue        # başlangıçlar tek bir desene oturmuyor
+                xs = (math.atan2(Sm, Cm) % (2 * math.pi)) / (2 * math.pi) * P
+                yeni = []
+                for a_, b_ in aral:
+                    if b_ - a_ < 0.6:
+                        continue
+                    k0 = math.ceil((a_ - xs) / P - 1e-6)
+                    once = xs + (k0 - 1) * P + D        # önceki kesiğin sonu
+                    if once - a_ >= 0.8:
+                        yeni.append((a_, min(once, b_), None))
+                    s_ = xs + k0 * P
+                    if b_ - s_ >= 0.8:
+                        n_ = math.floor((b_ - s_) / P)
+                        son = min(b_, s_ + n_ * P + D)
+                        if son - s_ <= D + 0.01:
+                            yeni.append((s_, son, None))
+                        else:
+                            yeni.append((s_, son, [D, G]))
+                if not yeni:
+                    continue
+                for t in zn:
+                    drop.add(id(t[3]))
+                    kullanildi.add(id(t[3]))
+                for a_, b_, ds in yeni:
+                    if yon == "h":
+                        pr = {"type": "line", "x1": a_, "y1": c0, "x2": b_, "y2": c0}
+                        bb = (a_, c0, b_, c0)
+                    else:
+                        pr = {"type": "line", "x1": c0, "y1": a_, "x2": c0, "y2": b_}
+                        bb = (c0, a_, c0, b_)
+                    add.append(Element("stroke", re_.color, prim=pr, width=re_.width, dash=ds, cap="butt",
+                                       bbox=bb))
+    if not drop:
+        return elements
+    return [e for e in elements if id(e) not in drop] + add
+
+
+def _yol_parcala(e):
+    """Açık tek parça çizgiyi (başlangıç, [(komut, değerler)]) olarak ver; olmuyorsa None."""
+    if e.prim and e.prim.get("type") == "line":
+        q = e.prim
+        return (q["x1"], q["y1"]), [("L", ((q["x2"], q["y2"]),))]
+    if e.prim or not e.d or "Z" in e.d:
+        return None
+    toks = sadakat._TOK.findall(e.d)
+    if not toks or toks[0] != "M" or toks.count("M") != 1:
+        return None
+    i, cmd = 1, None
+    try:
+        start = (float(toks[i]), float(toks[i + 1]))
+        i += 2
+        segs = []
+        while i < len(toks):
+            if toks[i] in "LCA":
+                cmd = toks[i]
+                i += 1
+            if cmd == "L":
+                segs.append(("L", ((float(toks[i]), float(toks[i + 1])),)))
+                i += 2
+            elif cmd == "C":
+                v = [float(t) for t in toks[i:i + 6]]
+                segs.append(("C", ((v[0], v[1]), (v[2], v[3]), (v[4], v[5]))))
+                i += 6
+            elif cmd == "A":
+                v = [float(t) for t in toks[i:i + 7]]
+                segs.append(("A", (v[0], v[1], v[2], int(v[3]), int(v[4]), (v[5], v[6]))))
+                i += 7
+            else:
+                return None
+    except (ValueError, IndexError):
+        return None
+    return (start, segs) if segs else None
+
+
+def _yol_son(seg):
+    return seg[1][-1]
+
+
+def _yol_ters(start, segs):
+    """Yolu tersten yaz."""
+    pts = [start] + [_yol_son(sg) for sg in segs]
+    out = []
+    for j in range(len(segs) - 1, -1, -1):
+        c, v = segs[j]
+        hedef = pts[j]
+        if c == "L":
+            out.append(("L", (hedef,)))
+        elif c == "C":
+            out.append(("C", (v[1], v[0], hedef)))
+        else:
+            out.append(("A", (v[0], v[1], v[2], v[3], 1 - v[4], hedef)))
+    return pts[-1], out
+
+
+def _yol_yaz(start, segs) -> str:
+    parts = [f"M{_f(start[0])} {_f(start[1])}"]
+    for c, v in segs:
+        if c == "L":
+            parts.append(f"L{_f(v[0][0])} {_f(v[0][1])}")
+        elif c == "C":
+            parts.append("C" + " ".join(f"{_f(a)} {_f(b)}" for a, b in v))
+        else:
+            parts.append(f"A{_f(v[0])} {_f(v[1])} {_f(v[2])} {v[3]} {v[4]} {_f(v[5][0])} {_f(v[5][1])}")
+    return "".join(parts)
+
+
+def _uc_birlestir(elements: list) -> list:
+    """Uçları bir iki piksel aralıkla karşılıklı duran, aynı yönde süren aynı renkli iki çizgi
+    (kenar yumuşatmasından kopmuş grafik çizgisi) tek yol olur."""
+    adays = []
+    for e in elements:
+        if e.kind != "stroke" or e.dash or e.layer == "cerceve":
+            continue
+        y = _yol_parcala(e)
+        if y is None:
+            continue
+        _k, polys = sadakat.element_polys(e)
+        if not polys or len(polys) != 1 or len(polys[0][0]) < 2:
+            continue
+        P = np.asarray(polys[0][0], float)
+        adays.append([e, y, P])
+    if len(adays) < 2:
+        return elements
+    drop = set()
+
+    def uclar(P):
+        # uç noktası ve dışa doğru yön (uçtan birkaç piksel içeriden)
+        res = []
+        for uc in (0, -1):
+            pe = P[uc]
+            sira = P if uc == -1 else P[::-1]
+            d = np.hypot(*(sira - pe).T)
+            k = np.flatnonzero(d >= 3.0)
+            ic = sira[k[-1]] if len(k) else sira[0]
+            v = pe - ic
+            n = float(np.hypot(*v))
+            res.append((pe, v / n if n > 1e-6 else np.zeros(2)))
+        return res
+    degisti = True
+    while degisti:
+        degisti = False
+        canli = [a for a in adays if id(a[0]) not in drop]
+        U = [(a, i, pe, v) for a in canli for i, (pe, v) in enumerate(uclar(a[2]))]
+        for ai, (a, ia, pa, va) in enumerate(U):
+            ea = a[0]
+            esl = []
+            yakin = 0
+            for b, ib, pb, vb in U:
+                if b is a:
+                    continue
+                dd = float(np.hypot(*(pa - pb)))
+                if dd <= max(2.5, 2.0 * ea.width):
+                    yakin += 1
+                    eb = b[0]
+                    if (_de(ea.color, eb.color) < 12 and 0.6 <= ea.width / max(eb.width, 1e-6) <= 1.67
+                            and float(va @ -vb) >= 0.5):
+                        esl.append((dd, b, ib, pb))
+            if yakin != 1 or len(esl) != 1:
+                continue
+            _dd, b, ib, pb = esl[0]
+            # öbür ucun da tek eşi bu olmalı
+            say = sum(1 for c_, _i, pc, _v in U if c_ is not b and float(np.hypot(*(pc - pb))) <= max(2.5, 2.0 * ea.width))
+            if say != 1:
+                continue
+            (sa, ga), (sb, gb) = a[1], b[1]
+            if ia == 0:
+                sa, ga = _yol_ters(sa, ga)
+            if ib == 1:
+                sb, gb = _yol_ters(sb, gb)
+            yeni = ga + [("L", (sb,))] + gb
+            La = float(np.sum(np.hypot(*np.diff(a[2], axis=0).T)))
+            Lb = float(np.sum(np.hypot(*np.diff(b[2], axis=0).T)))
+            ea.width = (ea.width * La + b[0].width * Lb) / max(La + Lb, 1e-6)
+            ea.prim = None
+            ea.d = _yol_yaz(sa, yeni)
+            ea.cap = "round" if ea.cap == "round" or b[0].cap == "round" else ea.cap
+            a[1] = (sa, yeni)
+            a[2] = np.vstack([a[2][::-1] if ia == 0 else a[2], b[2][::-1] if ib == 1 else b[2]])
+            A = a[2]
+            ea.bbox = (float(A[:, 0].min()), float(A[:, 1].min()), float(A[:, 0].max()), float(A[:, 1].max()))
+            drop.add(id(b[0]))
+            degisti = True
+            break
+    return [e for e in elements if id(e) not in drop]
+
+
 def cizimlestir(elements: list, background=(255, 255, 255)) -> list:
+    # panel çerçeveleri (üstündeki şekillerin de üstünde kapalı çizgi) olduğu gibi kalır
+    cerceve = [e for e in elements if e.kind == "stroke" and e.layer == "cerceve"]
+    elements = [e for e in elements if not (e.kind == "stroke" and e.layer == "cerceve")]
     fills = [e for e in elements if e.kind == "fill"]
     strokes = [e for e in elements if e.kind == "stroke"]
     others = [e for e in elements if e.kind not in ("fill", "stroke")]
@@ -1261,15 +2880,482 @@ def cizimlestir(elements: list, background=(255, 255, 255)) -> list:
     used = _merge_outlines(fills, strokes)
     strokes = [s for i, s in enumerate(strokes) if i not in used]
     strokes = _rect_strokes(fills, strokes, background)
+    _hizala(fills)
     for s in strokes:
         _closed_shape(s)
         _simplify_curve(s)
     strokes = _merge_lines(strokes)
     before = {id(e) for e in fills}
-    out = _objects(_merge_dashes(fills + strokes + others), background)
+    out = _objects(_baglantilar(_merge_dashes(fills + strokes + others)), background)
     # nesneye dönüşmeyen az köşeli dolgular çokgen olur
     for e in out:
         if e.kind == "fill" and id(e) in before and not e.prim:
             _polygonize(e)
-    out = _drop_crumbs(out, background)
+    out = _drop_crumbs(_gorunmez(out), background) + cerceve
+    out = _uzayan_kenarlar(out)
+    out = _hucre_birlestir(out)
+    _isaret_bagla(out)
+    _isaret_boyu(out)
+    out = _ayni_simgeler(out)
+    _kesik_ortu(out)
+    out = _ortulu_birlestir(out)
+    out = _izgara_kesik(out)
+    out = _uc_birlestir(out)
+    _renk_birligi(out)
+    _ice_al([e for e in out if e.kind == "fill"])
+    return out
+
+
+def izgara_tamamla(elements: list, rgb: np.ndarray, background) -> list:
+    """Grafiğin soluk kesikli ızgara çizgileri: bir kısmı bulunduysa eksenin her çentiğinde (görselde
+    izi varsa) aynı biçimde çizilir; hepsi eksenden çizim alanının sonuna kadar uzanır (yazı ve veri
+    çizgisi üstlerinden geçer, ızgara arkada tam kalır)."""
+    from .vektor import Element
+    H, W = rgb.shape[:2]
+    gray = rgb.astype(np.float32).mean(axis=2)
+    bgg = float(np.mean(background))
+
+    def hv(e):
+        p = e.prim
+        if abs(p["y1"] - p["y2"]) < 0.6:
+            return "h", (p["y1"] + p["y2"]) / 2, min(p["x1"], p["x2"]), max(p["x1"], p["x2"])
+        if abs(p["x1"] - p["x2"]) < 0.6:
+            return "v", (p["x1"] + p["x2"]) / 2, min(p["y1"], p["y2"]), max(p["y1"], p["y2"])
+        return None
+
+    duz, kesik = [], []
+    for e in elements:
+        if e.kind != "stroke" or not e.prim or e.prim.get("type") != "line" or e.layer in ("harf", "cerceve"):
+            continue
+        t = hv(e)
+        if t is None:
+            continue
+        if e.dash:
+            if len(e.dash) == 2 and e.dash[0] >= 1.0:
+                kesik.append((t, e))
+        else:
+            duz.append((t, e))
+
+    def iz(yon, c, a, b, fam_g):
+        # görselde bu doğru boyunca soluk çizgi izi: koyu şeyler (yazı, veri çizgisi) sayılmaz
+        a, b = int(math.floor(a)), int(math.ceil(b))
+        r = int(round(c))
+        if yon == "h":
+            if r < 1 or r >= H - 1:
+                return 0.0, 0
+            band = gray[r - 1:r + 2, max(0, a):min(W, b)].min(axis=0)
+        else:
+            if r < 1 or r >= W - 1:
+                return 0.0, 0
+            band = gray[max(0, a):min(H, b), r - 1:r + 2].min(axis=1)
+        koyu = band < fam_g - 40
+        n = int((~koyu).sum())
+        if n < 20:
+            return 0.0, n
+        soluk = (band <= bgg - 5) & ~koyu
+        return float(soluk.sum()) / n, n
+
+    add = []
+    for yon in ("h", "v"):
+        dik = "v" if yon == "h" else "h"
+        eksenler = [(t, e) for t, e in duz if t[0] == dik and t[3] - t[2] >= 60]
+        aile = [(t, e) for t, e in kesik if t[0] == yon]
+        if not aile or not eksenler:
+            continue
+        # her kesikli çizginin ekseni: konumunu kapsayan, bir ucuna yakın dik düz çizgi
+        gruplar = {}
+        for t, e in aile:
+            en = None
+            for te, ee in eksenler:
+                if not (te[2] - 2 <= t[1] <= te[3] + 2):
+                    continue
+                dd = min(abs(te[1] - t[2]), abs(te[1] - t[3]))
+                if (te[1] <= t[2] + 3 or te[1] >= t[3] - 3) and dd <= 0.6 * (t[3] - t[2]) and (en is None or dd < en[0]):
+                    en = (dd, te, ee)
+            if en is None:
+                continue
+            anahtar = (id(en[2]), )
+            gruplar.setdefault(anahtar, {"eksen": en[1], "uyeler": []})["uyeler"].append((t, e))
+        for g in gruplar.values():
+            uy = g["uyeler"]
+            te = g["eksen"]
+            e0 = uy[0][1]
+            uy = [(t, e) for t, e in uy if _de(e.color, e0.color) < 12 and abs(sum(e.dash) - sum(e0.dash)) <= 1.5]
+            if not uy:
+                continue
+            lo = min(t[2] for t, _e in uy)
+            hi = max(t[3] for t, _e in uy)
+            if te[1] <= lo + 3:
+                lo = te[1]
+            elif te[1] >= hi - 3:
+                hi = te[1]
+            # karşı uçta eksen (ikinci eksen) varsa oraya kadar
+            for t2, _e2 in eksenler:
+                if t2 is te or not (t2[2] - 2 <= min(t[1] for t, _e in uy) and max(t[1] for t, _e in uy) <= t2[3] + 2):
+                    continue
+                if te[1] <= lo + 0.5 and hi - 6 <= t2[1] <= hi + 15:
+                    hi = t2[1]
+                elif te[1] >= hi - 0.5 and lo - 15 <= t2[1] <= lo + 6:
+                    lo = t2[1]
+            fam_g = float(np.mean(e0.color))
+            wd = float(np.median([e.width for _t, e in uy]))
+            pat = [float(np.median([e.dash[0] for _t, e in uy])), float(np.median([e.dash[1] for _t, e in uy]))]
+            # adaylar: var olan çizgiler ve eksendeki çentikler
+            adaylar = [t[1] for t, _e in uy]
+            for t2, _e2 in duz:
+                if t2[0] == yon and t2[3] - t2[2] <= 15 and te[2] - 2 <= t2[1] <= te[3] + 2 \
+                        and (abs(t2[2] - te[1]) <= 1.5 or abs(t2[3] - te[1]) <= 1.5):
+                    adaylar.append(t2[1])
+            adaylar.sort()
+            gorulen = []
+            for c in adaylar:
+                if any(abs(c - q) <= 2.0 for q in gorulen):
+                    continue
+                gorulen.append(c)
+                # eksenin kendisi ya da üstünde uzun düz çizgi olan yer (öbür eksen) ızgara değil
+                if any(t2[0] == yon and abs(t2[1] - c) <= 2.0 and t2[3] - t2[2] >= 0.5 * (hi - lo) for t2, _e2 in duz):
+                    continue
+                var = [(t, e) for t, e in uy if abs(t[1] - c) <= 2.0]
+                if var:
+                    t, e = max(var, key=lambda q: q[0][3] - q[0][2])
+                    yeni_lo, yeni_hi = t[2], t[3]
+                    if t[2] > lo:
+                        f_, n_ = iz(yon, t[1], lo, t[2], fam_g)
+                        if t[2] - lo <= 3 or f_ >= 0.4 or n_ < 20:
+                            yeni_lo = lo
+                    if hi > t[3]:
+                        f_, n_ = iz(yon, t[1], t[3], hi, fam_g)
+                        if hi - t[3] <= 3 or f_ >= 0.4 or n_ < 20:
+                            yeni_hi = hi
+                    p = e.prim
+                    if yon == "h":
+                        p["x1"], p["x2"] = yeni_lo, yeni_hi
+                        p["y1"] = p["y2"] = t[1]
+                    else:
+                        p["y1"], p["y2"] = yeni_lo, yeni_hi
+                        p["x1"] = p["x2"] = t[1]
+                    e.bbox = (min(p["x1"], p["x2"]), min(p["y1"], p["y2"]), max(p["x1"], p["x2"]), max(p["y1"], p["y2"]))
+                    continue
+                f_, n_ = iz(yon, c, lo, hi, fam_g)
+                if f_ < 0.4 or n_ < 0.3 * (hi - lo):
+                    continue
+                if yon == "h":
+                    pr = {"type": "line", "x1": lo, "y1": c, "x2": hi, "y2": c}
+                else:
+                    pr = {"type": "line", "x1": c, "y1": lo, "x2": c, "y2": hi}
+                add.append(Element("stroke", e0.color, prim=pr, width=wd, dash=list(pat), cap=e0.cap,
+                                   bbox=(min(pr["x1"], pr["x2"]), min(pr["y1"], pr["y2"]),
+                                         max(pr["x1"], pr["x2"]), max(pr["y1"], pr["y2"]))))
+    # düz ızgara çizgileri (koordinat ızgarası): aynı renk ve kalınlıkta, aynı yönde en az üç çizginin
+    # çoğu aynı yerde başlayıp bitiyorsa, kısa kalanlar görselde izi varsa o uzunluğa tamamlanır
+    def iz_duz(yon, c, a, b, col):
+        a, b = int(math.floor(a)), int(math.ceil(b))
+        r = int(round(c))
+        colv = np.asarray(col, np.float32)
+        if yon == "h":
+            if r < 1 or r >= H - 1 or b <= a:
+                return 0.0
+            band = rgb[r - 1:r + 2, max(0, a):min(W, b)].astype(np.float32)
+            dd = np.linalg.norm(band - colv, axis=2).min(axis=0)
+        else:
+            if r < 1 or r >= W - 1 or b <= a:
+                return 0.0
+            band = rgb[max(0, a):min(H, b), r - 1:r + 2].astype(np.float32)
+            dd = np.linalg.norm(band - colv, axis=2).min(axis=1)
+        if len(dd) == 0:
+            return 0.0
+        return float((dd < 40).mean())
+
+    for yon in ("h", "v"):
+        cizg = [(t, e) for t, e in duz if t[0] == yon and t[3] - t[2] >= 30]
+        kul = set()
+        for t0, e0 in cizg:
+            if id(e0) in kul:
+                continue
+            aile = [(t, e) for t, e in cizg if id(e) not in kul and _de(e.color, e0.color) < 12
+                    and abs(e.width - e0.width) <= 0.35 * max(e.width, e0.width)
+                    and min(t[3], t0[3]) - max(t[2], t0[2]) >= 0.5 * min(t[3] - t[2], t0[3] - t0[2])]
+            if len(aile) < 3:
+                continue
+            for _t, e in aile:
+                kul.add(id(e))
+            los = sorted(t[2] for t, _e in aile)
+            his = sorted(t[3] for t, _e in aile)
+            # ortak uç: en az iki çizginin (3 piksel içinde) paylaştığı en dış uç
+            lo_h = next((v for i, v in enumerate(los) if sum(abs(w - v) <= 3 for w in los) >= 2), None)
+            hi_h = next((v for v in reversed(his) if sum(abs(w - v) <= 3 for w in his) >= 2), None)
+            for t, e in aile:
+                p = e.prim
+                lo, hi = t[2], t[3]
+                if lo_h is not None and lo > lo_h + 2 and iz_duz(yon, t[1], lo_h, lo, e.color) >= 0.85:
+                    lo = lo_h
+                if hi_h is not None and hi < hi_h - 2 and iz_duz(yon, t[1], hi, hi_h, e.color) >= 0.85:
+                    hi = hi_h
+                if (lo, hi) == (t[2], t[3]):
+                    continue
+                if yon == "h":
+                    p["x1"], p["x2"] = lo, hi
+                else:
+                    p["y1"], p["y2"] = lo, hi
+                e.bbox = (min(p["x1"], p["x2"]), min(p["y1"], p["y2"]), max(p["x1"], p["x2"]), max(p["y1"], p["y2"]))
+    return add + elements if add else elements
+
+
+def koordinat_izgarasi(elements: list, rgb: np.ndarray) -> list:
+    """Koordinat ızgarası (gri, düz, yatay ve dikey çizgiler): dokulu zeminde parça parça, farklı
+    tonlarda bulunmuş olabilir. Aynı hizadaki parçalar, görselde izi varsa ızgaranın bir ucundan
+    öbürüne tek çizgi olur; bütün ızgara aynı renk ve kalınlıkta çizilir."""
+    from .vektor import Element
+    H, W = rgb.shape[:2]
+    gray = rgb.astype(np.float32).mean(axis=2)
+
+    def notr(c):
+        return max(c) - min(c) <= 30 and float(np.mean(c)) < 200
+
+    parca = {"h": [], "v": []}
+    sinir = {"h": [], "v": []}      # eksenler (kalın düz çizgiler): ızgaranın uçları
+    for e in elements:
+        if e.kind != "stroke" or not e.prim or e.prim.get("type") != "line" or e.layer in ("harf", "cerceve"):
+            continue
+        if not notr(e.color) or e.width > 5.0:
+            continue
+        p = e.prim
+        if abs(p["y1"] - p["y2"]) < 0.6:
+            t = ((p["y1"] + p["y2"]) / 2, min(p["x1"], p["x2"]), max(p["x1"], p["x2"]), e)
+        elif abs(p["x1"] - p["x2"]) < 0.6:
+            t = ((p["x1"] + p["x2"]) / 2, min(p["y1"], p["y2"]), max(p["y1"], p["y2"]), e)
+        else:
+            continue
+        yon_ = "h" if abs(p["y1"] - p["y2"]) < 0.6 else "v"
+        if e.width > 3.0:
+            sinir[yon_].append(t)
+        else:
+            parca[yon_].append(t)
+    # kenarları ızgara çizgisine denk gelen kutuların konturu da ızgara parçasıdır (kutu konturuz kalır)
+    kutu_kenar = []
+    for e in elements:
+        if e.kind != "fill" or e.layer == "harf" or e.stroke is None or not e.prim or e.prim.get("type") != "rect" \
+                or e.prim.get("rot") or not notr(e.stroke) or e.stroke_width > 3.0:
+            continue
+        p = e.prim
+        x0, y0, x1, y1 = p["x"], p["y"], p["x"] + p["w"], p["y"] + p["h"]
+        kutu_kenar.append(e)
+        for t in ((y0, x0, x1, "h"), (y1, x0, x1, "h"), (x0, y0, y1, "v"), (x1, y0, y1, "v")):
+            parca[t[3]].append((t[0], t[1], t[2], e))
+
+    def kumele(ps):
+        ps = sorted(ps, key=lambda t: t[0])
+        out = []
+        for t in ps:
+            if out and abs(t[0] - out[-1][-1][0]) <= 2.0:
+                out[-1].append(t)
+            else:
+                out.append([t])
+        res = []
+        for g in out:
+            L = sum(t[2] - t[1] for t in g)
+            cs = np.array([t[0] for t in g])
+            ls = np.array([max(1.0, t[2] - t[1]) for t in g])
+            o_ = np.argsort(cs)
+            c = float(cs[o_][np.searchsorted(np.cumsum(ls[o_]), 0.5 * float(ls.sum()))])
+            res.append({"c": c, "lo": min(t[1] for t in g), "hi": max(t[2] for t in g), "L": L, "uy": g})
+        return res
+
+    def iz(yon, c, a, b):
+        # çizgi boyunca, iki yanındaki zeminden belirgin koyu piksel oranı
+        a, b = int(math.floor(a)), int(math.ceil(b))
+        r = int(round(c))
+        if b - a < 2:
+            return 1.0
+        if yon == "h":
+            if r < 5 or r >= H - 5:
+                return 0.0
+            xs = np.arange(max(0, a), min(W, b))
+            if len(xs) == 0:
+                return 0.0
+            cizgi = gray[r - 1:r + 2, xs].min(axis=0)
+            yan = np.minimum(np.median(gray[r - 5:r - 2, xs], axis=0), np.median(gray[r + 3:r + 6, xs], axis=0))
+        else:
+            if r < 5 or r >= W - 5:
+                return 0.0
+            ys = np.arange(max(0, a), min(H, b))
+            if len(ys) == 0:
+                return 0.0
+            cizgi = gray[ys, r - 1:r + 2].min(axis=1)
+            yan = np.minimum(np.median(gray[ys, r - 5:r - 2], axis=1), np.median(gray[ys, r + 3:r + 6], axis=1))
+        return float((yan - cizgi >= 12).mean())
+
+    kum = {y: kumele(parca[y]) for y in ("h", "v")}
+    add, sil = [], set()
+    kenar_ok = {}
+    for yon in ("h", "v"):
+        dik = "v" if yon == "h" else "h"
+        ks = [k for k in kum[yon] if k["L"] >= 25]
+        if len(ks) < 3 or len(kum[dik]) < 2:
+            continue
+        # ızgara alanı: iki yöndeki çizgilerin uç konumları
+        dks = [k for k in kum[dik] if k["L"] >= 25]
+        if len(dks) < 2:
+            continue
+        bcs = [k["c"] for k in dks] + [t[0] for t in sinir[dik]]
+        lo_f = min(min(bcs), min(k["lo"] for k in ks))
+        hi_f = max(max(bcs), max(k["hi"] for k in ks))
+        span = hi_f - lo_f
+        if span < 60:
+            continue
+        # ızgara çizgisi: alanın büyük kısmında izi olan hizalar
+        izg = []
+        for k in ks:
+            if k["L"] >= 0.3 * span and iz(yon, k["c"], lo_f, hi_f) >= 0.5:
+                izg.append(k)
+        if len(izg) < 3:
+            continue
+        # aralıklar düzenli olmalı (koordinat ızgarası)
+        cs = np.sort([k["c"] for k in izg])
+        ds = np.diff(cs)
+        if len(ds) < 2 or float(np.max(ds)) > 1.35 * float(np.median(ds)) or float(np.min(ds)) < 0.65 * float(np.median(ds)):
+            continue
+        uyeler = [t for k in izg for t in k["uy"] if t[3].kind == "stroke"]
+        if not uyeler:
+            continue
+        ws = np.array([t[3].width for t in uyeler])
+        ls = np.array([max(1.0, t[2] - t[1]) for t in uyeler])
+        o_ = np.argsort(ws)
+        wd = float(ws[o_][np.searchsorted(np.cumsum(ls[o_]), 0.5 * float(ls.sum()))])
+        gs = np.array([float(np.mean(t[3].color)) for t in uyeler])
+        o_ = np.argsort(gs)
+        e_ref = uyeler[int(o_[np.searchsorted(np.cumsum(ls[o_]), 0.5 * float(ls.sum()))])][3]
+        renk = e_ref.color
+        for k in izg:
+            lo, hi = k["lo"], k["hi"]
+            if lo - lo_f > 2 and iz(yon, k["c"], lo_f, lo) >= 0.5:
+                lo = lo_f
+            if hi_f - hi > 2 and iz(yon, k["c"], hi, hi_f) >= 0.5:
+                hi = hi_f
+            for t in k["uy"]:
+                if t[3].kind == "stroke":
+                    sil.add(id(t[3]))
+                else:
+                    kenar_ok.setdefault(id(t[3]), set()).add((yon, round(t[0], 1)))
+            if yon == "h":
+                pr = {"type": "line", "x1": lo, "y1": k["c"], "x2": hi, "y2": k["c"]}
+            else:
+                pr = {"type": "line", "x1": k["c"], "y1": lo, "x2": k["c"], "y2": hi}
+            add.append(Element("stroke", renk, prim=pr, width=wd, cap="butt",
+                               bbox=(min(pr["x1"], pr["x2"]), min(pr["y1"], pr["y2"]),
+                                     max(pr["x1"], pr["x2"]), max(pr["y1"], pr["y2"]))))
+    if not add:
+        return elements
+    # ızgara çizgisinin üstündeki başka renkte çizgi parçaları (üstteki noktanın rengini almış, kesikli
+    # sanılmış parça) aynı çizginin kopyasıdır
+    for e in elements:
+        if e.kind != "stroke" or not e.prim or e.prim.get("type") != "line" or id(e) in sil or e.width > 3.0 \
+                or e.layer in ("harf", "cerceve"):
+            continue
+        p = e.prim
+        for q in add:
+            r = q.prim
+            if abs(r["y1"] - r["y2"]) < 0.6 and abs(p["y1"] - p["y2"]) < 0.6 and abs(p["y1"] - r["y1"]) <= 2.0 \
+                    and min(p["x1"], p["x2"]) >= min(r["x1"], r["x2"]) - 3 and max(p["x1"], p["x2"]) <= max(r["x1"], r["x2"]) + 3:
+                sil.add(id(e))
+                break
+            if abs(r["x1"] - r["x2"]) < 0.6 and abs(p["x1"] - p["x2"]) < 0.6 and abs(p["x1"] - r["x1"]) <= 2.0 \
+                    and min(p["y1"], p["y2"]) >= min(r["y1"], r["y2"]) - 3 and max(p["y1"], p["y2"]) <= max(r["y1"], r["y2"]) + 3:
+                sil.add(id(e))
+                break
+    # ızgara çizgilerinin üstünde kalan kopya yollar (köşeden dönen parça) atılır
+    hs = [(a_["prim"]["y1"], a_["prim"]["x1"], a_["prim"]["x2"]) for a_ in
+          [{"prim": q.prim} for q in add] if abs(a_["prim"]["y1"] - a_["prim"]["y2"]) < 0.6]
+    vs = [(a_["prim"]["x1"], a_["prim"]["y1"], a_["prim"]["y2"]) for a_ in
+          [{"prim": q.prim} for q in add] if abs(a_["prim"]["x1"] - a_["prim"]["x2"]) < 0.6]
+    for e in elements:
+        if e.kind != "stroke" or e.prim or not e.d or not notr(e.color) or id(e) in sil:
+            continue
+        ps = sadakat.flatten(e.d)
+        if not ps:
+            continue
+        P = np.vstack([np.asarray(q[0], float) for q in ps])
+        ust = np.zeros(len(P), bool)
+        for c, lo, hi in hs:
+            ust |= (np.abs(P[:, 1] - c) <= 2.0) & (P[:, 0] >= min(lo, hi) - 2) & (P[:, 0] <= max(lo, hi) + 2)
+        for c, lo, hi in vs:
+            ust |= (np.abs(P[:, 0] - c) <= 2.0) & (P[:, 1] >= min(lo, hi) - 2) & (P[:, 1] <= max(lo, hi) + 2)
+        if ust.all():
+            sil.add(id(e))
+    # ızgara alanının içinde kalan, ızgara renginde kısa kırıntı çizgiler (doku hücrelerinin kenarları)
+    if hs and vs:
+        gx0 = min(min(c for c, _a, _b in vs), min(min(a_, b_) for _c, a_, b_ in hs))
+        gx1 = max(max(c for c, _a, _b in vs), max(max(a_, b_) for _c, a_, b_ in hs))
+        gy0 = min(min(c for c, _a, _b in hs), min(min(a_, b_) for _c, a_, b_ in vs))
+        gy1 = max(max(c for c, _a, _b in hs), max(max(a_, b_) for _c, a_, b_ in vs))
+        renkler = [q.color for q in add]
+        for e in elements:
+            if (e.kind == "fill" and e.stroke is not None and e.layer != "harf" and id(e) not in sil
+                    and max(e.bbox[2] - e.bbox[0], e.bbox[3] - e.bbox[1]) < 8
+                    and any(_de(e.stroke, r_) < 15 for r_ in renkler)
+                    and gx0 + 3 < e.bbox[0] and e.bbox[2] < gx1 - 3 and gy0 + 3 < e.bbox[1] and e.bbox[3] < gy1 - 3):
+                sil.add(id(e))      # ızgara renginde konturlu küçük kutucuk: doku kırıntısı
+                continue
+            if e.kind != "stroke" or not e.prim or e.prim.get("type") != "line" or id(e) in sil:
+                continue
+            p = e.prim
+            if math.hypot(p["x2"] - p["x1"], p["y2"] - p["y1"]) >= 8 or not any(_de(e.color, r_) < 15 for r_ in renkler):
+                continue
+            if gx0 + 3 < min(p["x1"], p["x2"]) and max(p["x1"], p["x2"]) < gx1 - 3 \
+                    and gy0 + 3 < min(p["y1"], p["y2"]) and max(p["y1"], p["y2"]) < gy1 - 3:
+                sil.add(id(e))
+    # dört kenarı da ızgara çizgisi olan kutunun konturu çizgilerle zaten çizili
+    for e in kutu_kenar:
+        if len(kenar_ok.get(id(e), ())) >= 4:
+            e.stroke, e.stroke_width = None, 0.0
+    return add + [e for e in elements if id(e) not in sil]
+
+
+def soluk_lekeler(elements: list, rgb: np.ndarray, background) -> list:
+    """Zeminden ancak seçilen, düzensiz biçimli soluk lekeler (dokulu zeminin, silik desenin
+    parçaları) çizim değildir: atılır. Konturu varsa ve kontur görselde gerçekten varsa yalnız
+    kontur kalır."""
+    from .vektor import Element
+    H, W = rgb.shape[:2]
+    img = rgb.astype(np.float32)
+    bgv = np.asarray(background, np.float32)
+
+    def zeminde(e):
+        # şeklin hemen dışı (kutusunun 3 piksel dışı) çoğunlukla zemin mi (renkli bir alanın üstündeki
+        # beyaz bulut silik leke değildir)
+        x0, y0, x1, y1 = e.bbox
+        x0, y0 = max(0, int(x0) - 3), max(0, int(y0) - 3)
+        x1, y1 = min(W - 1, int(math.ceil(x1)) + 3), min(H - 1, int(math.ceil(y1)) + 3)
+        if x1 <= x0 or y1 <= y0:
+            return False
+        kenar = np.concatenate([img[y0, x0:x1 + 1], img[y1, x0:x1 + 1], img[y0:y1 + 1, x0], img[y0:y1 + 1, x1]])
+        return float((np.linalg.norm(kenar - bgv, axis=1) < 25).mean()) >= 0.6
+
+    out = []
+    for e in elements:
+        if (e.kind == "fill" and e.layer != "harf" and not e.grad and e.stroke is None and e.prim
+                and e.prim.get("type") != "path" and _de(e.color, background) < 5 and zeminde(e)):
+            continue        # zeminden ayırt edilemeyecek kadar silik düzgün şekil (doku tonu)
+        if (e.kind != "fill" or e.layer == "harf" or e.grad or (e.prim and e.prim.get("type") != "path")
+                or not e.d or _de(e.color, background) >= 6 or not zeminde(e)):
+            out.append(e)
+            continue
+        if e.stroke is None:
+            continue
+        # kontur görselde var mı: dış çizgi boyunca kontur rengine yakın piksel oranı
+        ps = sadakat.flatten(e.d)
+        if not ps:
+            continue
+        P = np.vstack([np.asarray(q[0], float) for q in ps])
+        if len(P) > 400:
+            P = P[:: len(P) // 400 + 1]
+        sc = np.asarray(e.stroke, np.float32)
+        tut = 0
+        for x, y in P:
+            xi, yi = int(round(x)), int(round(y))
+            win = img[max(0, yi - 1):min(H, yi + 2), max(0, xi - 1):min(W, xi + 2)].reshape(-1, 3)
+            if len(win) and float(np.linalg.norm(win - sc, axis=1).min()) < 40:
+                tut += 1
+        if tut >= 0.6 * len(P):
+            out.append(Element("stroke", e.stroke, d=e.d, width=e.stroke_width, bbox=e.bbox))
     return out

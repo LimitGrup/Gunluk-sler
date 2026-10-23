@@ -56,7 +56,8 @@ def analyze(rgb: np.ndarray, use_text: bool = True, detail: float = 1.0, yazisiz
         from . import harita_tani
         harita_tani.hazirla(rgb, esl)
         kalan = harita_tani.harita_kalintisi(rgb, esl)
-        scene = vectorize(kalan, Options(detail=detail, text_mask=tm, small_marks=True, yazisiz=yazisiz))
+        scene = vectorize(kalan, Options(detail=detail, text_mask=tm, small_marks=True, yazisiz=yazisiz,
+                                         zemin=False))
         scene.underlay = harita_tani.harita_cizimi(rgb, esl)
         scene.notes = esl.notes + scene.notes
     else:

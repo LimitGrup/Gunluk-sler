@@ -31,6 +31,29 @@ def _f(v: float) -> str:
     return s if s not in ("-0", "") else "0"
 
 
+def _rect_attrs(p: dict) -> str:
+    """Dikdörtgen (köşesi yuvarlak ve döndürülmüş olabilir) öznitelikleri."""
+    a = f' x="{_f(p["x"])}" y="{_f(p["y"])}" width="{_f(p["w"])}" height="{_f(p["h"])}"'
+    if p["type"] == "rrect" and p.get("r", 0) > 0.05:
+        a += f' rx="{_f(p["r"])}" ry="{_f(p["r"])}"'
+    rot = p.get("rot", 0.0)
+    if abs(rot) > 0.05:
+        cx, cy = p["x"] + p["w"] / 2, p["y"] + p["h"] / 2
+        a += f' transform="rotate({_f(rot)} {_f(cx)} {_f(cy)})"'
+    return a
+
+
+def _elips_duz(p: dict):
+    """Elipsin döndürmesini sadeleştir: 90° döndürülmüş elips, yarıçapları yer değiştirmiş
+    döndürülmemiş elipstir (Illustrator'da düz elips olarak açılsın)."""
+    rx, ry, rot = p["rx"], p["ry"], float(p.get("rot", 0.0)) % 180.0
+    if abs(rot - 90) <= 1.0:
+        return ry, rx, 0.0
+    if rot <= 1.0 or rot >= 179.0:
+        return rx, ry, 0.0
+    return rx, ry, rot
+
+
 def scale_of(scene: Scene, st: Style) -> float:
     """1 piksel kaç pt."""
     if st.width_mm:
@@ -71,16 +94,20 @@ def to_svg(scene: Scene, st: Style | None = None) -> str:
                 kc = st.color or _hex(e.stroke)
                 kw = (st.stroke_pt / s) if st.stroke_pt else e.stroke_width
                 ks = f' stroke="{kc}" stroke-width="{_f(kw)}" stroke-linejoin="miter"'
-            if p and p["type"] == "rect":
-                fills.append(f'<rect x="{_f(p["x"])}" y="{_f(p["y"])}" width="{_f(p["w"])}" height="{_f(p["h"])}" fill="{col}"{ks}/>')
+            if p and p["type"] in ("rect", "rrect"):
+                fills.append(f'<rect{_rect_attrs(p)} fill="{col}"{ks}/>')
             elif p and p["type"] == "circle":
                 fills.append(f'<circle cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" r="{_f(p["r"])}" fill="{col}"{ks}/>')
             elif p and p["type"] == "ellipse":
-                rot = f' transform="rotate({_f(p["rot"])} {_f(p["cx"])} {_f(p["cy"])})"' if abs(p.get("rot", 0)) > 0.5 else ""
-                fills.append(f'<ellipse cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" rx="{_f(p["rx"])}" ry="{_f(p["ry"])}" fill="{col}"{rot}{ks}/>')
+                rx_, ry_, ro_ = _elips_duz(p)
+                rot = f' transform="rotate({_f(ro_)} {_f(p["cx"])} {_f(p["cy"])})"' if abs(ro_) > 0.5 else ""
+                fills.append(f'<ellipse cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" rx="{_f(rx_)}" ry="{_f(ry_)}" fill="{col}"{rot}{ks}/>')
             elif p and p["type"] == "polygon":
                 pts = " ".join(f"{_f(x)},{_f(y)}" for x, y in p["pts"])
                 fills.append(f'<polygon points="{pts}" fill="{col}"{ks}/>')
+            elif p and p["type"] == "path":
+                from .sekil import path_d
+                fills.append(f'<path d="{path_d(p)}" fill="{col}"{ks}/>')
             elif e.d:
                 fills.append(f'<path d="{e.d}" fill="{col}" fill-rule="evenodd"{ks}/>')
             continue
@@ -93,18 +120,25 @@ def to_svg(scene: Scene, st: Style | None = None) -> str:
             attrs += ' stroke-dasharray="' + " ".join(_f(v * (scale_d if i % 2 == 0 and v > 0.05 else 1)) for i, v in enumerate(e.dash)) + '"'
         if e.cap in ("round", "square"):
             attrs += f' stroke-linecap="{e.cap}"'
-        attrs += ' stroke-linejoin="round"'
+        attrs += f' stroke-linejoin="{getattr(e, "join", "round") or "round"}"'
         p = e.prim
         if p and p["type"] == "line":
             strokes.append(f'<line x1="{_f(p["x1"])}" y1="{_f(p["y1"])}" x2="{_f(p["x2"])}" y2="{_f(p["y2"])}" {attrs}/>')
         elif p and p["type"] == "circle":
             strokes.append(f'<circle cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" r="{_f(p["r"])}" {attrs}/>')
-        elif p and p["type"] == "rect":
+        elif p and p["type"] in ("rect", "rrect"):
             attrs = attrs.replace('stroke-linejoin="round"', 'stroke-linejoin="miter"')
-            strokes.append(f'<rect x="{_f(p["x"])}" y="{_f(p["y"])}" width="{_f(p["w"])}" height="{_f(p["h"])}" {attrs}/>')
+            strokes.append(f'<rect{_rect_attrs(p)} {attrs}/>')
         elif p and p["type"] == "ellipse":
-            rot = f' transform="rotate({_f(p["rot"])} {_f(p["cx"])} {_f(p["cy"])})"' if abs(p.get("rot", 0)) > 0.5 else ""
-            strokes.append(f'<ellipse cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" rx="{_f(p["rx"])}" ry="{_f(p["ry"])}" {attrs}{rot}/>')
+            rx_, ry_, ro_ = _elips_duz(p)
+            rot = f' transform="rotate({_f(ro_)} {_f(p["cx"])} {_f(p["cy"])})"' if abs(ro_) > 0.5 else ""
+            strokes.append(f'<ellipse cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" rx="{_f(rx_)}" ry="{_f(ry_)}" {attrs}{rot}/>')
+        elif p and p["type"] == "path":
+            from .sekil import path_d
+            strokes.append(f'<path d="{path_d(p)}" {attrs}/>')
+        elif p and p["type"] == "polygon":
+            pts = " ".join(f"{_f(x)},{_f(y)}" for x, y in p["pts"])
+            strokes.append(f'<polygon points="{pts}" {attrs}/>')
         elif e.d:
             strokes.append(f'<path d="{e.d}" {attrs}/>')
     parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{_f(Wpt)}pt" height="{_f(Hpt)}pt" viewBox="0 0 {scene.width} {scene.height}">']

@@ -208,6 +208,11 @@ def _generate(pts, u, t1, t2):
     eps = 1e-6 * seg
     if a1 < eps or a2 < eps:
         a1 = a2 = seg / 3
+    # tutamak noktaların yay boyundan uzun olamaz (kısa kirişte en küçük kareler patlar: parça
+    # şeklin çok dışına taşan ince bir ilmek olur)
+    arc = float(np.hypot(*np.diff(pts, axis=0).T).sum())
+    if a1 > max(arc, seg) or a2 > max(arc, seg):
+        a1 = a2 = max(arc, seg) / 3
     return np.array([p0, p0 + t1 * a1, p3 + t2 * a2, p3])
 
 

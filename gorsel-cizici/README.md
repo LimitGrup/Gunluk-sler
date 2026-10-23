@@ -4,8 +4,14 @@ Ders kitabındaki basit çizimlerin görselini verirsiniz; uygulama aynısını
 **düzenlenebilir vektör** olarak yeniden çizer ve Illustrator'a aktarır.
 İnternet ya da API anahtarı gerekmez, her şey bilgisayarınızda çalışır.
 
-- **Grafikler**: sütun, çizgi, iklim grafikleri; renk geçişli (degrade) sütunlar
-- **Şekiller**: güneş/ufuk çizimleri, yaylar, çemberler, oklar, kesikli çizgiler
+- **Grafikler**: sütun, çizgi, iklim grafikleri; renk geçişli (degrade) sütunlar; veri çizgisi
+  tek kırık çizgi, veri noktaları daire; kesikli ızgara çizgileri
+- **Koordinat ızgaraları**: ızgara çizgileri uçtan uca kesintisiz, gri alan tek parça, noktalar ve
+  oklar; silik doku zemini (eş yükselti deseni gibi) atılır
+- **Şemalar**: kutular (köşesi yuvarlak olanlar dahil), bağlantı çizgileri, Venn şeması (iki elips)
+- **Krokiler**: sokak/yapı adası krokileri, çerçeveli paneller, ölçek çubukları, eş yükselti kareleri
+- **Şekiller**: güneş/ufuk çizimleri, yaylar, çemberler, oklar, kesikli çizgiler, bir kenarı kavisli
+  şekiller (düz kenar + yay)
 - **Haritalar**: görseldeki haritayı çizer; ayrıca **dilsiz dünya ve Türkiye haritası** oluşturur
 - **Yazılar**: Mac'in kendi yazı tanımasıyla düzenlenebilir yazı olur
   (tanınamazsa harf şekli olarak çizilir)
@@ -15,6 +21,12 @@ dikdörtgenler gerçek dikdörtgen olur; renkler ve kalınlıklar görseldeki gi
 Her şekil tek nesnedir: dolgusu ve konturu birlikte (ayrıca üstüne çizilmiş kenar çizgisi
 olmaz). Görseldeki gölgeler şekle katılır, ayrı çizilmez. Katmanlar ayrıdır: Dolgular,
 Çizgiler, Üstteki şekiller, Yazılar.
+
+Çizim bir tasarımcının çizeceği gibi kurulur: köşesine kare oturan blok tam dikdörtgen olur
+ve kare üstüne konur; benzer kutular aynı boyut ve hizaya, yakın renkler ve kalınlıklar tek
+renge ve kalınlığa getirilir; aynı simge (güneş, veri noktası) her yerde aynı boyda ve konturda
+çizilir; çerçeveli panelin çerçevesi üstteki şekillerin de üstünde kalır.
+Ekran görüntüsündeki renkli kenarlı (ClearType) yazılar önce sadeleştirilir.
 
 ## İndirme
 
