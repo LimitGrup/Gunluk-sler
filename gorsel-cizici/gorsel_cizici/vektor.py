@@ -59,6 +59,7 @@ class Scene:
     elements: list = field(default_factory=list)
     background: tuple = (255, 255, 255)
     notes: list = field(default_factory=list)
+    underlay: str = ""              # en altta çizilecek hazır SVG grubu (ör. tanınan haritanın kendisi)
 
 
 # ---------------------------------------------------------------- renk
@@ -71,8 +72,11 @@ def _lab_to_rgb(lab: np.ndarray) -> tuple:
     return tuple(int(round(float(v) * 255)) for v in np.clip(px, 0, 1))
 
 
-def _peaks(lab_px: np.ndarray, min_count: int, radius: float, limit: int) -> list:
-    """Lab renk histogramında birbirinden uzak tepe renkleri seç."""
+def _peaks(lab_px: np.ndarray, min_count: int, radius: float, limit: int, pooled: bool = False) -> list:
+    """Lab renk histogramında birbirinden uzak tepe renkleri seç.
+
+    pooled: tepe, çevresindeki kutularla birlikte sayılır (gürültülü görsellerde küçük
+    işaretlerin rengi birçok kutuya dağılır)."""
     if len(lab_px) == 0:
         return []
     q = np.round(lab_px / 2.5).astype(np.int32)
@@ -83,8 +87,10 @@ def _peaks(lab_px: np.ndarray, min_count: int, radius: float, limit: int) -> lis
     means = sums / counts[:, None]
     order = np.argsort(-counts)
     chosen = []
-    for i in order:
-        if counts[i] < min_count or len(chosen) >= limit:
+    # gürültülü (ör. JPEG) görsellerde bir renk birçok komşu kutuya dağılır: tepe, çevresindeki
+    # kutularla birlikte sayılır
+    for i in order[:600]:
+        if len(chosen) >= limit or (not pooled and counts[i] < min_count):
             break
         c = means[i]
         if any(np.linalg.norm(c - p) < radius for p, _ in chosen):
@@ -92,6 +98,8 @@ def _peaks(lab_px: np.ndarray, min_count: int, radius: float, limit: int) -> lis
         # bu tepenin çevresindeki bütün renkler
         near = np.linalg.norm(means - c, axis=1) < radius * 0.6
         tot = counts[near].sum()
+        if tot < min_count:
+            continue
         cc = (means[near] * counts[near, None]).sum(axis=0) / tot
         chosen.append((cc, int(tot)))
     return chosen
@@ -124,6 +132,14 @@ def build_palette(lab: np.ndarray, u: float, exclude: np.ndarray | None = None) 
     if exclude is not None:
         extreme &= ~exclude
     extra = _peaks(lab[extreme], max(int(6 * u * u), 12), 11.0, 8)
+    # gürültülü görsellerde küçük renkli işaretler (nokta, harf) hiç tek kutuda toplanmaz:
+    # açıklanamayan, belirgin renkli/koyu pikselleri komşu kutularla birlikte say
+    unexpl = (d > 22) & ((Lc < 45) | (np.hypot(lab[:, :, 1], lab[:, :, 2]) > 35))
+    if exclude is not None:
+        unexpl &= ~exclude
+    for c, cnt in _peaks(lab[unexpl], max(int(10 * u * u), 20), 14.0, 4, pooled=True):
+        if all(np.linalg.norm(c - q) >= 14.0 for q, _n in extra):
+            extra.append((c, cnt))
     for c, cnt in extra:
         if np.min(np.linalg.norm(pal_arr - c, axis=1)) >= 11.0:
             pal_arr = np.vstack([pal_arr, c])
@@ -495,6 +511,12 @@ def _dash_groups(segs: list, u: float):
         dashes = [b - a for a, b in spans]
         gaps = [spans[k + 1][0] - spans[k][1] for k in range(len(spans) - 1)]
         if not gaps or min(gaps) < -u:
+            continue
+        # kesikli çizgide kesik ve aralıklar düzenlidir; düzensizse (üstünden başka şekiller
+        # geçtiği için bölünmüş düz çizgi) kesikli sayma
+        dz, gz = np.array(dashes[1:-1] or dashes), np.array(gaps)
+        if len(dz) >= 3 and (dz.std() > 0.45 * max(dz.mean(), 1e-6) or gz.std() > 0.45 * max(gz.mean(), 1e-6)) \
+                and float(np.median(gz)) > 0.8:
             continue
         w = float(np.median([segs[i][2] for i in g]))
         p0 = c + d * t.min()

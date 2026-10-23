@@ -276,12 +276,28 @@ def _line_of(e):
     """Elemanı tek doğru parçasına indirgenebiliyorsa (p0, p1) döndür."""
     if e.prim and e.prim.get("type") == "line":
         return np.array([e.prim["x1"], e.prim["y1"]]), np.array([e.prim["x2"], e.prim["y2"]])
-    if e.d and "C" not in e.d and "A" not in e.d and "Z" not in e.d:
+    if e.d and "Z" not in e.d:
         polys = sadakat.flatten(e.d)
-        if len(polys) == 1 and len(polys[0][0]) == 2:
+        if len(polys) == 1 and len(polys[0][0]) >= 2:
             p = polys[0][0]
-            return p[0], p[1]
+            if len(p) == 2:
+                return p[0], p[1]
+            L = float(np.hypot(*(p[-1] - p[0])))
+            if L > 4:
+                c, dvec, dev = egri.line_fit(p)
+                if dev <= max(0.6, 0.5 * e.width):
+                    t = (p - c) @ dvec
+                    return c + dvec * t.min(), c + dvec * t.max()
     return None
+
+
+def _same_ink(c1, c2) -> bool:
+    """Aynı çizginin parçaları mı (zemine göre biraz farklı görünen gri tonlar dahil)."""
+    a, b = np.array(c1, float), np.array(c2, float)
+    if np.linalg.norm(a - b) < 30:
+        return True
+    gray = lambda c: float(np.ptp(c)) < 25  # noqa: E731
+    return gray(a) and gray(b) and np.linalg.norm(a - b) < 140
 
 
 def _split_polylines(strokes: list) -> list:
@@ -331,7 +347,7 @@ def _merge_lines(strokes: list) -> list:
         placed = False
         for g in groups:
             gs, gd, ga = g["s"], g["d"], g["a"]
-            if gs.color != s.color or abs(gs.width - s.width) > max(0.35, 0.25 * max(gs.width, s.width)):
+            if not _same_ink(gs.color, s.color) or max(gs.width, s.width) > 1.9 * min(gs.width, s.width) + 0.2:
                 continue
             if abs(float(gd @ d)) < 0.9995:
                 continue
@@ -340,17 +356,28 @@ def _merge_lines(strokes: list) -> list:
                 continue
             ta, tb = float((a - ga) @ gd), float((b - ga) @ gd)
             lo, hi = min(ta, tb), max(ta, tb)
-            if lo > g["hi"] + 1.6 or hi < g["lo"] - 1.6:
+            # uzun çizgilerde (harita meridyeni gibi) üstünden geçen kıyının açtığı kısa boşluklar da kapanır
+            span = (g["hi"] - g["lo"]) + (hi - lo)
+            gap_ok = max(1.6, min(8.0, 0.04 * span))
+            if lo > g["hi"] + gap_ok or hi < g["lo"] - gap_ok:
                 continue
             g["lo"], g["hi"] = min(g["lo"], lo), max(g["hi"], hi)
             g["n"] += 1
+            g["parts"].append(s)
             placed = True
             break
         if not placed:
-            groups.append({"s": s, "d": d, "a": a, "lo": 0.0, "hi": float((b - a) @ d), "n": 1})
+            groups.append({"s": s, "d": d, "a": a, "lo": 0.0, "hi": float((b - a) @ d), "n": 1, "parts": [s]})
     out = list(rest)
     for g in groups:
         s, d, a = g["s"], g["d"], g["a"]
+        if len(g["parts"]) > 1:
+            # birleşen parçaların en koyu rengi ve ortanca kalınlığı
+            darkest = min(g["parts"], key=lambda q: sum(q.color))
+            from copy import copy
+            s = copy(s)
+            s.color = darkest.color
+            s.width = float(np.median([q.width for q in g["parts"]]))
         p0, p1 = a + d * g["lo"], a + d * g["hi"]
         out.append(Element("stroke", s.color, prim={"type": "line", "x1": float(p0[0]), "y1": float(p0[1]),
                                                      "x2": float(p1[0]), "y2": float(p1[1])},

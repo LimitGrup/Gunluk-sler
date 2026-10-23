@@ -731,7 +731,7 @@ class MainWindow(QMainWindow):
         self._rebuild_image_svg()
         n_txt = sum(1 for e in scene.elements if e.kind == "text")
         extra = f" · {n_txt} yazı düzenlenebilir" if n_txt else ""
-        self.set_status(f"Çizildi ({secs:.1f} sn): {scene.notes[-1] if scene.notes else ''}{extra}. "
+        self.set_status(f"Çizildi ({secs:.1f} sn): {' · '.join(scene.notes) if scene.notes else ''}{extra}. "
                         "Kontrol edip “Illustrator'a aktar”a basın.")
 
     def measure(self, text: str):

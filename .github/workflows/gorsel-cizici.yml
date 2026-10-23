@@ -72,7 +72,14 @@ jobs:
           mkdir -p dmg
           cp -R dist/GorselCizici.app dmg/
           ln -s /Applications dmg/Applications
-          hdiutil create -volname "Gorsel Cizici" -srcfolder dmg -ov -format UDZO GorselCizici-${{ matrix.name }}.dmg
+          # hdiutil bazen "Resource busy" der (sistem diski tararken): birkaç kez dene
+          for i in 1 2 3 4 5; do
+            if hdiutil create -volname "Gorsel Cizici" -srcfolder dmg -ov -format UDZO GorselCizici-${{ matrix.name }}.dmg; then
+              break
+            fi
+            if [ "$i" = 5 ]; then exit 1; fi
+            sleep $((i * 5))
+          done
       - name: Zip (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

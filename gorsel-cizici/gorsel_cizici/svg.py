@@ -106,6 +106,8 @@ def to_svg(scene: Scene, st: Style | None = None) -> str:
         parts.append("<defs>" + "".join(defs) + "</defs>")
     if st.keep_background:
         parts.append(f'<rect id="Zemin" width="{scene.width}" height="{scene.height}" fill="{_hex(scene.background)}"/>')
+    if getattr(scene, "underlay", ""):
+        parts.append(scene.underlay)
     # Dolgular ve çizgiler, alttan üste çizim sırasıyla (küçük noktalar çizgilerin üstünde kalır)
     if fills:
         parts.append('<g id="Dolgular">' + "".join(_ordered(scene, "fill", fills)) + "</g>")

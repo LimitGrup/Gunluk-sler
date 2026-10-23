@@ -39,7 +39,22 @@ def analyze(rgb: np.ndarray, use_text: bool = True, detail: float = 1.0):
     # yalnız onların pikselleri şekle çevrilmez. Tutmayanlar görseldeki gibi şekil olarak kalır.
     texts = metin.validate(texts, rgb) if texts else []
     tm = metin.text_mask(texts, rgb.shape) if texts else None
-    scene = vectorize(rgb, Options(detail=detail, text_mask=tm))
+    # Dilsiz harita mı: öyleyse harita temiz veriden çizilir, yalnız işaretlemeler görselden
+    esl = None
+    try:
+        from . import harita_tani
+        esl = harita_tani.tani(rgb)
+    except Exception:  # noqa: BLE001
+        esl = None
+    if esl is not None:
+        from . import harita_tani
+        harita_tani.hazirla(rgb, esl)
+        kalan = harita_tani.harita_kalintisi(rgb, esl)
+        scene = vectorize(kalan, Options(detail=detail, text_mask=tm))
+        scene.underlay = harita_tani.harita_cizimi(rgb, esl)
+        scene.notes = esl.notes + scene.notes
+    else:
+        scene = vectorize(rgb, Options(detail=detail, text_mask=tm))
     return scene, texts
 
 
