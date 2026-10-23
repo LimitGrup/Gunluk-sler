@@ -92,3 +92,25 @@ jobs:
             gorsel-cizici/GorselCizici-${{ matrix.name }}.zip
           if-no-files-found: error
           retention-days: 90
+
+  # Derlenen kurulum dosyalarını tek tıkla indirilebilsin diye "Releases" sayfasına koy
+  release:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+      - name: Kurulum dosyalarını yayımla
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -R out
+          gh release delete gorsel-cizici -y --cleanup-tag -R "$GITHUB_REPOSITORY" || true
+          gh release create gorsel-cizici -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Görsel Çizici" \
+            --notes "Mac (Apple çipli): GorselCizici-mac-apple-silicon.dmg · Mac (Intel): GorselCizici-mac-intel.dmg · Windows: GorselCizici-windows.zip" \
+            out/*/*.dmg out/*/*.zip
