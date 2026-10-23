@@ -150,7 +150,7 @@ def element_polys(e) -> tuple:
             x = p["rx"] * np.cos(a)
             y = p["ry"] * np.sin(a)
             poly = np.column_stack([p["cx"] + x * math.cos(r) - y * math.sin(r), p["cy"] + x * math.sin(r) + y * math.cos(r)])
-            return "fill", [(poly, True)]
+            return ("fill" if e.kind == "fill" else "stroke"), [(poly, True)]
         if t == "polygon":
             return "fill", [(np.array(p["pts"], float), True)]
         if t == "line":

@@ -21,8 +21,14 @@ def load_rgb(path: str) -> np.ndarray:
     return np.array(im.convert("RGB"))
 
 
-def analyze(rgb: np.ndarray, use_text: bool = True, detail: float = 1.0):
-    """Ağır iş (arka planda çalıştırılabilir). Dönüş: (sahne, tanınan yazılar)."""
+def analyze(rgb: np.ndarray, use_text: bool = True, detail: float = 1.0, yazisiz: bool = False):
+    """Ağır iş (arka planda çalıştırılabilir). Dönüş: (sahne, tanınan yazılar).
+
+    yazisiz: yazılar hiç çizilmez, yalnız şekiller. Yazı tanıma yine çalışır (varsa): yazı
+    pikselleri şekle karışmasın diye; yazıların arkasındaki çizimler çizilir.
+    """
+    if yazisiz:
+        use_text = True
     texts = []
     if use_text and metin.available():
         fd, path = tempfile.mkstemp(suffix=".png")
@@ -50,11 +56,13 @@ def analyze(rgb: np.ndarray, use_text: bool = True, detail: float = 1.0):
         from . import harita_tani
         harita_tani.hazirla(rgb, esl)
         kalan = harita_tani.harita_kalintisi(rgb, esl)
-        scene = vectorize(kalan, Options(detail=detail, text_mask=tm, small_marks=True))
+        scene = vectorize(kalan, Options(detail=detail, text_mask=tm, small_marks=True, yazisiz=yazisiz))
         scene.underlay = harita_tani.harita_cizimi(rgb, esl)
         scene.notes = esl.notes + scene.notes
     else:
-        scene = vectorize(rgb, Options(detail=detail, text_mask=tm))
+        scene = vectorize(rgb, Options(detail=detail, text_mask=tm, yazisiz=yazisiz))
+    if yazisiz:
+        texts = []
     return scene, texts
 
 

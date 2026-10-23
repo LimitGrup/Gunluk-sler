@@ -10,9 +10,11 @@ Ders kitabındaki basit çizimlerin görselini verirsiniz; uygulama aynısını
 - **Yazılar**: Mac'in kendi yazı tanımasıyla düzenlenebilir yazı olur
   (tanınamazsa harf şekli olarak çizilir)
 
-Çıktıda düz çizgiler gerçek doğru, yuvarlak şekiller gerçek çember/yay,
+Çıktıda düz çizgiler gerçek doğru, yuvarlak şekiller gerçek çember/elips/yay,
 dikdörtgenler gerçek dikdörtgen olur; renkler ve kalınlıklar görseldeki gibidir.
-Katmanlar ayrıdır: Dolgular, Çizgiler, Üstteki şekiller, Yazılar.
+Her şekil tek nesnedir: dolgusu ve konturu birlikte (ayrıca üstüne çizilmiş kenar çizgisi
+olmaz). Görseldeki gölgeler şekle katılır, ayrı çizilmez. Katmanlar ayrıdır: Dolgular,
+Çizgiler, Üstteki şekiller, Yazılar.
 
 ## İndirme
 
@@ -54,6 +56,8 @@ Sağdaki **Çıktı ayarları** ikisinde de geçerlidir.
 1. **Görselden çizim**'de görseli verin: **Ekrandan kırp** (soruyu ekranda seçersiniz),
    **Dosyadan aç**, **Panodan yapıştır** ya da görsel dosyasını pencereye bırakın.
    Çizim kendiliğinden başlar.
+   - **Yazıları atla, yalnız şekilleri çiz** seçilirse yazılar hiç çizilmez; yazının
+     altındaki ya da yanındaki çizimler yine çizilir.
 2. **Kaynak görsel** ile **Vektör çizim** önizlemelerini yan yana karşılaştırın.
 3. Çizimi Illustrator'a alın (alttaki çubuk):
    - **Illustrator'a aktar**: açık belgeye düzenlenebilir çizim olarak yapıştırır;
@@ -76,8 +80,9 @@ Sağdaki **Çıktı ayarları** ikisinde de geçerlidir.
 
 ## Dilsiz harita
 
-Soldan **Dilsiz harita**'yı seçin; dünya ya da Türkiye haritası oluşturulur (Natural Earth verisi).
-Ayarları değiştirip **Haritayı oluştur**'a basın, sonra **Illustrator'a aktar**:
+Soldan **Dilsiz harita**'yı seçin; dünya ya da Türkiye haritası sıfırdan, temiz vektör olarak
+oluşturulur (Natural Earth verisi, görsel gerekmez). Ayarları seçip **Haritayı oluştur**'a basın,
+önizlemede kontrol edin, sonra **Illustrator'a aktar**:
 
 - **İzdüşüm**: Miller (ders kitaplarındaki gibi), eşdikdörtgen, Mercator, Robinson
 - **Orta boylam**: haritanın ortasındaki boylam
@@ -85,6 +90,11 @@ Ayarları değiştirip **Haritayı oluştur**'a basın, sonra **Illustrator'a ak
 - **Meridyenler / Paraleller**: `0, 45, 90, 135` gibi tek tek ya da `her 30` gibi aralıkla
   (batı ve güney için eksi değer ya da `30B`, `20G` yazın)
 - **Noktalar**: her satıra `ad; boylam; enlem`, ör. `K; -14; 46`
+- **Kara rengi / Deniz rengi**: düğmeye basıp renk seçin (deniz için iptal: renksiz)
+
+Görselden çizim bölümüne dilsiz harita üstüne işaretleme yapılmış bir görsel verirseniz
+uygulama haritayı tanır: haritayı bu temiz veriden çizer, yalnız görseldeki işaretlemeleri
+(nokta, çizgi, harf) üstüne ekler. Tanıdığında durum satırında "Dünya haritası tanındı" yazar.
 
 ## İpuçları
 

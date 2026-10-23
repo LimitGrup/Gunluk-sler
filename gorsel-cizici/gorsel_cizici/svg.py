@@ -99,6 +99,12 @@ def to_svg(scene: Scene, st: Style | None = None) -> str:
             strokes.append(f'<line x1="{_f(p["x1"])}" y1="{_f(p["y1"])}" x2="{_f(p["x2"])}" y2="{_f(p["y2"])}" {attrs}/>')
         elif p and p["type"] == "circle":
             strokes.append(f'<circle cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" r="{_f(p["r"])}" {attrs}/>')
+        elif p and p["type"] == "rect":
+            attrs = attrs.replace('stroke-linejoin="round"', 'stroke-linejoin="miter"')
+            strokes.append(f'<rect x="{_f(p["x"])}" y="{_f(p["y"])}" width="{_f(p["w"])}" height="{_f(p["h"])}" {attrs}/>')
+        elif p and p["type"] == "ellipse":
+            rot = f' transform="rotate({_f(p["rot"])} {_f(p["cx"])} {_f(p["cy"])})"' if abs(p.get("rot", 0)) > 0.5 else ""
+            strokes.append(f'<ellipse cx="{_f(p["cx"])}" cy="{_f(p["cy"])}" rx="{_f(p["rx"])}" ry="{_f(p["ry"])}" {attrs}{rot}/>')
         elif e.d:
             strokes.append(f'<path d="{e.d}" {attrs}/>')
     parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{_f(Wpt)}pt" height="{_f(Hpt)}pt" viewBox="0 0 {scene.width} {scene.height}">']

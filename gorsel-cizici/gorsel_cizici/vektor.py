@@ -890,6 +890,7 @@ class Options:
     gradients: bool = True       # renk geçişli bölgeleri degrade dolgu yap
     cizim: bool = True           # izlenen şekilleri çizim nesnelerine çevir (dikdörtgen, çizgi, kontur)
     small_marks: bool = False    # küçük renkli işaretlerin (harita üstü nokta, harf) rengini ayrıca ara
+    yazisiz: bool = False        # yazıları hiç çizme (yalnız şekiller); yazı altındaki çizimler yine çizilir
 
 
 def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
@@ -978,6 +979,9 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
             tmk = cv2.resize(tmk.astype(np.float32), (w, h), interpolation=cv2.INTER_AREA) > 0.25
         # harflerin kenar yumuşatma pikselleri de gitsin
         text_mask |= cv2.dilate(tmk.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    # --- soluk eksen / ızgara çizgileri (paletin karşılamadığı açık gri çizgiler)
+    soluk, soluk_m = _soluk_cizgiler(lab, rgb, pal, bg, max(24, int(0.06 * max(h, w))),
+                                     max(80, int(0.2 * max(h, w))))
     dark = [k for k in range(K) if k != bg and pal[k][0] < 55]
     glyph = _glyph_mask2(present, labels, dark, h, w) & ~text_mask if opts.glyphs else np.zeros((h, w), bool)
     if text_mask.any() and glyph.any():
@@ -989,12 +993,17 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
         extra = hit[cc_g] & glyph
         text_mask |= extra
         glyph &= ~extra
+    if soluk:
+        # soluk çizgi pikselleri şekle çevrilmez (yazı gibi gizlenir); harflere dokunulmaz
+        text_mask |= soluk_m
+        glyph &= ~soluk_m
 
     # --- her rengin ince (çizgi) ve kalın (dolgu) kısmı
     core_r = opts.thin_px / 2 + 0.45
     thin_by = {}
     thick_by = {}
     thin_all = np.zeros((h, w), bool)
+    fringe_all = np.zeros((h, w), bool)
     for k in range(K):
         if k == bg or k == gk:
             continue
@@ -1021,20 +1030,56 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
             touch[np.unique(cc[near_thick & thin])] = True
             big = np.maximum(stats[:, cv2.CC_STAT_WIDTH], stats[:, cv2.CC_STAT_HEIGHT])
             drop = touch & (big <= 3)
+            # ağırlıkla dolgu olan renk (krem zemin gibi): kalın kısma değen ince şeritler de
+            # dolgunun parçasıdır, ayrı çizgi olmaz
+            if thick.sum() >= 3 * max(1, thin.sum()):
+                drop = touch.copy()
             drop[0] = False
             if drop.any():
                 thin &= ~drop[cc]
         thin_by[k] = thin
         thick_by[k] = thick_g
         thin_all |= thin
+        # çizginin soluk kenarı (aynı renge sayılmış ama çizgi sayılmayan pikseller): dolguyu yarmasın
+        if thin.any():
+            fringe_all |= (cv2.dilate(thin.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0) & m & ~thin & ~thick_g
 
     # --- dolgu etiketleri: çizgi, yazı ve harf piksellerinin altını çevredeki renkle doldur
-    hide = thin_all | text_mask | glyph
+    hide = thin_all | fringe_all | text_mask | glyph
     fill_lab = labels.copy()
+    iy = ix = None
     if hide.any() and not hide.all():
         _, (iy, ix) = ndimage.distance_transform_edt(hide, return_indices=True)
         fill_lab[hide] = labels[iy[hide], ix[hide]]
     near_hide = cv2.dilate(hide.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    # çizginin açık renkli hâlesi zemin rengine düşer ve dolguyu yarar: çizgi boyunca kalan dar
+    # zemin şeritleri, çevresi (çizgi dışında) tümüyle tek bir dolgu ise o dolguya katılır.
+    # Sütun aralığı gibi gerçek boşluklar bir uçta açık zemine değdiği için katılmaz.
+    if thin_all.any():
+        band = (cv2.dilate(thin_all.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0) & (fill_lab == bg) & ~hide
+        if band.any():
+            nb, ccb, stb, _ = cv2.connectedComponentsWithStats(band.astype(np.uint8), connectivity=8)
+            changed = False
+            for i in range(1, nb):
+                x, y, ww, hh, _a = stb[i]
+                a0, b0, a1, b1 = max(0, x - 1), max(0, y - 1), min(w, x + ww + 1), min(h, y + hh + 1)
+                comp = ccb[b0:b1, a0:a1] == i
+                ring = (cv2.dilate(comp.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0) & ~comp & ~hide[b0:b1, a0:a1]
+                labs = fill_lab[b0:b1, a0:a1][ring]
+                if len(labs) < 4:
+                    continue
+                cnt = np.bincount(labs, minlength=K + 1)
+                if cnt[bg] > 0.15 * len(labs):
+                    continue
+                cnt[bg] = 0
+                k2 = int(cnt.argmax())
+                if k2 != gk and cnt[k2] >= 0.6 * len(labs):
+                    sub = fill_lab[b0:b1, a0:a1]
+                    sub[comp] = k2
+                    changed = True
+            if changed and iy is not None:
+                # çizgi altını güncellenen komşulardan yeniden doldur
+                fill_lab[hide] = fill_lab[iy[hide], ix[hide]]
 
     elements = []
     # --- renk geçişli bölgeler
@@ -1076,12 +1121,18 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
             reach = cv2.dilate(comp.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
             c = np.where(reach, fc[b0:b1, a0:a1], 0.0)
             conts = _contours_of(_up(c, f), f, a0, b0, 0.8)
-            el = _fill_element(conts, colors[k], tol)
+            ol = _outline_of(comp, a0, b0, k, thin_by, cov, bg, area, pal) if area >= 30 else None
+            el = _fill_element(conts, colors[k], max(tol, 0.5) if ol else tol)
             if el:
+                if ol is not None:
+                    oc, ow, ring = ol
+                    el.stroke, el.stroke_width = colors[oc], ow
+                    # kontur artık bu şeklin parçası: aynı pikseller ayrıca çizgi olmasın
+                    thin_by[oc][b0:b1, a0:a1] &= ~ring
                 elements.append(el)
 
-    # --- harfler: kendi kaplamalarından, köşeleri koruyarak
-    if glyph.any():
+    # --- harfler: kendi kaplamalarından, köşeleri koruyarak (yazısız çizimde atlanır)
+    if glyph.any() and not opts.yazisiz:
         for k in range(K):
             gm = glyph & present[k]
             if not gm.any():
@@ -1129,6 +1180,9 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
         # görselle karşılaştır: tutmayan çizgiyi at, eksik kalan yeri görseldeki biçimiyle çiz
         elements.extend(_verify_strokes(sel, cov[k], cc, stats, f, colors[k], tol, w, h))
 
+    for x0, y0, x1, y1, col, wd in soluk:
+        elements.append(Element("stroke", col, prim={"type": "line", "x1": x0, "y1": y0, "x2": x1, "y2": y1},
+                                width=wd, bbox=(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))))
     if opts.cizim:
         from . import duzen
         elements = duzen.cizimlestir(elements, colors[bg])
@@ -1155,6 +1209,110 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
     scene.elements = elements
     scene.notes.append(f"{K} renk · {sum(e.kind == 'fill' for e in elements)} dolgu · {sum(e.kind == 'stroke' for e in elements)} çizgi")
     return scene
+
+
+def _soluk_cizgiler(lab: np.ndarray, rgb: np.ndarray, pal: np.ndarray, bg: int, min_len: int,
+                    long_len: int = 10 ** 9):
+    """Paletin karşılamadığı soluk, uzun yatay/dikey çizgiler (açık gri eksen, ızgara çizgisi).
+
+    Bu çizgiler siyahla beyazın karışımına benzediği için renk ayrımında kaybolur. Burada
+    doğrudan görünen renkleriyle çizgi olarak çıkarılır. Dönüş: (çizgi listesi, pikselleri).
+    Çizgi: (x0, y0, x1, y1, renk, kalınlık)
+    """
+    h, w = lab.shape[:2]
+    bgc = pal[bg]
+    d = np.linalg.norm(lab - bgc, axis=2).astype(np.float32)
+    others = [pal[k] for k in range(len(pal)) if k != bg]
+    lines, mask = [], np.zeros((h, w), bool)
+
+    def faint_or_new(C):
+        # paletteki bir rengin kenar yumuşatmalı (yarı kaplı) hâli değilse ya da çok soluksa bizim işimiz
+        for P in others:
+            AB = P - bgc
+            nab = float(AB @ AB)
+            if nab < 1e-6:
+                continue
+            al = float(np.clip((C - bgc) @ AB / nab, 0, 1))
+            res = float(np.linalg.norm(C - (bgc + al * AB)))
+            if res < 12 and al >= 0.42:
+                return False
+            if float(np.linalg.norm(C - P)) < 12:
+                return False
+        return True
+
+    for orient in ("h", "v"):
+        D = d if orient == "h" else d.T
+        L = lab if orient == "h" else lab.transpose(1, 0, 2)
+        R = rgb if orient == "h" else rgb.transpose(1, 0, 2)
+        n_rows, n_cols = D.shape
+        up = np.vstack([D[:1], D[:-1]])
+        dn = np.vstack([D[1:], D[-1:]])
+        up2 = np.vstack([D[:2], D[:-2]])
+        dn2 = np.vstack([D[2:], D[-2:]])
+        ridge = (D >= 8) & (D >= up) & (D >= dn) & ((D > up + 2) | (D > dn + 2))
+        # iki yanı da zemin (ya da 2 piksellik çizginin öbür yarısı, sonra zemin) olmalı:
+        # sütun kenarı gibi bir yanı dolgu olan çizgiler burada değil, dolgunun konturu olur
+        lo = 0.6 * D
+        side_a = (up < lo) | ((up2 < lo) & (dn < lo))
+        side_b = (dn < lo) | ((dn2 < lo) & (up < lo))
+        ridge &= side_a & side_b
+        same = np.zeros_like(ridge)
+        same[:, :-1] = np.linalg.norm(L[:, 1:] - L[:, :-1], axis=2) < 12
+        found = []
+        for y in range(n_rows):
+            r = ridge[y]
+            if r.sum() < min_len:
+                continue
+            ok = r & np.concatenate([same[y, :-1] | np.roll(same[y], 1)[:-1], [False]]) if n_cols > 1 else r
+            # ardışık parçalar (üstünden geçen kıyı gibi 1-4 piksellik kesintiler kapatılır)
+            okc = ndimage.binary_closing(ok, structure=np.ones(5, bool)) | ok
+            idx = np.flatnonzero(np.diff(np.concatenate([[0], okc.astype(np.int8), [0]])))
+            for a, b in zip(idx[::2], idx[1::2]):
+                if b - a < min_len or ok[a:b].mean() < 0.85:
+                    continue
+                C = np.median(L[y, a:b][ok[a:b]], axis=0)
+                # çok uzun düz çizgiler (eksen, harita paraleli) renkleri paletteyse de tek parça alınır
+                if np.linalg.norm(C - bgc) < 8 or (b - a < long_len and not faint_or_new(C)):
+                    continue
+                found.append([y, a, b, C])
+        # aynı çizginin iki satırı (2 piksel kalın çizgi) tek çizgi olur
+        found.sort(key=lambda t: (t[0], t[1]))
+        merged = []
+        for y, a, b, C in found:
+            for m in merged:
+                if abs(m[0][-1] - y) <= 1 and min(b, m[2]) - max(a, m[1]) > 0.5 * min(b - a, m[2] - m[1]):
+                    m[0].append(y)
+                    m[1], m[2] = min(a, m[1]), max(b, m[2])
+                    break
+            else:
+                merged.append([[y], a, b, C])
+        for ys, a, b, C in merged:
+            y0, y1 = max(0, min(ys) - 2), min(n_rows, max(ys) + 3)
+            prof = D[y0:y1, a:b]
+            core = float(np.median(D[ys, a:b]))
+            if core < 1e-3:
+                continue
+            wts = np.clip(np.median(prof, axis=1) / core, 0, 1)
+            wts[wts < 0.08] = 0
+            width = float(np.clip(wts.sum(), 0.6, 3.0))
+            yc = float((np.arange(y0, y1) * wts).sum() / max(wts.sum(), 1e-6))
+            core_rows = slice(min(ys), max(ys) + 1)
+            col = tuple(int(v) for v in np.median(R[core_rows, a:b].reshape(-1, 3), axis=0))
+            # yalnız çizginin kendi pikselleri (ona değen daha koyu çentik/şekil değil)
+            band = (prof > 3) & (prof <= core * 1.25 + 4)
+            # çizgiye bir şey değiyorsa (harf, sütun, çentik) o sütunlar ayrılmaz: şekil bütün kalsın
+            above = D[y0 - 1, a:b] if y0 >= 1 else np.zeros(b - a)
+            below = D[y1, a:b] if y1 < n_rows else np.zeros(b - a)
+            touch = (above > 0.35 * core) | (below > 0.35 * core)
+            touch = ndimage.binary_dilation(touch, structure=np.ones(3, bool))
+            band[:, touch] = False
+            if orient == "h":
+                lines.append((float(a), yc, float(b - 1), yc, col, width))
+                mask[y0:y1, a:b] |= band
+            else:
+                lines.append((yc, float(a), yc, float(b - 1), col, width))
+                mask[a:b, y0:y1] |= band.T
+    return lines, mask
 
 
 def stroke_width(rgb: np.ndarray) -> float:
@@ -1310,6 +1468,51 @@ def _stroke_elements(items, color, tol, under=None):
         out.append(Element("stroke", col, d=d, prim=prim, width=wd2, cap="round",
                            bbox=(float(x0), float(y0), float(x1), float(y1))))
     return out
+
+
+def _outline_of(comp, a0, b0, k, thin_by, cov, bg, area, pal=None):
+    """Dolgu bölgesinin çevresini başka renkte ince bir kenar çiziyor mu.
+
+    Dönüş: (kenar rengi, kalınlık, kenar pikselleri) ya da None. Bölge sınırı (dolgu çizgi
+    altına uzatıldığı için) kenar çizgisinin orta hattıdır.
+    """
+    H, W = comp.shape
+    # dar yarıkları kapat: şeklin içinden geçen çizgi kenar sayılmasın
+    cp = np.pad(comp.astype(np.uint8), 4)
+    cu = cv2.morphologyEx(cp, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    cu = np.where(cv2.dilate(cp, np.ones((5, 5), np.uint8)) > 0, cu, 0).astype(np.uint8)
+    er = cv2.erode(cu, np.ones((3, 3), np.uint8)) > 0
+    cu = cu[4:-4, 4:-4]
+    edge = (cu > 0) & ~er[4:-4, 4:-4]
+    n_edge = int(edge.sum())
+    if n_edge < 12:
+        return None
+    cs, _ = cv2.findContours(cu, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    perim = float(sum(cv2.arcLength(c, True) for c in cs)) or float(n_edge)
+    best = None
+    for oc, thin in thin_by.items():
+        if oc == k or oc == bg:
+            continue
+        # kenar rengi dolgudan ve zeminden belirgin farklı olmalı (ara tonlar kenar değildir)
+        if pal is not None and (np.linalg.norm(pal[oc] - pal[k]) < 20 or np.linalg.norm(pal[oc] - pal[bg]) < 20):
+            continue
+        t = thin[b0:b0 + H, a0:a0 + W]
+        if not t.any():
+            continue
+        near = cv2.dilate(t.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+        frac = float((edge & near).sum()) / n_edge
+        if frac >= 0.6 and (best is None or frac > best[0]):
+            best = (frac, oc)
+    if best is None:
+        return None
+    oc = best[1]
+    t = thin_by[oc][b0:b0 + H, a0:a0 + W]
+    band = cv2.dilate(edge.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))) > 0
+    ring = t & band
+    # kalınlık: kenardaki renk kütlesi / çevre uzunluğu
+    mass = float(cov[oc, b0:b0 + H, a0:a0 + W][ring].sum())
+    width = float(np.clip(mass / max(1.0, perim * best[0]), 0.5, 6.0))
+    return oc, width, ring
 
 
 def _verify_strokes(els, covk, cc, stats, f, color, tol, W, H):

@@ -253,14 +253,14 @@ class Worker(QThread):
     done = Signal(object, object, float)
     failed = Signal(str)
 
-    def __init__(self, rgb, use_text, detail):
+    def __init__(self, rgb, use_text, detail, yazisiz=False):
         super().__init__()
-        self.rgb, self.use_text, self.detail = rgb, use_text, detail
+        self.rgb, self.use_text, self.detail, self.yazisiz = rgb, use_text, detail, yazisiz
 
     def run(self):
         t = time.time()
         try:
-            scene, texts = cizim.analyze(self.rgb, self.use_text, self.detail)
+            scene, texts = cizim.analyze(self.rgb, self.use_text, self.detail, self.yazisiz)
         except Exception as e:  # noqa: BLE001
             import traceback
             traceback.print_exc()
@@ -390,6 +390,9 @@ class MainWindow(QMainWindow):
             self.ocr_chk.setEnabled(False)
             self.ocr_chk.setText("Yazılar harf şekli olarak çizilir (bu bilgisayarda yazı tanıma yok)")
         v.addWidget(self.ocr_chk)
+        self.notext_chk = QCheckBox("Yazıları atla, yalnız şekilleri çiz (yazı altındaki çizimler yine çizilir)")
+        self.notext_chk.toggled.connect(self._notext_toggled)
+        v.addWidget(self.notext_chk)
         pv = QHBoxLayout()
         pv.setSpacing(14)
         self.in_view = ImageView("Henüz görsel yok\n\nEkrandan kırpın, dosyadan açın,\nyapıştırın ya da dosyayı bu pencereye bırakın")
@@ -599,6 +602,7 @@ class MainWindow(QMainWindow):
         self.color_box.setCurrentIndex(int(s.value("renk", 0)))
         self.stroke_box.setValue(float(s.value("kontur", 0.0)))
         self.width_box.setValue(float(s.value("genislik", 0.0)))
+        self.notext_chk.setChecked(str(s.value("yazisiz", "false")).lower() in ("true", "1"))
 
     def _save_settings(self):
         s = self.settings
@@ -607,6 +611,7 @@ class MainWindow(QMainWindow):
         s.setValue("renk", self.color_box.currentIndex())
         s.setValue("kontur", self.stroke_box.value())
         s.setValue("genislik", self.width_box.value())
+        s.setValue("yazisiz", self.notext_chk.isChecked())
 
     def font_family(self) -> str:
         return self.font_box.currentText().strip() or self.font_box.currentFont().family()
@@ -713,10 +718,15 @@ class MainWindow(QMainWindow):
         self.draw_btn.setEnabled(False)
         self.draw_btn.setText("Çiziliyor…")
         self.set_status("Görsel çiziliyor… (büyük görsellerde birkaç saniye sürebilir)")
-        self.worker = Worker(self.rgb, self.ocr_chk.isChecked(), 1.0)
+        self.worker = Worker(self.rgb, self.ocr_chk.isChecked(), 1.0, self.notext_chk.isChecked())
         self.worker.done.connect(self._draw_done)
         self.worker.failed.connect(self._draw_failed)
         self.worker.start()
+
+    def _notext_toggled(self, on):
+        self.ocr_chk.setEnabled(not on and metin.available())
+        if not self._loading:
+            self._save_settings()
 
     def _draw_failed(self, msg):
         self.draw_btn.setEnabled(True)
