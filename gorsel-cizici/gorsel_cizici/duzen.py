@@ -122,17 +122,27 @@ def _similar_fill(a, b) -> bool:
 
 def _union_rects(fills: list) -> list:
     """İnce bir çizginin böldüğü aynı renkli/aynı degradeli komşu parçaları tek dikdörtgen yap."""
-    alive = [e for e in fills if e.layer != "harf"]
+    _dead = []
+    # yalnız degradeli ya da dikdörtgen olmuş, en az birkaç piksellik parçalar aday
+    alive = [e for e in fills if e.layer != "harf" and (e.grad is not None or (e.prim and e.prim.get("type") == "rect"))
+             and _size(e) >= 3]
+    if len(alive) > 1500:
+        alive = alive[:1500]
     changed = True
     while changed:
         changed = False
-        for i in range(len(alive)):
+        order = sorted(range(len(alive)), key=lambda q: alive[q].bbox[0] if alive[q] is not None else 0)
+        for oi, i in enumerate(order):
             a = alive[i]
             if a is None:
                 continue
-            for j in range(i + 1, len(alive)):
+            for j in order[oi + 1:]:
                 b = alive[j]
-                if b is None or not _similar_fill(a, b):
+                if b is None:
+                    continue
+                if b.bbox[0] > a.bbox[2] + 3:
+                    break           # x'e göre sıralı: daha sağdakiler değmez
+                if not _similar_fill(a, b):
                     continue
                 ax0, ay0, ax1, ay1 = a.bbox
                 bx0, by0, bx1, by1 = b.bbox
@@ -160,10 +170,11 @@ def _union_rects(fills: list) -> list:
                             g["y1"] = g["y2"] = (y0 + y1) / 2
                         else:
                             g["x1"] = g["x2"] = (x0 + x1) / 2
+                    _dead.append(b)
                     alive[j] = None
                     changed = True
-    keep = {id(e) for e in alive if e is not None}
-    return [e for e in fills if e.layer == "harf" or id(e) in keep]
+    dead = {id(e) for e in _dead}
+    return [e for e in fills if id(e) not in dead]
 
 
 def _frames(fills: list, strokes: list):
@@ -202,16 +213,31 @@ def _frames(fills: list, strokes: list):
 def _merge_outlines(fills: list, strokes: list) -> set:
     """Dikdörtgenin kenarını izleyen çizgileri o dikdörtgenin konturu yap. Dönüş: atılacak çizgiler."""
     used = set()
+    cell = 32.0
+    grid = {}
+    for i, s in enumerate(strokes):
+        x0, y0, x1, y1 = s.bbox
+        for gx in range(int(x0 // cell), int(x1 // cell) + 1):
+            for gy in range(int(y0 // cell), int(y1 // cell) + 1):
+                grid.setdefault((gx, gy), []).append(i)
     for r in fills:
         if not (r.prim and r.prim.get("type") == "rect") or r.stroke is not None:
             continue
         x, y, w, h = r.prim["x"], r.prim["y"], r.prim["w"], r.prim["h"]
         if w < 3 or h < 3:
             continue
+        near_ids = set()
+        for gx in range(int((x - 2) // cell), int((x + w + 2) // cell) + 1):
+            for gy in range(int((y - 2) // cell), int((y + h + 2) // cell) + 1):
+                near_ids.update(grid.get((gx, gy), ()))
         cands = []
-        for i, s in enumerate(strokes):
+        for i in sorted(near_ids):
+            s = strokes[i]
             if i in used or s.dash:
                 continue
+            bx0, by0, bx1, by1 = s.bbox
+            if bx0 < x - 3 or by0 < y - 3 or bx1 > x + w + 3 or by1 > y + h + 3:
+                continue        # dikdörtgenin dışına taşan çizgi onun kenarı olamaz
             _k, polys = _poly_of(s)
             if not polys:
                 continue

@@ -60,13 +60,35 @@ def _target_rings(kind: str, proj: str, center: float, lat0: float, detail: str 
                 if np.mean([p[1] for p in ring]) < -60:
                     continue             # Antarktika: ders kitabı haritalarında çoğunlukla yok
                 for c in harita._ring_copies(ring, center, -180.0, 180.0, -85.0, 84.0):
-                    out.append(np.array([harita.project(proj, x, y) for x, y in c], float))
+                    out.append(_proj_arr(proj, c))
     else:
         for pl in harita._turkey_outline():
             for ring in pl[:1]:
                 out.append(np.array([_tr_project(proj, x, y, lat0) for x, y in ring], float))
     _CACHE[key] = out
     return out
+
+
+def _proj_arr(proj: str, ring) -> np.ndarray:
+    """Dünya izdüşümünü bir halkanın bütün noktalarına birden uygula (boylam merkeze göre)."""
+    a = np.asarray(ring, float)
+    lon, lat = a[:, 0], a[:, 1]
+    x = np.radians(lon)
+    if proj == "miller":
+        y = 1.25 * np.log(np.tan(np.pi / 4 + 0.4 * np.radians(lat)))
+    elif proj == "mercator":
+        la = np.clip(lat, -85.0, 85.0)
+        y = np.log(np.tan(np.pi / 4 + np.radians(la) / 2))
+    elif proj == "robinson":
+        tab = np.array(harita._ROB)
+        t = np.clip(np.abs(lat), 0, 90.0) / 5.0
+        X = np.interp(t, np.arange(19), tab[:, 0])
+        Y = np.interp(t, np.arange(19), tab[:, 1])
+        x = 0.8487 * X * np.radians(lon)
+        y = 1.3523 * Y * np.sign(lat)
+    else:
+        y = np.radians(lat)
+    return np.column_stack([x, y])
 
 
 def _tr_project(proj, lon, lat, lat0):
@@ -143,9 +165,20 @@ def _fit(mask: np.ndarray, rings, aspect_free: bool, refine: bool = True, start=
     ys, xs = np.nonzero(mask)
     if len(xs) < 50:
         return None
+    # hedefin kara alanının (köşe noktalarının değil) yüzdelik sınırları: görseldekiyle aynı ölçüt
     allp = np.vstack(rings)
-    X0, X1 = np.percentile(allp[:, 0], 0.5), np.percentile(allp[:, 0], 99.5)
-    Y0, Y1 = np.percentile(allp[:, 1], 0.5), np.percentile(allp[:, 1], 99.5)
+    gx0, gx1 = allp[:, 0].min(), allp[:, 0].max()
+    gy0, gy1 = allp[:, 1].min(), allp[:, 1].max()
+    gs = 600.0 / max(gx1 - gx0, 1e-9)
+    gw, gh = 602, int((gy1 - gy0) * gs) + 2
+    ref = _render(rings, gs, gs, 1 - gs * gx0, 1 + gs * gy1, (gh, gw))
+    rys, rxs = np.nonzero(ref)
+    if len(rxs) < 50:
+        return None
+    X0 = (np.percentile(rxs, 0.5) - (1 - gs * gx0)) / gs
+    X1 = (np.percentile(rxs, 99.5) - (1 - gs * gx0)) / gs
+    Y1 = ((1 + gs * gy1) - np.percentile(rys, 0.5)) / gs
+    Y0 = ((1 + gs * gy1) - np.percentile(rys, 99.5)) / gs
     xa, xb = np.percentile(xs, 0.5), np.percentile(xs, 99.5)
     ya, yb = np.percentile(ys, 0.5), np.percentile(ys, 99.5)
     if X1 - X0 < 1e-6 or Y1 - Y0 < 1e-6:
@@ -249,8 +282,8 @@ def tani(rgb: np.ndarray) -> Eslesme | None:
                     rough.append((r[4], ci, kind, proj, center, lat0, r))
     rough.sort(key=lambda t: -t[0])
     best = None
-    for iou0, ci, kind, proj, center, lat0, r in rough[:4]:
-        if iou0 < 0.45:
+    for iou0, ci, kind, proj, center, lat0, r in rough[:6]:
+        if iou0 < 0.35:
             break
         m, land, sea = cands[ci]
         rings = _target_rings(kind, proj, center, lat0)
@@ -307,8 +340,10 @@ def _hex(c) -> str:
 def _rings_d(e: Eslesme, rings_geo, W, H, detail_center=None) -> str:
     d = []
     for ring in rings_geo:
-        pts = np.array(ring, float)
-        X = np.array([e.to_px(x, y) for x, y in pts])
+        pts = np.asarray(ring, float)
+        X = np.column_stack([e.sx * pts[:, 0] + e.tx, -e.sy * pts[:, 1] + e.ty])
+        if X[:, 0].max() < 0 or X[:, 0].min() > W or X[:, 1].max() < 0 or X[:, 1].min() > H:
+            continue
         c = _clip_px(X, W, H)
         if len(c) < 3:
             continue
@@ -330,7 +365,7 @@ def harita_svg(e: Eslesme, W: int, H: int, outline=(0, 0, 0), outline_w: float =
         for pl in harita.world_land(detail):
             for ring in pl:
                 for c in harita._ring_copies(ring, e.center, -180.0, 180.0, -85.0, 84.0):
-                    rings.append([harita.project(e.proj, x, y) for x, y in c])
+                    rings.append(_proj_arr(e.proj, c))
         d = _rings_d(e, rings, W, H)
         parts.append(f'<path id="Kara" d="{d}" fill="{_hex(e.land)}" stroke="{_hex(outline)}" '
                      f'stroke-width="{_fmt(outline_w)}" stroke-linejoin="round" fill-rule="evenodd"/>')
@@ -341,7 +376,7 @@ def harita_svg(e: Eslesme, W: int, H: int, outline=(0, 0, 0), outline_w: float =
                 for pl in polys:
                     for ring in pl:
                         for c in harita._ring_copies(ring, e.center, -180.0, 180.0, -85.0, 84.0):
-                            g.append([harita.project(e.proj, x, y) for x, y in c])
+                            g.append(_proj_arr(e.proj, c))
                 bd.append(_rings_d(e, g, W, H))
             parts.append(f'<path id="Sinirlar" d="{"".join(bd)}" fill="none" stroke="{_hex(outline)}" '
                          f'stroke-width="{_fmt(outline_w * 0.6)}" stroke-linejoin="round"/>')
@@ -377,7 +412,8 @@ def _border_lines(e: Eslesme, shape, thickness: int = 1) -> np.ndarray:
             for pl in polys:
                 for ring in pl:
                     for c in harita._ring_copies(ring, e.center, -180.0, 180.0, -85.0, 84.0):
-                        P = np.array([e.to_px(*harita.project(e.proj, x, y)) for x, y in c])
+                        Q = _proj_arr(e.proj, c)
+                        P = np.column_stack([e.sx * Q[:, 0] + e.tx, -e.sy * Q[:, 1] + e.ty])
                         cv2.polylines(lines, [np.round(P * 16).astype(np.int32)], True, 1, thickness=thickness, shift=4)
     else:
         for il in harita.turkey()["iller"]:
@@ -479,11 +515,13 @@ def harita_kalintisi(rgb: np.ndarray, e: Eslesme, outline_px: float = 4.0) -> np
     sea = near(e.sea)
     # kıyı çizgisi: eşleşen haritanın kıyısına yakın, koyu pikseller
     if e.kind == "dunya":
-        rings = _target_rings("dunya", e.proj, e.center, 0.0, "50m", holes=True)
+        # görsel sade (110m) ya da ayrıntılı (50m) kıyıyla çizilmiş olabilir: ikisi de silinir
+        rings = (_target_rings("dunya", e.proj, e.center, 0.0, "50m", holes=True)
+                 + _target_rings("dunya", e.proj, e.center, 0.0, "110m", holes=True))
     else:
         rings = _target_rings("turkiye", e.proj, 0.0, e.lat0)
     edge = np.zeros((H, W), np.uint8)
-    th = max(2, int(round(outline_px)))
+    th = max(2, int(round(outline_px + 2 * e.outline_w)))
     for r in rings:
         P = np.column_stack([e.sx * r[:, 0] + e.tx, -e.sy * r[:, 1] + e.ty])
         cv2.polylines(edge, [np.round(P * 16).astype(np.int32)], True, 1, thickness=th, lineType=cv2.LINE_8, shift=4)

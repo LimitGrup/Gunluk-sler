@@ -105,7 +105,7 @@ def _peaks(lab_px: np.ndarray, min_count: int, radius: float, limit: int, pooled
     return chosen
 
 
-def build_palette(lab: np.ndarray, u: float, exclude: np.ndarray | None = None) -> np.ndarray:
+def build_palette(lab: np.ndarray, u: float, exclude: np.ndarray | None = None, small_marks: bool = False) -> np.ndarray:
     h, w = lab.shape[:2]
     k = np.ones((3, 3), np.float32) / 9
     mean = cv2.filter2D(lab, -1, k, borderType=cv2.BORDER_REPLICATE)
@@ -134,12 +134,34 @@ def build_palette(lab: np.ndarray, u: float, exclude: np.ndarray | None = None) 
     extra = _peaks(lab[extreme], max(int(6 * u * u), 12), 11.0, 8)
     # gürültülü görsellerde küçük renkli işaretler (nokta, harf) hiç tek kutuda toplanmaz:
     # açıklanamayan, belirgin renkli/koyu pikselleri komşu kutularla birlikte say
-    unexpl = (d > 22) & ((Lc < 45) | (np.hypot(lab[:, :, 1], lab[:, :, 2]) > 35))
+    chroma = np.hypot(lab[:, :, 1], lab[:, :, 2])
+    base_ok = (d > 22) if small_marks else np.zeros_like(d, bool)
     if exclude is not None:
-        unexpl &= ~exclude
-    for c, cnt in _peaks(lab[unexpl], max(int(10 * u * u), 20), 14.0, 4, pooled=True):
-        if all(np.linalg.norm(c - q) >= 14.0 for q, _n in extra):
-            extra.append((c, cnt))
+        base_ok &= ~exclude
+    base = [p for p in pal_arr] + [c for c, _n in extra]
+
+    def is_mix(c):
+        # iki mevcut rengin karışımı (kenar yumuşatması) ise yeni renk değildir
+        for i in range(len(base)):
+            for j in range(i + 1, len(base)):
+                A, B = base[i], base[j]
+                AB = A - B
+                nn = float(AB @ AB)
+                if nn < 1e-6:
+                    continue
+                t = float(np.clip((c - B) @ AB / nn, 0, 1))
+                if 0.08 < t < 0.92 and np.linalg.norm(c - (B + t * AB)) < 12:
+                    return True
+        return False
+
+    # önce doygun renkli işaretler (kırmızı nokta…), sonra koyu harfler
+    for sel, lim in ((base_ok & (chroma > 35), 3), (base_ok & (Lc < 35) & (chroma <= 35), 2)):
+        if not sel.any():
+            continue
+        for c, cnt in _peaks(lab[sel], max(int(10 * u * u), 20), 14.0, lim, pooled=True):
+            if all(np.linalg.norm(c - q) >= 14.0 for q in base) and not is_mix(c):
+                extra.append((c, cnt))
+                base.append(c)
     for c, cnt in extra:
         if np.min(np.linalg.norm(pal_arr - c, axis=1)) >= 11.0:
             pal_arr = np.vstack([pal_arr, c])
@@ -867,6 +889,7 @@ class Options:
     glyphs: bool = True          # harfleri dolgulu şekil olarak çiz
     gradients: bool = True       # renk geçişli bölgeleri degrade dolgu yap
     cizim: bool = True           # izlenen şekilleri çizim nesnelerine çevir (dikdörtgen, çizgi, kontur)
+    small_marks: bool = False    # küçük renkli işaretlerin (harita üstü nokta, harf) rengini ayrıca ara
 
 
 def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
@@ -891,7 +914,7 @@ def vectorize(rgb: np.ndarray, opts: Options | None = None) -> Scene:
     gmask = np.zeros((h, w), bool)
     for m, _ in grads:
         gmask |= m
-    pal = build_palette(lab, 1.0, gmask if grads else None)
+    pal = build_palette(lab, 1.0, gmask if grads else None, small_marks=opts.small_marks)
     colors = [_lab_to_rgb(p) for p in pal]
     cov, labels = unmix(rgb, np.array(colors, dtype=np.float32))
     K = len(pal)

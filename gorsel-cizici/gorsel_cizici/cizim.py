@@ -50,7 +50,7 @@ def analyze(rgb: np.ndarray, use_text: bool = True, detail: float = 1.0):
         from . import harita_tani
         harita_tani.hazirla(rgb, esl)
         kalan = harita_tani.harita_kalintisi(rgb, esl)
-        scene = vectorize(kalan, Options(detail=detail, text_mask=tm))
+        scene = vectorize(kalan, Options(detail=detail, text_mask=tm, small_marks=True))
         scene.underlay = harita_tani.harita_cizimi(rgb, esl)
         scene.notes = esl.notes + scene.notes
     else:
