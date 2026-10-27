@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.42)
+# Kitapçık Eşleştirici (v2.43)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -6,6 +6,48 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? KDS seçilince B'siz tek kitapçığı kendi içinde denetler. | `kitapcik_kontrol_raporu.pdf` (tek PDF: özet + sorunlu soruların A/B görüntüleri) |
+
+## Soru numarası yazı stili koruması; şablondan farklı TYT/AYT (v2.43)
+
+- **Yazı stili koruması:** Gerçek soru numaraları kitapçık boyunca aynı stilde (kalın,
+  aynı punto). Elimizdeki 42 gerçek kitapçığın hepsinde kalın Helvetica, 9,5–10 pt. Bir
+  numaralı satır ancak iki şart birlikte varsa soru başı sayılmaz:
+  - soru numarası stilinde değilse (ince ya da puntosu farklıysa);
+  - kendisinden sonraki numaraya kadar hiç şıkkı (A) …) yoksa.
+
+  Böyle satırlar sayfa altlığı ("6. SINIF", "2. DÖNEM"), köşe yazısı, şekil etiketi
+  ("6. Kat") ya da tablo satırıdır. Silinmez, yedeğe alınır: bir soru başka türlü
+  bulunamazsa yine ona bakılır.
+  - Soru numarası stilindeki satırlara ve şıklı satırlara dokunulmaz. Farklı stilde basılmış
+    gerçek bir numara hatası ("11. sorunun yerinde '13.' yazıyor") eskisi gibi tek satırla
+    bulunur.
+  - Bu koruma v2.41'de olsaydı 6. sınıf final denemesi baştan 0 hata verirdi.
+  - Soru numarası hizasına tek satırlık "N. Kat" etiketi basılan kopyalarda v2.42, 7 gerçek
+    çiftin hepsinde sahte hata verdi (toplam 214; 3 çiftte EŞLEŞTİR tablosu bozuldu). v2.43
+    hepsinde 0.
+- **Şablondan farklı TYT/AYT (KONTROL):** 11. sınıf kurs TYT denemesinde Sosyal Bilimler 20
+  soru (bantta da 20). TYT şablonu 25 soru (5'i Seçmeli Felsefe) beklediği için A'da ve B'de
+  21–25 "bulunamadı" diye 10 HATA çıkıyordu.
+  - EŞLEŞTİR bu durumda yapıyı zaten kitapçıktan okuyordu ("Dosyalar TYT/AYT düzeninde
+    değil"). KONTROL'de aynı denetim yalnız A'ya bakıyordu ve 5'ten fazla uymayan soru
+    arıyordu; A'da tam 5 uymayan soru olduğu için devreye girmiyordu.
+  - Artık ölçü EŞLEŞTİR'le aynı: A ve B'de uymayan soruların toplamı 5'ten fazlaysa önce
+    diğer tür (AYT/TYT), o da uymazsa kitapçığın kendi düzeni denenir. Daha iyi uyan
+    seçilir.
+  - Düzen değiştiğinde raporda bir UYARI çıkar: "Seçilen sınav türü TYT, ama bu kitapçık TYT
+    düzeninde değil: SOSYAL BİLİMLER 20 soru (TYT'de 25) … tam TYT denemesiyse eksik test ya
+    da soru olabilir, bakın." Tam TYT'de unutulmuş bir test böylece gözden kaçmaz.
+  - Bantta 25 yazıp 20 soru basılmışsa düzen değişmez; "Bantta 25 soru yazıyor ama testte
+    20 soru var" HATA'sı eskisi gibi çıkar.
+  - 11. sınıf TYT çifti: 0 HATA, 1 UYARI. EŞLEŞTİR'de 120/120.
+- Diğer bütün gerçek kitapçıklarda KONTROL raporu ve EŞLEŞTİR tablosu değişmedi.
+- Yeni testler:
+  - `testler/stil_sina.py`: Gürültü olarak "N. Kat" etiketi ve "2. DÖNEM" altlığı basar;
+    yeni sorun çıkmamalı. Farklı stilde basılmış doğru, ileri, mükerrer ve yer değiştirmiş
+    numaralar da denenir; gerçek hatalar bulunmalı. Windows derlemesinde de çalışır.
+  - `testler/sablon_sina.py`: Şablondan farklı TYT/AYT çiftinde temiz kontrol 0 HATA ve 1
+    UYARI vermeli. Silinen soru, mükerrer numara ve bantta şablondaki sayı yine HATA
+    olmalı.
 
 ## Sayfa altlığı ve tablo satırları soru numarası sanılmaz (v2.42)
 
@@ -596,6 +638,8 @@ python3 testler/baski_kopya_sina.py "Kitapcik Eslestirici.app/Contents/Resources
 python3 testler/sus_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/sus  # sütun sonu / sabit sayfa süsü: yanlış şekil uyarısı çıkmamalı
 python3 testler/kds_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" kitapcik.pdf /tmp/kds  # KDS (tek kitapçık): 8 bozma senaryosu bulunmalı
 python3 testler/altlik_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/altlik  # sayfa altlığı "6. SINIF" ve "1. Taksit:" listesi soru numarası sanılmamalı
+python3 testler/stil_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/stil  # farklı stilde numaralı etiket/altlık soru sanılmamalı; farklı stilde numara hatası bulunmalı
+python3 testler/sablon_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf TYT /tmp/sablon  # şablondan farklı TYT/AYT: 0 HATA + 1 UYARI, gerçek hatalar yine bulunmalı
 ```
 
 Üretilen örnekler: iki sütunlu ve tek sütunlu (2x2 şıklı) sayfalar, metne bağlı gruplar, şekilli

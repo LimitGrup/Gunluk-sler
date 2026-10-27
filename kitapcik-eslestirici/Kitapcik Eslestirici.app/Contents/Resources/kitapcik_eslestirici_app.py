@@ -25,7 +25,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.42"
+SURUM = "2.43"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 WINDOWS = sys.platform.startswith("win")
@@ -229,6 +229,17 @@ def _ders_uyusur(yapi_ders, sozluk_ders):
 # ----------------------------------------------------------------------------
 # MOTOR (PDF okuma → soru ayıklama → eşleştirme → Excel)
 # ----------------------------------------------------------------------------
+def _yazi_stili(sp):
+    """Satırın ilk yazısının stili: (kalın mı, punto). Soru numaralarının
+    kitapçık boyunca aynı stilde olduğunu denetlemek için."""
+    if not sp:
+        return None
+    ad = sp.get("font", "")
+    kalin = bool(sp.get("flags", 0) & 16) or bool(
+        re.search(r"bold|black|heavy|semibold|demi", ad, re.IGNORECASE))
+    return (kalin, round(float(sp.get("size", 0)), 1))
+
+
 def satirlari_al(pdf_yolu):
     doc = fitz.open(pdf_yolu)
     satirlar = []
@@ -250,9 +261,11 @@ def satirlari_al(pdf_yolu):
                     continue
                 x0, y0, x1, y1 = ln["bbox"]
                 sutun = 0 if (x0 + x1) / 2 < orta else 1
+                ilk = next((sp for sp in ln.get("spans", [])
+                            if sp.get("text", "").strip()), None)
                 kayit = {"metin": metin, "x0": x0, "y0": y0, "x1": x1, "y1": y1,
                          "sayfa": pno, "sutun": sutun, "spanlar": spanlar,
-                         "kutular": kutular}
+                         "kutular": kutular, "stil": _yazi_stili(ilk)}
                 (sol if sutun == 0 else sag).append(kayit)
                 kolonlar[sutun][0] = min(kolonlar[sutun][0], x0)
                 kolonlar[sutun][1] = max(kolonlar[sutun][1], x1)
@@ -534,6 +547,34 @@ def _adaylari_bul(satirlar):
             adaylar.append((i, no))
         else:
             yedekler.append((i, no))
+
+    # Yazı stili: gerçek soru numaraları kitapçık boyunca aynı stildedir (kalın,
+    # aynı punto). Bu stilde OLMAYAN ve kendisinden sonraki numaraya kadar hiç
+    # şıkkı (A) …) olmayan numaralı satır soru başı sayılmaz: sayfa altlığı,
+    # köşe yazısı, şekil etiketi ("6. Kat"), tablo satırı. Yedeğe alınır;
+    # bulunamayan bir soru için yine ona bakılır. Soru numarası stilindeki
+    # satırlara ve şıklı (gerçek soru gibi duran) satırlara dokunulmaz: farklı
+    # stilde basılmış gerçek bir numara hatası eskisi gibi bulunur.
+    stiller = _Sayac(satirlar[i].get("stil") for i, _no in adaylar
+                     if satirlar[i].get("stil"))
+    if stiller:
+        baskin, adet = stiller.most_common(1)[0]
+        if adet >= 0.6 * sum(stiller.values()):
+            def _uyar(st):
+                return (not st or (st[0] == baskin[0]
+                                   and abs(st[1] - baskin[1]) <= 1.5))
+            sinirlar = [i for i, _no in adaylar[1:]] + [len(satirlar)]
+            kalan_ad = []
+            for (i, no), son in zip(adaylar, sinirlar):
+                if not _uyar(satirlar[i].get("stil")) and not any(
+                        re.match(r"^\s*A\s*[\)\.]", satirlar[j]["metin"])
+                        for j in range(i, son)):
+                    yedekler.append((i, no))
+                else:
+                    kalan_ad.append((i, no))
+            if len(kalan_ad) < len(adaylar):
+                adaylar = kalan_ad
+                yedekler.sort(key=lambda t: t[0])
     return adaylar, yedekler
 
 
@@ -3290,7 +3331,7 @@ def _sorun_yeri(s):
 
 
 def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
-               yapi_b=None, tek=False):
+               yapi_b=None, tek=False, yapi_notu=None):
     """A ve B kitapçığını denetler. Dönen: (sonuc sözlüğü, sorunlar listesi).
     tek=True (KDS gibi B kitapçığı olmayan deneme): yalnız a_pdf kendi içinde
     denetlenir — açık cevap/kod, numaralar, bant–soru sayısı, şık takımı, grup
@@ -3308,6 +3349,11 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                          "ders": ders, "soru": soru, "aciklama": aciklama,
                          "yerler": list(yerler), "gorunum": gorunum,
                          "kutular": list(kutular), "vurgula": vurgula, "vurgu": []})
+
+    if yapi_notu and not tek:
+        # Seçilen TYT/AYT düzeni kitapçığa uymadı, yapı kitapçıktan okundu:
+        # raporda görünsün (tam deneme ise eksik test gözden kaçmasın)
+        sorun("UYARI", "A-B", yapi_notu)
 
     log("Kitapçık okunuyor..." if tek else "A kitapçığı okunuyor...")
     A = _kitapcik_oku(a_pdf, yapi, "A", log)
@@ -4109,6 +4155,24 @@ def kontrol_ozeti(sonuc, sorunlar):
     return satirlar
 
 
+def _yapi_farki_notu(sinav, sablon, yapi):
+    """Seçilen TYT/AYT düzeni kitapçığa uymayıp yapı kitapçıktan çıkarıldığında
+    rapora yazılan uyarı: hangi testin kaç soru olduğu (şablonda kaç)."""
+    def adet(t):
+        return sum(int(a) for _d, a in t["dersler"])
+    if len(sablon) == len(yapi):
+        farklar = [f"{t['test']} {adet(t)} soru ({sinav}'de {adet(s)})"
+                   for s, t in zip(sablon, yapi) if adet(s) != adet(t)]
+    else:
+        farklar = []
+    duzen = " | ".join(f"{t['test']} ({adet(t)})" for t in yapi)
+    return (f"Seçilen sınav türü {sinav}, ama bu kitapçık {sinav} düzeninde değil"
+            + (": " + ", ".join(farklar) if farklar else "")
+            + f". Kontrol, kitapçığın kendi düzenine göre yapıldı ({duzen}). "
+            f"Kurs ya da ara denemede normaldir; tam {sinav} denemesiyse eksik "
+            f"test ya da soru olabilir, bakın.")
+
+
 def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
                      yol_sor=None):
     tek = sinav == "KDS"                 # B kitapçığı olmayan deneme
@@ -4131,35 +4195,50 @@ def kontrol_calistir(a_pdf, b_pdf, sinav, anah_a, anah_b, cikti, log,
         log(f"  {len(yapi)} test bulundu ("
             + ", ".join(str(sum(int(a) for _d, a in t["dersler"])) for t in yapi)
             + " soru)")
-    else:
-        yapi = YAPILAR[sinav]
-        # Seçilen tür dosyaya uymuyorsa (EŞLEŞTİR'deki gibi) diğerini dene
-        _s, u = sorulari_ayikla(a_pdf, yapi, "A", lambda _m: None)
-        if len(u) > 5:
-            en_iyi = len(u)
+    yapi_notu = None
+    if not tek and sinav not in ("OTOMATİK", "ORTAOKUL"):
+        secilen = yapi = YAPILAR[sinav]
+        secilen_ad = sinav
+        # Seçilen tür dosyaya uymuyorsa diğerini dene; ikisi de uymuyorsa yapı
+        # kitapçıktan çıkarılır. Ölçü EŞLEŞTİR'deki gibi: A ve B'de yapıya
+        # uymayan soruların toplamı 5'ten fazlaysa (yalnız A'ya bakılıyordu:
+        # 20 soruluk Sosyal'li TYT'de A'da tam 5 uymayan soru gözden kaçıp
+        # 21–25 "bulunamadı" diye yazılıyordu).
+        def uymayan(y_a, y_b=None):
+            _s, ua = sorulari_ayikla(a_pdf, y_a, "A", lambda _m: None)
+            _s, ub = sorulari_ayikla(b_pdf, y_b or y_a, "B", lambda _m: None)
+            return len(ua) + len(ub)
+        u = uymayan(yapi)
+        if u > 5:
+            en_iyi = u
             for aday_sinav, aday_yapi in YAPILAR.items():
                 if aday_sinav == sinav:
                     continue
-                _s2, u2 = sorulari_ayikla(a_pdf, aday_yapi, "A", lambda _m: None)
-                if len(u2) < len(u):
+                u2 = uymayan(aday_yapi)
+                if u2 < u:
                     log(f"⚠ DİKKAT: Dosyalar '{aday_sinav}' düzeninde; sınav "
                         f"türü otomatik '{aday_sinav}' olarak düzeltildi.")
-                    sinav, yapi, en_iyi = aday_sinav, aday_yapi, len(u2)
+                    yapi_notu = (f"Seçilen sınav türü {secilen_ad}, ama dosyalar "
+                                 f"{aday_sinav} düzeninde; kontrol {aday_sinav} "
+                                 f"düzenine göre yapıldı.")
+                    sinav, yapi, en_iyi = aday_sinav, aday_yapi, u2
                     break
             if en_iyi > 5:            # TYT de AYT de uymuyor: kitapçıktan çıkar
                 try:
-                    oto = yapi_cikar(a_pdf)
-                    _s3, u3 = sorulari_ayikla(a_pdf, oto, "A", lambda _m: None)
-                    if len(u3) < en_iyi:
+                    oto, oto_b = yapi_cikar(a_pdf), yapi_cikar(b_pdf)
+                    if uymayan(oto, oto_b) < en_iyi:
                         log("⚠ DİKKAT: Dosyalar TYT/AYT düzeninde değil; yapı "
-                            "kitapçıktan çıkarıldı (Lise/Ortaokul seçeneği gibi).")
-                        yapi, yapi_b = oto, yapi_cikar(b_pdf)
+                            "kitapçıktan çıkarıldı (Lise/Ortaokul seçeneği gibi): "
+                            + " | ".join(f"{t['test']} ({sum(int(a) for _d, a in t['dersler'])})"
+                                         for t in oto))
+                        yapi_notu = _yapi_farki_notu(secilen_ad, secilen, oto)
+                        yapi, yapi_b = oto, oto_b
                 except RuntimeError as h:
                     logla(f"Otomatik yapı denenemedi: {h}")
     sonuc, sorunlar = kontrol_et(a_pdf, b_pdf, yapi, log,
                                  anahtar_oku(anah_a, yapi),
                                  None if tek else anahtar_oku(anah_b, yapi),
-                                 yapi_b=yapi_b, tek=tek)
+                                 yapi_b=yapi_b, tek=tek, yapi_notu=yapi_notu)
     # Tek çıktı: kontrol raporu PDF'i (özet + bakılacak soruların A/B görüntüleri)
     hedef = str(Path(cikti).with_suffix(".pdf"))
     ozet = kontrol_ozeti(sonuc, sorunlar)

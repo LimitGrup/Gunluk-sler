@@ -23,6 +23,7 @@ BEKLENEN = {
     "kesir": ["kesir_B: 0 sorun (beklenen 0)", "yakalandı mı: True"],
     "düzen": ["SONUÇ: temiz"],
     "kds": ["temiz: 0 sorun", "SONUÇ: tamam"],
+    "stil": ["✓ etiket", "✓ dönem altlığı", "SONUÇ: tamam"],
 }
 
 
@@ -42,6 +43,8 @@ def main(app, kok):
         "düzen": [str(T / "duzen_sina.py"), app, str(kok / "duzen")],
         "kds": [str(T / "kds_sina.py"), app, str(ornek / "ortaokul_A_baski.pdf"),
                 str(kok / "kds")],
+        "stil": [str(T / "stil_sina.py"), app, str(ornek / "ortaokul_A_baski.pdf"),
+                 str(ornek / "ortaokul_B_baski.pdf"), "OTOMATİK", str(kok / "stil")],
     }
     ortam = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     calisan = {ad: subprocess.Popen([py] + arg, stdout=subprocess.PIPE,
