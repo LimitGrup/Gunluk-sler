@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.41)
+# Kitapçık Eşleştirici (v2.42)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -6,6 +6,34 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? KDS seçilince B'siz tek kitapçığı kendi içinde denetler. | `kitapcik_kontrol_raporu.pdf` (tek PDF: özet + sorunlu soruların A/B görüntüleri) |
+
+## Sayfa altlığı ve tablo satırları soru numarası sanılmaz (v2.42)
+
+6. sınıf final denemesinde (sözel + sayısal, A ve B) A–B KONTROL onlarca HATA veriyordu; hiçbiri
+gerçek değildi. İki yazı soru numarası sanılıyordu:
+
+- **Sayfa altlığı "6. SINIF":** Her sayfanın sol altında, soru numaralarıyla aynı hizada
+  duruyor. "6." ile başladığı için her sayfada 6. soru adayı oluyordu. Artık yalnızca "N. SINIF"
+  yazan (yanında başka yazı olmayan) satır soru başı sayılmaz.
+- **Soru içindeki tablo:** Matematik 6. sorudaki ödeme planında "4. Taksit:", "5. Taksit:",
+  "6. Taksit:" satırları sağ sütunun numara hizasında. Bunlar 4., 5., 6. soru sanılınca
+  Matematik'in 8–15. soruları kayboluyor, hata Fen'e kadar zincirleniyordu. Artık aynı sütunda,
+  aynı hizada alt alta, bir satır aralığından yakın duran ardışık numaralar (4., 5., 6.) soru
+  başı sayılmaz. İki soru arasında en az soru metni ve şıklar olur. Soru numarasının yanındaki
+  kesir/formül parçası ("3 ) noktası …") gerçek numarayı eletmez.
+
+Sonuç:
+
+- 6. sınıf final çifti: **0 sorun** (A 75/75, B 75/75, eşleşen 75/75, metin birebir 75/75,
+  gruplar 5/5).
+- Bu iki yazı soru numaralarını bulan ortak motoru etkilediği için EŞLEŞTİR de bu denemede
+  Matematik'in 9 sorusunun B numarasını boş bırakıyordu. Artık 75/75 dolu ve soru içerikleriyle
+  yapılan eşleştirmeyle aynı.
+- Diğer bütün gerçek kitapçıklarda KONTROL raporu ve EŞLEŞTİR tablosu değişmedi.
+- `testler/altlik_sina.py`: A ve B'ye sayfa altlığı "6. SINIF" ve soru numarası hizasında
+  "1. Taksit:" … "5. Taksit:" listesi basar. KONTROL'de yeni sorun çıkmamalı, EŞLEŞTİR'in A→B
+  numaraları değişmemeli. Eski motorda 7. sınıf çiftinde liste yüzlerce sahte HATA ve 85
+  değişmiş EŞLEŞTİR satırı veriyordu; yeni motorda 0.
 
 ## KDS: B kitapçığı olmayan denemenin kontrolü; rapor ilk sayfası taşmaz (v2.41)
 
@@ -567,6 +595,7 @@ python3 testler/numara_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kita
 python3 testler/baski_kopya_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/kopya  # gerçek cevaplı çiftten baskı kopyası: siyah/eğri cevap, 21 stil, siyah kod yakalanmalı
 python3 testler/sus_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/sus  # sütun sonu / sabit sayfa süsü: yanlış şekil uyarısı çıkmamalı
 python3 testler/kds_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" kitapcik.pdf /tmp/kds  # KDS (tek kitapçık): 8 bozma senaryosu bulunmalı
+python3 testler/altlik_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/altlik  # sayfa altlığı "6. SINIF" ve "1. Taksit:" listesi soru numarası sanılmamalı
 ```
 
 Üretilen örnekler: iki sütunlu ve tek sütunlu (2x2 şıklı) sayfalar, metne bağlı gruplar, şekilli

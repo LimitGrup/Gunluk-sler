@@ -25,7 +25,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.41"
+SURUM = "2.42"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 WINDOWS = sys.platform.startswith("win")
@@ -490,10 +490,30 @@ def _adaylari_bul(satirlar):
                 re.search(r"DENEME|OKUL|FINAL|TEST|YAYIN",
                           r["metin"], re.IGNORECASE):
             continue                      # "6. SINIF FINAL ..." koşan başlığı
+        if re.fullmatch(r"S[Iİı]N[Iİı]F\.?\s*", kalan, re.IGNORECASE):
+            continue                      # sayfa altlığı "6. SINIF" (soru başı olamaz;
+            #                               soru numarası hizasında durabiliyor)
         if not kalan.strip() and i + 1 < len(satirlar) \
                 and YONERGE_RE.match(satirlar[i + 1]["metin"]):
             continue                      # "1." ayrı satır, yönerge metni altında
         ham.append((i, int(m.group(1)), r["sutun"], r["x0"]))
+
+    # Liste/tablo satırları: aynı sayfa ve sütunda, aynı hizada alt alta art
+    # arda (4., 5., 6.) ve birbirine bir satır aralığından yakın (< 16 pt)
+    # duran numaralı satırlar soru başı olamaz (iki soru arasında en az soru
+    # metni ve şıklar vardır). Sütun kenarına hizalı bir tablo ("4. Taksit:",
+    # "5. Taksit:") soru numarası sanılıp dizi bozuluyordu. Hiza şartı, soru
+    # numarasının yanındaki kesir/formül parçasının ("3 ) noktası …") gerçek
+    # numarayı da eletmemesi için.
+    liste = set()
+    sirali = sorted(ham, key=lambda h: (satirlar[h[0]]["sayfa"], h[2], satirlar[h[0]]["y0"]))
+    for (i1, n1, s1, x1), (i2, n2, s2, x2) in zip(sirali, sirali[1:]):
+        if (satirlar[i1]["sayfa"] == satirlar[i2]["sayfa"] and s1 == s2 and n2 == n1 + 1
+                and abs(x1 - x2) < 3
+                and 2 < satirlar[i2]["y0"] - satirlar[i1]["y0"] < 16):
+            liste |= {i1, i2}
+    if liste:
+        ham = [h for h in ham if h[0] not in liste]
 
     # Kenar hizası filtresi: gerçek soru numaraları sütunun sol kenarına dizilir;
     # soru İÇİNDEKİ numaralı maddeler (öncüller) içeriden başlar ve elenir.
