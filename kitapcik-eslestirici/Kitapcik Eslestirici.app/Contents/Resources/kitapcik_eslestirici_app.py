@@ -25,7 +25,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.43"
+SURUM = "2.44"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 WINDOWS = sys.platform.startswith("win")
@@ -3713,21 +3713,31 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                 kutular=kutular))
         cift_satirlari.append((oa, ob, oran, sekil, ca_, cb_, durum))
 
-    # Aynı soru bir kitapçıkta iki kez basılmış mı?
+    # Aynı soru bir kitapçıkta iki kez basılmış mı? Farklı testler de denetlenir:
+    # bir soru asıl dosyada başka bir teste de yapıştırılmışsa (A'da da B'de de)
+    # A↔B karşılaştırması bunu göremez. Temiz gerçek kitapçıklarda farklı
+    # testlerdeki en benzer iki soru bile %50 örtüşmüyor (sınır %80 ve %90).
     for kk in kitaplar:
         og = [o for o in kk["ogeler"] if len(o["norm"]) >= 40]
         for i in range(len(og)):
             for j in range(i + 1, len(og)):
                 x, y = og[i], og[j]
-                if x["ti"] != y["ti"]:
-                    continue
                 u = x["tri"] | y["tri"]
-                if u and len(x["tri"] & y["tri"]) / len(u) >= 0.8 and \
-                        _benzerlik_orani(x["cmp"], y["cmp"]) >= 0.9:
+                if not (u and len(x["tri"] & y["tri"]) / len(u) >= 0.8 and
+                        _benzerlik_orani(x["cmp"], y["cmp"]) >= 0.9):
+                    continue
+                if x["ti"] == y["ti"]:
                     sorun("HATA", kk["etiket"], f"Aynı soru iki kez basılmış: "
                           f"{x['etiket_no']}. ve {y['etiket_no']}. sorular.",
                           test_adi(x["ti"]), x["ders"],
                           f"{x['etiket_no']} / {y['etiket_no']}",
+                          [yer(kk, x), yer(kk, y)])
+                else:
+                    sorun("HATA", kk["etiket"], "Aynı soru iki kez basılmış (iki ayrı "
+                          f"testte): {test_adi(x['ti'])} {x['etiket_no']}. soru ve "
+                          f"{test_adi(y['ti'])} {y['etiket_no']}. soru.",
+                          test_adi(x["ti"]), x["ders"],
+                          f"{x['etiket_no']} / {test_adi(y['ti'])} {y['etiket_no']}",
                           [yer(kk, x), yer(kk, y)])
 
     # --- 4) Metne bağlı gruplar A ↔ B -------------------------------------------

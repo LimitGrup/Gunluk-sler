@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.43)
+# Kitapçık Eşleştirici (v2.44)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -6,6 +6,24 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? KDS seçilince B'siz tek kitapçığı kendi içinde denetler. | `kitapcik_kontrol_raporu.pdf` (tek PDF: özet + sorunlu soruların A/B görüntüleri) |
+
+## Aynı soru iki ayrı testte basılmışsa da bulunur (v2.44)
+
+- "Aynı soru iki kez basılmış" denetimi artık farklı testlere de bakar. Önceden yalnız aynı test
+  içinde arıyordu.
+  - Bir soru asıl dosyada başka bir teste de yapıştırılmışsa (ör. bir Türkçe sorusu Fen
+    testinde de var), hata A'da da B'de de aynı olur. İki kitapçık birbirini tuttuğu için A↔B
+    karşılaştırması bunu göremiyordu.
+  - Raporda: "Aynı soru iki kez basılmış (iki ayrı testte): TÜRKÇE 5. soru ve SOSYAL BİLGİLER
+    8. soru." KDS (tek kitapçık) kontrolünde de çalışır.
+  - Aynı test içindeki tekrarın rapordaki yazısı değişmedi.
+- Ölçüt öncekiyle aynı: metinlerin %80'i örtüşmeli ve %90 benzer olmalı. 42 temiz gerçek
+  kitapçıkta farklı testlerdeki en benzer iki soru bile %50 örtüşmüyor, yani sahte hata çıkmaz.
+- Gerçek denemelerde bilerek yapılan tekrarlar (7 çift): aynı testte B'de, aynı testte A ve
+  B'de, KDS'de ve B'de başka testten gelen soru 7/7 bulunuyordu. İki ayrı testte A ve B'de
+  tekrar v2.43'te 0/7 idi, artık bulunuyor.
+- `testler/tekrar_sina.py`: Gerçek ya da örnek A/B çiftinde bir sorunun yerine başka bir soru
+  basar (5 senaryo). Windows derlemesinde de çalışır.
 
 ## Soru numarası yazı stili koruması; şablondan farklı TYT/AYT (v2.43)
 
@@ -640,6 +658,7 @@ python3 testler/kds_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapci
 python3 testler/altlik_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/altlik  # sayfa altlığı "6. SINIF" ve "1. Taksit:" listesi soru numarası sanılmamalı
 python3 testler/stil_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/stil  # farklı stilde numaralı etiket/altlık soru sanılmamalı; farklı stilde numara hatası bulunmalı
 python3 testler/sablon_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf TYT /tmp/sablon  # şablondan farklı TYT/AYT: 0 HATA + 1 UYARI, gerçek hatalar yine bulunmalı
+python3 testler/tekrar_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/tekrar  # aynı soru iki kez basılmış (aynı testte / iki ayrı testte, A–B ve KDS) bulunmalı
 ```
 
 Üretilen örnekler: iki sütunlu ve tek sütunlu (2x2 şıklı) sayfalar, metne bağlı gruplar, şekilli
