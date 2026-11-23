@@ -2,6 +2,8 @@
 """
 A–B KONTROL akışını örnek PDF'lerle sınar.
   - Temiz çiftlerde (A ile doğru karıştırılmış B) hiç HATA çıkmamalı.
+  - A dosyası hem A hem B olarak verilince (aynı dosya) içerik farkı çıkmamalı;
+    tek HATA, B olarak verilen dosyanın bandında "A" yazdığı olmalı.
   - Hatalı B'de hatalar.txt'deki her bilinçli hata yakalanmalı.
 
 Kullanım:  python3 kontrol_sina.py <app.py> <pdf_klasoru>
@@ -72,6 +74,10 @@ def main(app, klasor):
         ("ayni_dosya", "ORTAOKUL", "ortaokul_A.pdf", "ortaokul_A.pdf", "kimlik"),
     ]:
         _s, sorunlar = calistir(m, klasor, ad, sinav, a, b, dogru)
+        if ad == "ayni_dosya":           # B yerine A seçilmiş: bant hatası beklenir
+            tur = [s for s in sorunlar if s["onem"] == "HATA" and s["soru"] == "üst bant"]
+            print(f"aynı dosya kitapçık türü yakalandı: {len(tur) == 1}")
+            sorunlar = [s for s in sorunlar if s not in tur]
         temiz_hata += sum(1 for s in sorunlar if s["onem"] == "HATA")
     _s, sorunlar = calistir(m, klasor, "hatali", "ORTAOKUL", "ortaokul_A.pdf",
                             "ortaokul_B_hatali.pdf")

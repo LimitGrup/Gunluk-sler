@@ -1,4 +1,4 @@
-# Kitapçık Eşleştirici (v2.44)
+# Kitapçık Eşleştirici (v2.45)
 
 macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 
@@ -6,6 +6,37 @@ macOS uygulaması (`Kitapcik Eslestirici.app`). İki iş yapar:
 |---|---|---|
 | **EŞLEŞTİR** | A kitapçığındaki her sorunun B'de kaçıncı soru olduğunu bulur, kazanım tablosunu doldurur. | `kazanim_tablosu.xlsx` |
 | **A–B KONTROL** *(yeni)* | B kitapçığını A'ya göre denetler: A'daki her soru B'de var mı, aynı mı, numaralar ve metne bağlı gruplar düzgün mü? KDS seçilince B'siz tek kitapçığı kendi içinde denetler. | `kitapcik_kontrol_raporu.pdf` (tek PDF: özet + sorunlu soruların A/B görüntüleri) |
+
+## Kitapçık türü (A/B) denetimi: üst bant ve kapak (v2.45)
+
+Denemelerde her soru sayfasının en üstünde kitapçığın harfi basılır ("A A A A A" /
+"B B B B B"; 5. sınıf IDML'inde şablon sayfada 17 pt, AYT'de 30 pt kalın çerçeve). A–B
+KONTROL ve KDS artık bunu denetler:
+
+- **Bant yok:** Bir soru sayfasının üst bandında harf yoksa HATA: "Üst bantta kitapçık türü
+  yok: sayfa 5 (diğer sayfalarda 'B' var)." Bir kitapçığın hiçbir sayfasında yoksa "bu
+  kitapçığın hiçbir soru sayfasında bant harfi yok (A kitapçığında var)".
+- **Yanlış harf:** B'nin bandında "A" yazıyorsa (ya da tersi) HATA. Bütün sayfalarda öbür harf
+  varsa nedeni de yazılır: "A ve B dosyaları yer değiştirmiş olabilir" ya da "B yerine A
+  kitapçığı seçilmiş olabilir" (aynı dosya iki kez seçilmiş).
+- **Hiçbir kitapçıkta bant yok:** Tek satır HATA: "Üst bantta kitapçık türü (A/B) yok … Bant
+  unutulmuş olabilir; bu denemede bant hiç yoksa bu satırı dikkate almayın." (Gönderilen AYT
+  IDML'inde bant çerçevesi var ama içi boş: PDF'e böyle çıkarsa bu satır görünür.)
+- **Kapak:** Kapakta "A KİTAPÇIĞI" gibi büyük harf varsa kitapçığın harfiyle aynı olmalı.
+  Kapakta yoksa bir şey denmez (kapak tasarımı değişebilir).
+- **KDS (tek kitapçık):** Hangi harf olursa olsun bütün soru sayfalarında aynı harf olmalı.
+  Bir sayfada eksikse ya da harfler karışıksa HATA.
+- Raporun ilk sayfasında yeni özet satırı: "Üst bant kitapçık türü: A 30/30 sayfa, B 30/30
+  sayfa". Bant sorununun kartında o sayfanın üst bandı gösterilir.
+- Nasıl bulunur: Sayfanın üst %12'sinde, 12 punto ve üstündeki yazılarda, aynı satırdaki
+  harflerin hepsi aynı A ya da B ise bant harfidir. "SÖZEL BÖLÜM - TÜRKÇE" gibi başlıklar başka
+  harf içerdiği için sayılmaz.
+- Örnek kitapçıklarda eski çıktıların hepsi aynı kaldı. Tek fark, A dosyasının hem A hem B
+  olarak verildiği "aynı dosya" testinde artık "B yerine A kitapçığı seçilmiş olabilir"
+  HATA'sının çıkması.
+- `testler/bant_sina.py`: Bantlı bir A/B çiftinde 9 senaryo (bir sayfada bant yok, yanlış
+  harf, B'de hiç bant yok, yer değiştirmiş, B yerine A seçilmiş, hiç bant yok, kapakta
+  yanlış/doğru harf, KDS). Bant dışında yeni sorun çıkmamalı. Windows derlemesinde de çalışır.
 
 ## Aynı soru iki ayrı testte basılmışsa da bulunur (v2.44)
 
@@ -659,6 +690,7 @@ python3 testler/altlik_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kita
 python3 testler/stil_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/stil  # farklı stilde numaralı etiket/altlık soru sanılmamalı; farklı stilde numara hatası bulunmalı
 python3 testler/sablon_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf TYT /tmp/sablon  # şablondan farklı TYT/AYT: 0 HATA + 1 UYARI, gerçek hatalar yine bulunmalı
 python3 testler/tekrar_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf OTOMATİK /tmp/tekrar  # aynı soru iki kez basılmış (aynı testte / iki ayrı testte, A–B ve KDS) bulunmalı
+python3 testler/bant_sina.py "Kitapcik Eslestirici.app/Contents/Resources/kitapcik_eslestirici_app.py" A.pdf B.pdf ORTAOKUL /tmp/bant  # üst bantta kitapçık türü (A/B): eksik, yanlış harf, yer değiştirmiş, kapak, KDS
 ```
 
 Üretilen örnekler: iki sütunlu ve tek sütunlu (2x2 şıklı) sayfalar, metne bağlı gruplar, şekilli

@@ -14,7 +14,8 @@ from pathlib import Path
 
 BEKLENEN = {
     "kontrol": ["=== ortaokul: 0 HATA", "=== tyt: 0 HATA", "=== tyt_nokta: 0 HATA",
-                "=== ayni_dosya: 0 HATA", "=== hatali: 16 HATA",
+                "=== ayni_dosya: 1 HATA", "aynı dosya kitapçık türü yakalandı: True",
+                "=== hatali: 16 HATA",
                 "=== hatali_iki_baski: 16 HATA", "Temiz çiftlerde toplam HATA: 0"],
     "eşleştir": ["ortaokul: 70/70 doğru eşleşme", "ortaokul_baski: 70/70 doğru eşleşme",
                  "tyt: 125/125 doğru eşleşme", "tyt_nokta: 125/125 doğru eşleşme"],
@@ -25,6 +26,7 @@ BEKLENEN = {
     "kds": ["temiz: 0 sorun", "SONUÇ: tamam"],
     "stil": ["✓ etiket", "✓ dönem altlığı", "SONUÇ: tamam"],
     "tekrar": ["✓ B'de tekrar", "✓ A ve B'de başka testten", "SONUÇ: tamam"],
+    "bant": ["✓ B'de bir sayfada yok", "✓ hiç bant yok", "✓ B kapağında A", "SONUÇ: tamam"],
 }
 
 
@@ -48,6 +50,8 @@ def main(app, kok):
                  str(ornek / "ortaokul_B_baski.pdf"), "OTOMATİK", str(kok / "stil")],
         "tekrar": [str(T / "tekrar_sina.py"), app, str(ornek / "ortaokul_A_baski.pdf"),
                    str(ornek / "ortaokul_B_baski.pdf"), "OTOMATİK", str(kok / "tekrar")],
+        "bant": [str(T / "bant_sina.py"), app, str(ornek / "ortaokul_A_baski.pdf"),
+                 str(ornek / "ortaokul_B_baski.pdf"), "ORTAOKUL", str(kok / "bant")],
     }
     ortam = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     calisan = {ad: subprocess.Popen([py] + arg, stdout=subprocess.PIPE,

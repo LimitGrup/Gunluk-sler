@@ -25,7 +25,7 @@ import traceback
 import unicodedata
 from pathlib import Path
 
-SURUM = "2.44"
+SURUM = "2.45"
 GEREKLI = ["pymupdf", "numpy", "scipy", "openpyxl", "tkinterdnd2",
            "python-docx"]
 WINDOWS = sys.platform.startswith("win")
@@ -3330,6 +3330,140 @@ def _sorun_yeri(s):
     return ", ".join(f"{et} {_sayfa_yazi(p)}" for et, p in sayfalar.items())
 
 
+KITAPCIK_HARFLERI = ("A", "B")
+BANT_ORANI = 0.12          # üst bant: sayfanın üst %12'si
+BANT_EN_KUCUK_PUNTO = 12   # bant harfleri büyük basılır (soru metni 9–10 pt)
+
+
+def _bant_harfi(sayfa):
+    """Sayfanın üst bandındaki kitapçık türü: "A A A A A" (ya da tek büyük "A").
+    Aynı satırdaki (taban çizgisi aynı) büyük harflerin hepsi aynı A/B harfiyse
+    o harf döner; satırda başka harf varsa (test başlığı gibi) sayılmaz.
+    Dönen: ("A" | "B" | "A/B" (iki harf de var) | None, bant bölgesi)."""
+    W, H = sayfa.rect.width, sayfa.rect.height
+    bolge = fitz.Rect(0, 0, W, H * BANT_ORANI)
+    harfler = []
+    for blk in sayfa.get_text("rawdict", clip=bolge)["blocks"]:
+        for l in blk.get("lines", []):
+            for sp in l["spans"]:
+                if sp["size"] < BANT_EN_KUCUK_PUNTO:
+                    continue
+                for c in sp["chars"]:
+                    if c["c"].isalpha():
+                        harfler.append((c["origin"][1], c["c"]))
+    harfler.sort()
+    satirlar, onceki = [], None
+    for y, h in harfler:                 # taban çizgisine göre satırlar
+        if onceki is None or y - onceki > 2:
+            satirlar.append([])
+        satirlar[-1].append(h)
+        onceki = y
+    bulunan = {s[0] for s in satirlar
+               if len(set(s)) == 1 and s[0] in KITAPCIK_HARFLERI}
+    if not bulunan:
+        return None, bolge
+    return ("/".join(sorted(bulunan)) if len(bulunan) > 1 else bulunan.pop()), bolge
+
+
+def _kapak_harfi(sayfa):
+    """Kapaktaki "A KİTAPÇIĞI" harfi: sayfada "KİTAPÇI…" yazısı ve tek başına
+    duran büyük (≥ 30 pt) A/B harfi varsa o harf, yoksa None."""
+    if not re.search(r"K[İI]TAP[ÇC]I", sayfa.get_text(), re.IGNORECASE):
+        return None
+    for blk in sayfa.get_text("dict")["blocks"]:
+        for l in blk.get("lines", []):
+            for sp in l["spans"]:
+                if sp["size"] >= 30 and sp["text"].strip() in KITAPCIK_HARFLERI:
+                    return sp["text"].strip()
+    return None
+
+
+def _kitapcik_turu_denetle(kitaplar, belgeler, tek, sorun):
+    """Kitapçık türü (A/B): soru sayfalarının üst bandında kitapçığın harfi
+    yazıyor mu ("A A A A A")? A kitapçığında "A", B'de "B" olmalı. Kapakta
+    "A KİTAPÇIĞI" gibi bir harf varsa o da denetlenir. Hiçbir sayfada bant
+    harfi yoksa (bant unutulmuş ya da bu denemede bant yok) tek bir satır
+    yazılır. Dönen: {etiket: (bantlı sayfa, soru sayfası, harfler)}."""
+    ozet, sonuc = {}, {}
+    for kk in kitaplar:
+        doc = belgeler[kk["etiket"]]
+        sayfalar = sorted({r["sayfa"] for o in kk["ogeler"] for r in o["ham_satirlar"]})
+        bant = {p: _bant_harfi(doc[p]) for p in sayfalar}
+        sonuc[kk["etiket"]] = bant
+        ozet[kk["etiket"]] = (sum(1 for h, _b in bant.values() if h), len(bant),
+                              sorted({h for h, _b in bant.values() if h}))
+
+    def yerler(kk, liste):
+        return [(kk["etiket"], (p, b.x0, b.y0, b.x1, b.y1)) for p, b in liste[:4]]
+
+    hic = not any(v[0] for v in ozet.values())
+    if hic:
+        if not tek:
+            kk = kitaplar[0]
+            p0, (_h, b0) = next(iter(sonuc[kk["etiket"]].items()), (None, (None, None)))
+            sorun("HATA", "A-B", "Üst bantta kitapçık türü (A/B) yok: ne A'nın ne "
+                  "B'nin soru sayfalarının üst bandında kitapçık harfi bulunamadı. "
+                  "Bant unutulmuş olabilir; bu denemede bant hiç yoksa bu satırı "
+                  "dikkate almayın.", "", "", "üst bant",
+                  yerler(kk, [(p0, b0)]) if p0 is not None else [])
+        return ozet
+    for kk in kitaplar:
+        et = kk["etiket"]
+        bant = sonuc[et]
+        beklenen = None if tek else et
+        if tek:                          # KDS: tek harf beklenir, hangisi olursa
+            harfler = ozet[et][2]
+            beklenen = harfler[0] if len(harfler) == 1 and "/" not in harfler[0] else None
+        eksik = [(p, b) for p, (h, b) in bant.items() if not h]
+        yanlis = [(p, b, h) for p, (h, b) in bant.items() if h and beklenen and h != beklenen]
+        if eksik:
+            hepsi = len(eksik) == len(bant)
+            sorun("HATA", et, "Üst bantta kitapçık türü yok: "
+                  + (f"bu kitapçığın hiçbir soru sayfasında bant harfi yok"
+                     + ("" if tek else f" ({'B' if et == 'A' else 'A'} kitapçığında var)")
+                     if hepsi else
+                     f"{_sayfa_yazi([p + 1 for p, _b in eksik])}"
+                     + (f" (diğer sayfalarda '{beklenen}' var)" if beklenen else ""))
+                  + ".", "", "", "üst bant", yerler(kk, eksik))
+        if tek and not beklenen and len(ozet[et][2]) > 0:
+            dag = {}
+            for p, (h, _b) in bant.items():
+                if h:
+                    dag.setdefault(h, []).append(p + 1)
+            sorun("HATA", et, "Üst bantta farklı kitapçık harfleri var: "
+                  + "; ".join(f"'{h}' {_sayfa_yazi(s)}" for h, s in sorted(dag.items()))
+                  + ".", "", "", "üst bant",
+                  yerler(kk, [(p, b) for p, (h, b) in bant.items() if h]))
+        if yanlis:
+            yazan = sorted({h for _p, _b, h in yanlis})
+            diger = "B" if et == "A" else "A"
+            ek = ""
+            if len(yanlis) == len(bant) and yazan == [diger]:
+                # Bütün sayfalarda öbür harf: dosya yanlış seçilmiş
+                ek = (" — A ve B dosyaları yer değiştirmiş olabilir"
+                      if ozet.get(diger, (0, 0, []))[2] == [et] else
+                      f" — {et} yerine {diger} kitapçığı seçilmiş olabilir")
+            sorun("HATA", et, f"{et} olarak seçilen kitapçığın üst bandında "
+                  f"'{', '.join(yazan)}' yazıyor: "
+                  f"{_sayfa_yazi([p + 1 for p, _b, _h in yanlis])}{ek}.",
+                  "", "", "üst bant", yerler(kk, [(p, b) for p, b, _h in yanlis]))
+    if not tek:                          # kapak: "A KİTAPÇIĞI"
+        for kk in kitaplar:
+            doc = belgeler[kk["etiket"]]
+            soru_sayfasi = {r["sayfa"] for o in kk["ogeler"] for r in o["ham_satirlar"]}
+            for p in range(min(2, len(doc))):
+                if p in soru_sayfasi:
+                    break
+                h = _kapak_harfi(doc[p])
+                if h and h != kk["etiket"]:
+                    r = doc[p].rect
+                    sorun("HATA", kk["etiket"], f"Kapakta '{h} KİTAPÇIĞI' yazıyor ama "
+                          f"bu {kk['etiket']} kitapçığı.", "", "", "kapak",
+                          [(kk["etiket"], (p, r.x0, r.y0, r.x1, r.y1))])
+                    break
+    return ozet
+
+
 def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
                yapi_b=None, tek=False, yapi_notu=None):
     """A ve B kitapçığını denetler. Dönen: (sonuc sözlüğü, sorunlar listesi).
@@ -3649,6 +3783,8 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
     # --- 3) A ↔ B soru eşleştirmesi (her test kendi içinde, dersler arası) -----
     docA = fitz.open(a_pdf)
     docB = None if tek else fitz.open(b_pdf)
+    # Kitapçık türü: üst bantta "A A A A A" / "B B B B B", kapakta "A KİTAPÇIĞI"
+    bant_ozet = _kitapcik_turu_denetle(kitaplar, {"A": docA, "B": docB}, tek, sorun)
     onbellek = {}
     if tek:
         eslesmeler, eksik_a, eksik_b = [], [], []
@@ -3868,7 +4004,8 @@ def kontrol_et(a_pdf, b_pdf, yapi, log, cevap_a=None, cevap_b=None,
              "gruplar": grup_satirlari, "numara": numara_ozet,
              "cevap_var": (sum(1 for o in A["ogeler"] if o["cevap"]),
                            sum(1 for o in B["ogeler"] if o["cevap"]) if B else 0),
-             "acik_cevap": acik_say, "test_adlari": adlar, "tek": tek}
+             "acik_cevap": acik_say, "test_adlari": adlar, "tek": tek,
+             "bant": bant_ozet}
     return sonuc, sorunlar
 
 
@@ -4128,6 +4265,10 @@ def kontrol_ozeti(sonuc, sorunlar):
         satirlar.append("Testler: " + " | ".join(
             ", ".join(f"{d} ({a})" for d, a in t["dersler"]) for t in sonuc["yapi"]))
         satirlar.append(f"Açık kalan cevap işareti: {sonuc['acik_cevap']['A']}")
+        bant = (sonuc.get("bant") or {}).get("A")
+        if bant and bant[0]:
+            satirlar.append(f"Üst bant kitapçık türü: '{'/'.join(bant[2])}' "
+                            f"{bant[0]}/{bant[1]} soru sayfasında")
         satirlar.append("Tek kitapçık kontrolü (KDS): numaralar, bantta yazan soru "
                         "sayısı, açık cevap/kod, şıklar, grup başlıkları ve iki kez "
                         "basılmış soru denetlendi. B kitapçığı olmadığı için metin, "
@@ -4158,6 +4299,13 @@ def kontrol_ozeti(sonuc, sorunlar):
                     "Şekil/resimler: farksız")
     ac = sonuc["acik_cevap"]
     satirlar.append(f"Açık kalan cevap işareti: A {ac['A']}, B {ac['B']}")
+    bant = sonuc.get("bant") or {}
+    if bant:
+        satirlar.append("Üst bant kitapçık türü: " + (", ".join(
+            f"{et} {bant[et][0]}/{bant[et][1]} sayfa"
+            + (f" ('{'/'.join(bant[et][2])}')" if bant[et][2] and bant[et][2] != [et] else "")
+            for et in ("A", "B") if et in bant)
+            if any(v[0] for v in bant.values()) else "bulunamadı"))
     if not sorunlar:
         satirlar += ["✓ Hiç sorun bulunmadı.",
                      "A'daki her soru (metni, şıkları ve şekilleriyle) B'de aynen var, "
