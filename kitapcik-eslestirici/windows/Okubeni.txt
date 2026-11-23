@@ -1,0 +1,24 @@
+KİTAPÇIK EŞLEŞTİRİCİ — WINDOWS SÜRÜMÜ (Limit Yayınları)
+
+KURULUM
+1. Bu klasörü (zip'ten çıkardığınız "Kitapcik Eslestirici" klasörünü) bilgisayarda
+   kalıcı bir yere koyun, örneğin Belgeler'e. Klasördeki dosyaları ayırmayın:
+   uygulama yanındaki "_internal" klasörüyle birlikte çalışır.
+2. "Kitapcik Eslestirici.exe" dosyasına çift tıklayın.
+   İsterseniz sağ tık > "Kısayol oluştur" ile masaüstüne kısayol koyabilirsiniz.
+
+İLK AÇILIŞTA "Windows kişisel bilgisayarınızı korudu" UYARISI
+Uygulama imzalı bir mağaza uygulaması olmadığı için Windows ilk açılışta bu mavi
+uyarıyı gösterebilir. "Ek bilgi"ye, sonra "Yine de çalıştır"a basın. Bir kez
+yeterlidir.
+
+KULLANIM
+Mac sürümüyle aynıdır: A ve B kitapçık PDF'lerini seçin (ya da pencereye
+sürükleyin).
+- EŞLEŞTİR: kazanım tablosu (Excel).
+- A–B KONTROL: tek PDF rapor (özet + sorunlu soruların A/B görüntüleri).
+Python ya da başka bir program kurmanız gerekmez.
+
+SORUN OLURSA
+Uygulamanın günlük dosyası: %LOCALAPPDATA%\KitapcikEslestirici\KitapcikEslestirici.log
+(Dosya Gezgini'nin adres çubuğuna yapıştırıp Enter'a basın.)

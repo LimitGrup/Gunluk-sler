@@ -1,0 +1,205 @@
+# -*- coding: utf-8 -*-
+"""
+A–B KONTROL'ün numara denetimi gerçek bir dizgide doğru mu: baskı A/B
+kitapçıklarında B'nin soru numaraları farklı biçimlerde bozulur, her senaryo
+ayrı bir kopyada denetlenir:
+
+  mükerrer         ortadaki soruya bir önceki sorunun numarası yazılır
+  ileri numara     ortadaki soruya iki sonraki numara yazılır (11'den sonra
+                   gelen soruya "13.", asıl 13 de yerinde)
+  olmayan numara   ortadaki soruya testte olmayan bir numara yazılır
+  yer değiştirmiş  ardışık iki sorunun numaraları değiştirilir
+  kaymış           ortadaki sorudan testin sonuna kadar numaralar +1
+  branş devamı     ikinci testin numaraları 1'den değil önceki testin
+                   sonundan devam eder (Sosyal 1–10 yerine 21–30)
+  ilk soru devam   ikinci testin yalnız 1. sorusu önceki testin sonundan devam
+                   eder (Sosyal 1 yerine "21.", 2–10 doğru)
+  numara silinmiş  ortadaki sorunun numarası silinir
+  nokta unutulmuş  ortadaki sorunun numarası noktasız yazılır ("11")
+  grup içi numara  metne bağlı bir grubun ortasındaki soruya iki sonraki numara
+                   yazılır (13–15 grubunda 14. soruya "16.")
+  grup içi silinmiş  aynı soru (yazısı ve şekliyle) tamamen silinir: soru
+                   gerçekten yoksa "bulunamadı" denmeli
+  bant eksik soru  en uzun testin son sorusu silinir: bant (ör. "Bu testte 20
+                   soru vardır") ile basılı soru sayısı uyuşmamalı
+  bant yanlış      bandın sayısı bir eksik yazılır ("19 soru vardır"), testte
+                   20 soru var
+
+Her senaryoda beklenen HATA tam o numarada çıkmalı. Mükerrer, ileri numara,
+yer değiştirmiş ve ilk soru devam senaryolarında rapora yalnız o tek satır
+düşmeli: A'daki soru için "B'de yok", "metin farklı" gibi yan hata çıkmamalı.
+
+Kopyalar <çıktı_klasörü> içine yazılır; kaynak PDF'lere dokunulmaz.
+
+Kullanım:  python3 numara_sina.py <app.py> <A_baski.pdf> <B_baski.pdf> <OTOMATİK|TYT|AYT|...> <çıktı_klasörü>
+(Cevaplı bir çiftten baskı kopyası baski_kopya_sina.py ile üretilebilir.)
+"""
+import importlib.util
+import re
+import sys
+from pathlib import Path
+
+
+def yukle(ad, yol):
+    spec = importlib.util.spec_from_file_location(ad, yol)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def main(app, qa, qb, sinav, cikti):
+    m = yukle("kitapcik_app", app)
+    m.bagimliliklari_yukle()
+    fitz = m.fitz
+    out = Path(cikti)
+    out.mkdir(parents=True, exist_ok=True)
+    yapi = m.yapi_cikar(qa) if sinav == "OTOMATİK" else m.YAPILAR[sinav]
+    _A, B = m._kitapciklari_hazirla(qa, qb, yapi, None, None)
+    testler = {}
+    for o in B["ogeler"]:
+        if o["no"]:
+            testler.setdefault(o["ti"], []).append(o)
+    sirali = [sorted(v, key=lambda o: o["no"]) for _t, v in sorted(testler.items())]
+    s1 = max(sirali, key=len)                       # en uzun test
+    s2 = next(v for v in sirali if v is not s1 and len(v) >= 4 and v[0]["ti"] > s1[0]["ti"])
+    N, k = len(s1), len(s1) // 2
+
+    def numara_yeri(doc, o):
+        bas = o["ham_satirlar"][0]
+        page = doc[bas["sayfa"]]
+        x0, y0, _x1, _y1 = (bas.get("kutular") or [(bas["x0"], bas["y0"], bas["x1"], bas["y1"])])[0]
+        for b in page.get_text("rawdict")["blocks"]:
+            for l in b.get("lines", []):
+                for sp in l["spans"]:
+                    ch = sp["chars"]
+                    if not ch or abs(ch[0]["bbox"][0] - x0) > 1.5 or abs(ch[0]["bbox"][1] - y0) > 3:
+                        continue
+                    mm = re.match(r"\s*(\d{1,3})(\s*[.)])?", "".join(c["c"] for c in ch))
+                    if mm and int(mm.group(1)) == o["no"]:
+                        son = ch[mm.end() - 1]
+                        return (page, fitz.Rect(ch[0]["bbox"][0], ch[0]["bbox"][1],
+                                                son["bbox"][2], son["bbox"][3]),
+                                ch[0]["origin"], sp["size"])
+        raise RuntimeError(f"numara bulunamadı: {o['ders']} {o['no']}")
+
+    def sil(o, yol):                         # sorunun bütün satırları ve şekli
+        doc = fitz.open(qb)
+        for r in o["ham_satirlar"]:
+            doc[r["sayfa"]].add_redact_annot(
+                fitz.Rect(r["x0"] - 1, r["y0"] + 1, r["x1"] + 1, r["y1"] - 1))
+        for p_ in {r["sayfa"] for r in o["ham_satirlar"]}:
+            doc[p_].apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,
+                                     graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED)
+        doc.save(yol)
+
+    def bant_yaz(yol):                       # bandın yalnız sayısı bir eksik
+        doc = fitz.open(qb)
+        hedef = f"{N} soru"
+        for page in doc:
+            for blk in page.get_text("rawdict")["blocks"]:
+                for l in blk.get("lines", []):
+                    for sp in l["spans"]:
+                        ch = sp["chars"]
+                        i = "".join(c["c"] for c in ch).find(hedef)
+                        if i < 0:
+                            continue
+                        son = ch[i + len(str(N)) - 1]
+                        r = fitz.Rect(ch[i]["bbox"][0], ch[i]["bbox"][1], son["bbox"][2], son["bbox"][3])
+                        h = r.height
+                        page.add_redact_annot(fitz.Rect(r.x0 + .2, r.y0 + .3 * h, r.x1 - .2, r.y1 - .3 * h))
+                        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
+                                              graphics=fitz.PDF_REDACT_LINE_ART_NONE)
+                        page.insert_text(ch[i]["origin"], str(N - 1), fontsize=sp["size"],
+                                         fontname="helv", color=(0, 0, 0))
+                        doc.save(yol)
+                        return
+        raise RuntimeError(f"bantta '{hedef}' bulunamadı")
+
+    def boz(degisim, yol):
+        if degisim and degisim[0] == "SIL":
+            return sil(degisim[1], yol)
+        if degisim and degisim[0] == "BANT":
+            return bant_yaz(yol)
+        doc = fitz.open(qb)
+        yerler = [(numara_yeri(doc, o), yeni) for o, yeni in degisim]
+        for (page, r, _org, _boy), _y in yerler:
+            h = r.height
+            page.add_redact_annot(fitz.Rect(r.x0 + 0.2, r.y0 + 0.3 * h, r.x1 - 0.2, r.y1 - 0.3 * h))
+        for page in {id(p): p for (p, *_r), _y in yerler}.values():
+            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
+                                  graphics=fitz.PDF_REDACT_LINE_ART_NONE)
+        for (page, _r, org, boy), yeni in yerler:
+            if yeni:
+                page.insert_text(org, yeni, fontsize=boy, fontname="hebo", color=(0, 0, 0))
+        doc.save(yol)
+
+    a, b_ = s1[k], s1[k + 1]
+    n, n2 = a["no"], b_["no"]
+    # ad, değişiklik, beklenen açıklama parçaları (her biri en az bir HATA'da
+    # geçmeli; "|" ile ayrılanlardan biri yeter), en çok kaç yeni sorun
+    senaryolar = [
+        ("mükerrer", [(a, f"{n - 1}.")],
+         [f"Soru numarası hatalı: {n}. sorunun yerinde '{n - 1}.' yazıyor"], 1),
+        ("ileri numara", [(a, f"{n + 2}.")],
+         [f"Soru numarası hatalı: {n}. sorunun yerinde '{n + 2}.' yazıyor"], 1),
+        ("olmayan numara", [(a, f"{N + 27}.")],
+         [f"{n}. soru bulunamadı|{n}. sorunun yerinde '{N + 27}.'"], None),
+        ("yer değiştirmiş", [(a, f"{n2}."), (b_, f"{n}.")],
+         [f"Numaralar sırasız: {n2}. soru {n}. sorudan önce"], 1),
+        ("kaymış", [(o, f"{o['no'] + 1}.") for o in s1[k:]],
+         [f"{n}. soru bulunamadı", f"{n}. sorudan itibaren numaralar bir fazla"], None),
+        ("branş devamı", [(o, f"{o['no'] + len(s1)}.") for o in s2],
+         [f"bu testin 1–{len(s2)}. soruları '{len(s1) + 1}.'–'{len(s1) + len(s2)}.'"], 2),
+        ("ilk soru devam", [(s2[0], f"{len(s1) + 1}.")],
+         [f"bu testin 1. sorusu '{len(s1) + 1}.' diye numaralanmış"], 1),
+        ("numara silinmiş", [(a, None)], [f"{n}. soru bulunamadı"], None),
+        ("nokta unutulmuş", [(a, f"{n}")], [f"{n}. soru bulunamadı"], None),
+    ]
+    senaryolar += [
+        ("bant eksik soru", ("SIL", s1[-1]),
+         [f"Bantta bu test için {N} soru yazıyor ama testte {N - 1} soru var"], None),
+        ("bant yanlış", ("BANT",),
+         [f"Bantta bu test için {N - 1} soru yazıyor ama testte {N} soru var"], 1),
+    ]
+    # Metne bağlı grubun ortasındaki soru (en az 3 sorulu grup varsa)
+    gruplu = [b for b in B["basliklar"] if len(b["sorular"]) >= 3
+              and all(x["no"] for x in b["sorular"])]
+    if gruplu:
+        g = gruplu[len(gruplu) // 2]
+        o = g["sorular"][1]
+        senaryolar += [
+            ("grup içi numara", [(o, f"{o['no'] + 2}.")],
+             [f"Soru numarası hatalı: {o['no']}. sorunun yerinde '{o['no'] + 2}.' yazıyor"], 2),
+            ("grup içi silinmiş", ("SIL", o), [f"{o['no']}. soru bulunamadı"], None),
+        ]
+
+    def kontrol(yol):
+        ya = m.yapi_cikar(qa) if sinav == "OTOMATİK" else yapi
+        yb = m.yapi_cikar(yol) if sinav == "OTOMATİK" else None
+        return m.kontrol_et(qa, yol, ya, lambda _x: None, yapi_b=yb)[1]
+
+    temiz = kontrol(qb)
+    tset = {(s["onem"], s["aciklama"]) for s in temiz}
+    print(f"temiz: {len(temiz)} sorun")
+    hepsi = True
+    for i, (ad, degisim, beklenen, en_cok) in enumerate(senaryolar):
+        yol = str(out / f"B_numara{i}.pdf")
+        boz(degisim, yol)
+        yeni = [s for s in kontrol(yol) if (s["onem"], s["aciklama"]) not in tset]
+        hata = [s for s in yeni if s["onem"] == "HATA"]
+        eksik = [p for p in beklenen
+                 if not any(any(q in s["aciklama"] for q in p.split("|")) for s in hata)]
+        fazla = en_cok is not None and len(hata) > en_cok     # yan HATA olmamalı
+        tamam = not eksik and not fazla
+        hepsi &= tamam
+        print(f"{'✓' if tamam else '✗'} {ad}: {len(yeni)} yeni sorun"
+              + (f"; bulunamayan: {eksik}" if eksik else "")
+              + (f"; en çok {en_cok} HATA olmalıydı (yan hata)" if fazla else ""))
+        for s in yeni:
+            print(f"     {s['onem']} [{s['kitapcik']}] {s['test']} | {s['soru']} | {s['aciklama'][:150]}")
+    print("SONUÇ:", "tamam" if hepsi else "SORUN")
+    return 0 if hepsi else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(*sys.argv[1:6]))
